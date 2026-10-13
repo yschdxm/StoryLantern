@@ -1,0 +1,36 @@
+# 核心 bundle 的 patch：对空的 profile 根做「一次 insert」。
+# 后续 bundle patch 与用户的 storyforge.patch.yml 都按 id 覆盖这些行，
+# 且覆盖是**整体替换 config**（不做深合并），因此"哪一层生效"永远不含糊。
+#
+# 行顺序不承载加载语义：激活由依赖（inject）驱动。
+
+- insert:
+    - id: log-sink
+      name: '@storyforge/plugin-log-sink'
+      config:
+        capacity: 500
+
+    - id: settings
+      name: '@storyforge/plugin-settings-store'
+      config:
+        namespace: app
+
+    - id: blocks
+      name: '@storyforge/plugin-context-blocks'
+      config:
+        maxBlocks: 64
+
+    - id: pipeline
+      name: '@storyforge/plugin-writing-pipeline'
+      config:
+        budgetTokens: 4096
+        historyLimit: 40
+
+    - id: sync-memory
+      name: '@storyforge/plugin-sync-memory'
+
+    # 文件夹后端默认关闭：单机用户不需要，启用方式是在自己的 patch 里
+    # 覆盖这一行为 disabled: false。
+    - id: sync-folder
+      name: '@storyforge/plugin-sync-folder'
+      disabled: true

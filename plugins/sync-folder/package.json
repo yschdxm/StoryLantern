@@ -1,0 +1,10 @@
+{
+  "name": "@storyforge/plugin-sync-folder",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "本地文件夹同步后端：网盘同步目录 / NAS 挂载盘即后端（零部署）",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "@storyforge/bundle-core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "核心 bundle：把基础能力以插件行插入组合（本身不含业务代码）",
+  "exports": {
+    "./patch": "./storyforge.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "storyforge": {
+    "bundle": {
+      "patch": "./storyforge.patch.yml"
+    }
+  }
+}

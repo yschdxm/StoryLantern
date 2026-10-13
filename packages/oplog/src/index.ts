@@ -1,0 +1,101 @@
+/**
+ * @storyforge/oplog —— 变更日志协议层。
+ *
+ * 这是整个同步体系的正确性地基：段必须自校验、可幂等重放、且与到达顺序无关。
+ */
+export {
+  blindId,
+  compareUlid,
+  concatBytes,
+  fromBase64,
+  fromHex,
+  fromUtf8,
+  isUlid,
+  toBase64,
+  toHex,
+  ulid,
+  utf8,
+} from './bytes.ts';
+export { crc32, crc32Hex } from './crc32.ts';
+export { compareHlc, compareOpOrder, hlcSortKey, HlcClock, type Hlc, type HlcClockOptions } from './hlc.ts';
+export {
+  candidateAppend,
+  candidateSelect,
+  createOp,
+  decodeOp,
+  decodeOps,
+  encodeOp,
+  encodeOps,
+  isOp,
+  messageAppend,
+  messageDelete,
+  messageEdit,
+  OP_SCHEMA_VERSION,
+  OpCodecError,
+  revisionSelect,
+  sessionCreate,
+  settingSet,
+  type CandidateAppendPayload,
+  type CandidateSelectPayload,
+  type CreateOpOptions,
+  type MessageAppendPayload,
+  type MessageAuthor,
+  type MessageDeletePayload,
+  type MessageEditPayload,
+  type Op,
+  type OpType,
+  type RevisionSelectPayload,
+  type SessionCreatePayload,
+  type SettingSetPayload,
+} from './op.ts';
+export {
+  Materializer,
+  type CandidateRecord,
+  type ForkGroup,
+  type MaterializedState,
+  type MessageRecord,
+  type RevisionRecord,
+  type SessionRecord,
+  type Snapshot,
+} from './materialize.ts';
+export type {
+  Compressor,
+  CryptoPorts,
+  Digest,
+  SealedPayload,
+  SegmentCipher,
+  SegmentSigner,
+  SignatureVerifier,
+} from './ports.ts';
+export {
+  estimateOpBytes,
+  packSegment,
+  parseSegmentFileName,
+  peekSegment,
+  segmentFileName,
+  SEGMENT_FORMAT_VERSION,
+  SEGMENT_MAGIC,
+  SEGMENT_POLICY,
+  SegmentError,
+  shouldFlush,
+  signaturePayload,
+  unpackSegment,
+  type PackSegmentInput,
+  type PackedSegment,
+  type SegmentErrorCode,
+  type SegmentHeader,
+  type SegmentTrailer,
+  type UnpackExpectations,
+  type UnpackedSegment,
+} from './segment.ts';
+export {
+  createAesGcmCipher,
+  createDeviceSigner,
+  createRosterVerifier,
+  generateDeviceKeyPair,
+  nodeDigest,
+  nodeGzip,
+  type AesGcmOptions,
+  type DeviceKeyPair,
+  type DeviceRoster,
+} from './node-adapters.ts';

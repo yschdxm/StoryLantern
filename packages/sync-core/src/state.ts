@@ -1,0 +1,52 @@
+import type { Op } from '../../oplog/src/op.ts';
+
+export interface HostedSession {
+  lastSeq: number;
+  segments: Record<string, string>;
+  bytes: number;
+  epoch: number;
+}
+
+/** 引擎的持久化状态：整块可序列化，因此"同步进度"本身也能被备份/迁移。 */
+export interface LocalSyncState {
+  v: 1;
+  seq: number;
+  manifestSeq: number;
+  outbox: Op[];
+  /** `${deviceId}|${blindSessionId}` -> 已**连续**消费到的段序号。 */
+  cursors: Record<string, number>;
+  /** 已成功应用过的段序号（可能有缺口，用于避免重复下载同时保证缺口会被重试）。 */
+  appliedSeqs: Record<string, number[]>;
+  /** 本设备为每个会话发布的段清单。 */
+  hosted: Record<string, HostedSession>;
+  /** 对端 manifest 里的段清单：owner -> blindSessionId -> 清单。 */
+  peerHosted: Record<string, Record<string, HostedSession>>;
+  /** 各设备最高 manifest 序号（回滚检测）。 */
+  manifestCursors: Record<string, number>;
+  /** 本设备声明"已并入 deviceId 的第几号段"。 */
+  ack: Record<string, number>;
+  /** 对端 manifest 里的 ack：owner -> { deviceId: seq }。 */
+  peerAck: Record<string, Record<string, number>>;
+}
+
+export function emptyState(): LocalSyncState {
+  return {
+    v: 1,
+    seq: 1,
+    manifestSeq: 1,
+    outbox: [],
+    cursors: {},
+    appliedSeqs: {},
+    hosted: {},
+    peerHosted: {},
+    manifestCursors: {},
+    ack: {},
+    peerAck: {},
+  };
+}
+
+export function clone<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+export const DEFAULT_GRACE_MS = 30 * 24 * 3600 * 1000;

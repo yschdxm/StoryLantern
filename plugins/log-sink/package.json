@@ -1,0 +1,10 @@
+{
+  "name": "@storyforge/plugin-log-sink",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "环形日志缓冲：内核事件与诊断信息的落地处",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

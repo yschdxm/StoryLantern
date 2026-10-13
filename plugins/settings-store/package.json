@@ -1,0 +1,10 @@
+{
+  "name": "@storyforge/plugin-settings-store",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "设置读写服务：先内存后落库，后续接入 oplog 的 setting.set",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

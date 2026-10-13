@@ -1,0 +1,10 @@
+{
+  "name": "@storyforge/oplog",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "StoryForge 操作日志：Op 编解码、HLC、段打包（压缩 + 校验 + 签名 + 加密）、幂等重放与物化",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

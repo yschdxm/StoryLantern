@@ -1,0 +1,10 @@
+{
+  "name": "@storyforge/plugin-writing-pipeline",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "写作主线：把注册的块编译成 PromptGraph（含预算裁剪与每条的可解释理由）",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

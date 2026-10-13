@@ -1,0 +1,10 @@
+{
+  "name": "@storyforge/plugin-context-blocks",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "上下文块注册表：角色/人设/世界书/历史都只是「内置块」，没有特判",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

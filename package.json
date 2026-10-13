@@ -1,0 +1,23 @@
+{
+  "name": "storyforge",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "StoryForge — 本地优先的 AI 角色扮演与创作工作台（一切皆插件）",
+  "license": "AGPL-3.0-or-later",
+  "packageManager": "pnpm@11.21.0",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "test": "node --test --test-reporter=spec \"packages/**/*.test.ts\" \"plugins/**/*.test.ts\"",
+    "test:watch": "node --test --watch \"packages/**/*.test.ts\" \"plugins/**/*.test.ts\"",
+    "gate": "node scripts/check-boundaries.mjs",
+    "typecheck": "tsc -p tsconfig.json",
+    "check": "npm run gate && npm test"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.3"
+  }
+}

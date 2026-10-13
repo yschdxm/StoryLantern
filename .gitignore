@@ -1,0 +1,26 @@
+# dependencies
+node_modules/
+.pnpm-store/
+
+# build output
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# test / coverage
+coverage/
+.mf/
+
+# local runtime data (never commit user data, keys or synced stores)
+.data/
+*.local.json
+*.local.yaml
+
+# editor / os
+.vscode/*
+!.vscode/extensions.json
+.idea/
+Thumbs.db
+Desktop.ini
+.DS_Store

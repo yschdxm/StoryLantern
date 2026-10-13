@@ -1,0 +1,10 @@
+{
+  "name": "@storyforge/plugin-sync-memory",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "内存同步后端：测试与协议验证用，可注入半上传/篡改/离线/丢弃 manifest 等故障",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}
