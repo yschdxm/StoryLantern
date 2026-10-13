@@ -24,3 +24,7 @@ coverage/
 Thumbs.db
 Desktop.ini
 .DS_Store
+
+# 本地临时提交信息文件
+.commit-msg.tmp
+.git-commit-msg.tmp
