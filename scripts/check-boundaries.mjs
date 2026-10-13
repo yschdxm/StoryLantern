@@ -18,12 +18,12 @@ const SCAN_DIRS = ['packages', 'plugins', 'scripts'];
 
 /** 允许的内部依赖：包名 -> 允许依赖的包名集合（'*' 表示除自身外任意 packages/*）。 */
 const ALLOWED_DEPS = {
-  kernel: [],
-  oplog: [],
   'plugin-api': [],
+  kernel: ['plugin-api'],
+  oplog: [],
   'sync-core': ['kernel', 'oplog'],
-  domain: ['kernel'],
-  sqlstore: ['kernel', 'domain', 'oplog'],
+  domain: ['kernel', 'plugin-api'],
+  sqlstore: ['kernel', 'plugin-api', 'domain', 'oplog'],
   'ui-kit': ['kernel', 'plugin-api'],
 };
 

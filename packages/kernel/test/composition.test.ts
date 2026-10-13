@@ -34,6 +34,8 @@ const host: CompositionHost = {
         return import('../../../plugins/sync-memory/src/index.ts');
       case '@storyforge/plugin-sync-folder':
         return import('../../../plugins/sync-folder/src/index.ts');
+      case '@storyforge/plugin-sync-webdav':
+        return import('../../../plugins/sync-webdav/src/index.ts');
       default:
         throw new Error(`未知插件包 ${name}`);
     }
@@ -115,6 +117,31 @@ test('写作管线：块图装配带预算裁剪，每个块都有可读理由�
   assert.match(lore?.reason ?? '', /预算不足裁掉/);
   assert.match(graph.nodes.find((node) => node.id === 'history')?.reason ?? '', /纳入/);
   assert.ok(graph.usedTokens <= 60);
+});
+
+test('bundle 叠加：sync bundle 覆盖 core 的禁用行并新增远端后端', async () => {
+  const core = parseYaml(await readText('bundles/core/storyforge.patch.yml'));
+  const sync = parseYaml(await readText('bundles/sync/storyforge.patch.yml'));
+
+  const composition = composeProfile([
+    { source: '@storyforge/bundle-core', rows: core },
+    { source: '@storyforge/bundle-sync', rows: sync },
+  ]);
+  assert.deepEqual(composition.warnings, [], '跨 bundle 覆盖不得产生警告');
+  assert.equal(composition.get('sync-folder')?.disabled, false, 'sync bundle 打开 core 默认关闭的行');
+  assert.equal(composition.get('sync-folder')?.source, '@storyforge/bundle-sync');
+  assert.equal(composition.size, 7, 'core 的 6 行 + 新增 1 行');
+
+  const ctx = createContext();
+  const tracker = new ActivationTracker();
+  await activateComposition(ctx, composition, host, { tracker });
+
+  assert.equal(tracker.get('sync-folder')?.status, 'active');
+  assert.equal(tracker.get('sync-webdav')?.status, 'active');
+  assert.equal(ctx.get<{ kind: string }>('sync.backend.folder')?.kind, 'folder');
+  assert.equal(ctx.get<{ kind: string }>('sync.backend.webdav')?.kind, 'webdav');
+  // core 的其它能力不受叠加影响
+  assert.equal(typeof ctx.get<AssembleFn>('context.assemble'), 'function');
 });
 
 test('删除一行 = 该能力消失，其余不受影响（"没有特性被硬编码"）', async () => {

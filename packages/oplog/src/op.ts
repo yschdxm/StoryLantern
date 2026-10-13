@@ -60,7 +60,7 @@ export interface SettingSetPayload {
   value: unknown;
 }
 
-export interface Op<TPayload = Record<string, unknown>> {
+export interface Op<TPayload = unknown> {
   opId: string;
   deviceId: string;
   hlc: Hlc;

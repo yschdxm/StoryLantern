@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createContext } from '../src/context.ts';
-import { Registry } from '../src/registry.ts';
+import { Registry } from '../../plugin-api/src/index.ts';
 
 test('Service 注册与撤销：set 返回的 disposer 立即生效', async () => {
   const ctx = createContext();
@@ -84,8 +84,12 @@ test('inject：依赖消失后注册被撤销，再次出现会重新执行', as
 test('effect 注册与撤销顺序：逆序执行', async () => {
   const ctx = createContext();
   const order: number[] = [];
-  ctx.effect(() => () => order.push(1));
-  ctx.effect(() => () => order.push(2));
+  ctx.effect(() => () => {
+    order.push(1);
+  });
+  ctx.effect(() => () => {
+    order.push(2);
+  });
   await ctx.dispose();
   assert.deepEqual(order, [2, 1]);
 });

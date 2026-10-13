@@ -4,9 +4,9 @@ import { createContext } from '../src/context.ts';
 import { createKernelInspectProvider, InspectRegistry } from '../src/inspect.ts';
 import { activateComposition, composeProfile, Composition, type CompositionHost } from '../src/loader.ts';
 import { ActivationTracker } from '../src/plugin.ts';
-import { Registry } from '../src/registry.ts';
+import { Registry } from '../../plugin-api/src/index.ts';
 import { parseYaml } from '../src/yaml.ts';
-import { defineConfig } from '../src/config.ts';
+import { defineConfig } from '../../plugin-api/src/index.ts';
 
 const corePatch = `
 - insert:

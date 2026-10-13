@@ -1,0 +1,10 @@
+{
+  "name": "@storyforge/plugin-api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "★ 插件作者唯一依赖：契约类型 + Config schema + 通用注册表（不含任何运行时实现）",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

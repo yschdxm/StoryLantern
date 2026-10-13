@@ -1,5 +1,5 @@
-import { defineConfig } from '../../../packages/kernel/src/config.ts';
-import type { Context } from '../../../packages/kernel/src/context.ts';
+import { defineConfig } from '../../../packages/plugin-api/src/index.ts';
+import type { PluginContext } from '../../../packages/plugin-api/src/index.ts';
 
 export const name = 'log-sink';
 
@@ -13,7 +13,7 @@ export interface LogSink {
 }
 
 /** 提供一个有界的日志落地服务；注册即 effect，卸载时缓冲被清空。 */
-export function apply(ctx: Context, config: Record<string, unknown>): void {
+export function apply(ctx: PluginContext, config: Record<string, unknown>): void {
   const capacity = typeof config.capacity === 'number' ? config.capacity : 200;
   const entries: string[] = [];
 

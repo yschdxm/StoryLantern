@@ -1,5 +1,5 @@
-import { defineConfig } from '../../../packages/kernel/src/config.ts';
-import type { Context } from '../../../packages/kernel/src/context.ts';
+import { defineConfig } from '../../../packages/plugin-api/src/index.ts';
+import type { PluginContext } from '../../../packages/plugin-api/src/index.ts';
 import type { BlockContext, BlockDefinition, BlockPlacement, BlockRegistry } from '../../context-blocks/src/index.ts';
 
 export const name = 'writing-pipeline';
@@ -98,7 +98,7 @@ export function assembleBlocks(
 
 export type AssembleFn = (context: BlockContext, budgetTokens?: number) => PromptGraph;
 
-export function apply(ctx: Context, config: Record<string, unknown>): void {
+export function apply(ctx: PluginContext, config: Record<string, unknown>): void {
   const blocks = ctx.require<BlockRegistry>('context.blocks');
   const budgetTokens = typeof config.budgetTokens === 'number' ? config.budgetTokens : 2048;
   const historyLimit = typeof config.historyLimit === 'number' ? config.historyLimit : 40;

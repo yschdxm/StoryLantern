@@ -1,6 +1,5 @@
-import { defineConfig } from '../../../packages/kernel/src/config.ts';
-import type { Context } from '../../../packages/kernel/src/context.ts';
-import { Registry } from '../../../packages/kernel/src/registry.ts';
+import { defineConfig, Registry } from '../../../packages/plugin-api/src/index.ts';
+import type { PluginContext } from '../../../packages/plugin-api/src/index.ts';
 
 export const name = 'context-blocks';
 
@@ -36,7 +35,7 @@ export interface BlockDefinition {
 export type BlockRegistry = Registry<BlockDefinition>;
 
 /** 上下文块注册表。内置块也只是块，因此第三方块与内置块没有任何地位差异。 */
-export function apply(ctx: Context, config: Record<string, unknown>): void {
+export function apply(ctx: PluginContext, config: Record<string, unknown>): void {
   const maxBlocks = typeof config.maxBlocks === 'number' ? config.maxBlocks : 64;
   const blocks: BlockRegistry = new Registry<BlockDefinition>({ onDuplicate: 'replace' });
 

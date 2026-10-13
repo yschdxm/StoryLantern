@@ -1,0 +1,13 @@
+{
+  "name": "storyforge-spike-cordis-ab",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "一次性 spike：cordis（上游 MIT 内核）与自研 kernel 的能力/成本对比；不参与产品构建",
+  "scripts": {
+    "bench": "node bench.mjs"
+  },
+  "dependencies": {
+    "cordis": "^4.0.0-rc.10"
+  }
+}

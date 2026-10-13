@@ -23,6 +23,8 @@ export interface LocalSyncState {
   peerHosted: Record<string, Record<string, HostedSession>>;
   /** 各设备最高 manifest 序号（回滚检测）。 */
   manifestCursors: Record<string, number>;
+  /** 本设备已发布的 manifest 路径（新的在前；只用于清理自己的旧版本）。 */
+  manifestPaths: string[];
   /** 本设备声明"已并入 deviceId 的第几号段"。 */
   ack: Record<string, number>;
   /** 对端 manifest 里的 ack：owner -> { deviceId: seq }。 */
@@ -40,6 +42,7 @@ export function emptyState(): LocalSyncState {
     hosted: {},
     peerHosted: {},
     manifestCursors: {},
+    manifestPaths: [],
     ack: {},
     peerAck: {},
   };

@@ -8,7 +8,7 @@ import { instrumentBackend, type BackendCallCounters, type SyncBackend } from '.
 import { chunkOps } from './chunk.ts';
 import { collectTrash, type CollectResult } from './gc.ts';
 import { decodeManifest, encodeManifest, sessionIdOf, type Manifest, type SessionRef } from './manifest.ts';
-import { DEVICES_PREFIX, parseManifestFileName, segmentPath } from './paths.ts';
+import { DEVICES_PREFIX, manifestPath, parseManifestPath, segmentPath } from './paths.ts';
 import type { DeviceRosterList } from './roster.ts';
 import { clone, DEFAULT_GRACE_MS, emptyState, type HostedSession, type LocalSyncState } from './state.ts';
 
@@ -204,14 +204,33 @@ export class SyncEngine {
     };
 
     const encoded = await encodeManifest(manifest, { ports, encrypt: ports.cipher !== undefined });
-    const path = `${DEVICES_PREFIX}${deviceId}/manifest/${encoded.fileName}`;
+    const path = manifestPath(deviceId, encoded.fileName);
     const result = await this.#instrumented.backend.put(path, encoded.bytes, { ifNoneMatch: true });
     if (result.ok || result.exists === true) {
       this.#state.manifestSeq += 1;
       this.#state.manifestCursors[deviceId] = manifest.seq;
       this.#uploaded.push(path);
+      await this.#pruneOwnManifests(path);
     } else {
       warnings.push(`manifest 上传失败：${path}`);
+    }
+  }
+
+  /**
+   * 清理**自己命名空间里**的旧 manifest（只保留最新两份）。
+   * 安全：manifest 只是发现入口，事实源是 segments；每个设备只删自己的文件。
+   */
+  async #pruneOwnManifests(keep: string): Promise<void> {
+    const previous = this.#state.manifestPaths.filter((path) => path !== keep);
+    this.#state.manifestPaths = [keep, ...previous].slice(0, 2);
+    const stale = previous.slice(1);
+    if (stale.length === 0 || !this.#instrumented.backend.delete) return;
+    for (const path of stale) {
+      try {
+        await this.#instrumented.backend.delete(path);
+      } catch {
+        // 清理失败不影响同步正确性：下次同步会再试。
+      }
     }
   }
 
@@ -242,11 +261,9 @@ export class SyncEngine {
 
     const versionsByDevice = new Map<string, { seq: number; path: string }[]>();
     for (const entry of listing.entries) {
-      const parts = entry.path.split('/');
-      if (parts.length !== 4 || parts[0] !== 'devices' || parts[2] !== 'manifest') continue;
-      const owner = parts[1] as string;
-      const parsed = parseManifestFileName(parts[3] as string);
+      const parsed = parseManifestPath(entry.path);
       if (!parsed) continue;
+      const owner = parsed.deviceId;
       if (owner === deviceId) continue;
       if (!active.has(owner)) {
         warnings.push(`忽略名单外设备 ${owner} 的 manifest`);

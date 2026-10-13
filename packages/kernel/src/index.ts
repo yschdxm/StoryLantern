@@ -6,7 +6,7 @@
  */
 export { Context, createContext, type ContextOptions } from './context.ts';
 export { EventBus } from './events.ts';
-export { Registry, defineRegistry, type RegistryEntry } from './registry.ts';
+export { Registry, defineRegistry, type RegistryEntry } from '../../plugin-api/src/registry.ts';
 export {
   defineConfig,
   type SchemaDictionary,
@@ -18,7 +18,7 @@ export {
   type ObjectNode,
   type StringNode,
   type UnionNode,
-} from './config.ts';
+} from '../../plugin-api/src/config.ts';
 export {
   activatePlugin,
   ActivationTracker,

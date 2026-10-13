@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { defineConfig } from '../src/config.ts';
+import { defineConfig } from '../../plugin-api/src/index.ts';
 
 const schema = defineConfig({
   provider: { type: 'string', default: 'openai', enum: ['openai', 'anthropic'] },

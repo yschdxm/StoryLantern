@@ -26,8 +26,7 @@ export {
   LOGS_PREFIX,
   manifestFileName,
   manifestPath,
-  manifestPrefix,
-  parseManifestFileName,
+  parseManifestPath,
   parseSegmentPath,
   ROOT_PREFIX,
   segmentPath,
@@ -56,4 +55,13 @@ export {
   type CollectionInput,
   type DeviceRecord,
 } from './roster.ts';
-export { SyncEngine, type HostedSession, type LocalSyncState, type SyncEngineOptions, type SyncResult } from './engine.ts';
+export { SyncEngine, type SyncEngineOptions, type SyncResult } from './engine.ts';
+export {
+  clone,
+  DEFAULT_GRACE_MS,
+  emptyState,
+  type HostedSession,
+  type LocalSyncState,
+} from './state.ts';
+export { chunkOps, estimateBatchBytes } from './chunk.ts';
+export { collectTrash, type CollectInput, type CollectResult } from './gc.ts';

@@ -1,0 +1,14 @@
+# 同步 bundle：在 core 之上叠加。
+#
+# 这里演示两件事：
+#   1. **覆盖其它 bundle 的行**：core 把 sync-folder 默认设为 disabled，这里打开它；
+#   2. **新增行**：远端后端（WebDAV）只在需要时进入组合。
+#
+# 覆盖是「整体替换 config」，所以任何一层是否生效都只看最后一个写它的 patch。
+
+- id: sync-folder
+  disabled: false
+
+- insert:
+    - id: sync-webdav
+      name: '@storyforge/plugin-sync-webdav'

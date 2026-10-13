@@ -1,4 +1,4 @@
-import type { Disposer } from './types.ts';
+import type { Disposer } from './contract.ts';
 
 export interface RegistryEntry<T> {
   id: string;

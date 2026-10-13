@@ -1,0 +1,10 @@
+{
+  "name": "@storyforge/plugin-sync-webdav",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "WebDAV 同步后端：群晖/威联通/Nextcloud/坚果云等 NAS 服务直接可用（移动端填 URL 即可）",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

@@ -1,4 +1,4 @@
-import type { ConfigResult } from './types.ts';
+import type { ConfigResult } from './contract.ts';
 
 export interface NodeBase {
   default?: unknown;
