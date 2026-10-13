@@ -49,12 +49,27 @@ export {
 export {
   decideCollection,
   DeviceRosterList,
+  parseRoster,
   safeThroughSeq,
+  serializeRoster,
   type AckSource,
   type CollectionDecision,
   type CollectionInput,
   type DeviceRecord,
+  type PersistedRoster,
 } from './roster.ts';
+export {
+  createPairingInvite,
+  decodePairingInvite,
+  encodePairingInvite,
+  inviteToDeviceRecord,
+  pairFromInvite,
+  profileKeyOf,
+  PAIRING_SCHEME,
+  type CreateInviteInput,
+  type PairingInvite,
+  type PairingParseResult,
+} from './pairing.ts';
 export { SyncEngine, type SyncEngineOptions, type SyncResult } from './engine.ts';
 export {
   clone,

@@ -140,3 +140,14 @@ export function fromBase64(text: string): Uint8Array {
   }
   return out.subarray(0, offset);
 }
+
+/** URL 安全变体（无 padding），用于二维码/URI 这类对字符集敏感的场景。 */
+export function toBase64Url(bytes: Uint8Array): string {
+  return toBase64(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+export function fromBase64Url(text: string): Uint8Array {
+  const padded = text.replace(/-/g, '+').replace(/_/g, '/');
+  const remainder = padded.length % 4;
+  return fromBase64(remainder === 0 ? padded : padded + '='.repeat(4 - remainder));
+}

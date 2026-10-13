@@ -60,6 +60,46 @@ export interface AckSource {
   ack: Record<string, number>;
 }
 
+export interface PersistedRoster {
+  v: 1;
+  devices: DeviceRecord[];
+}
+
+/** 名单要能本地落盘与备份：它决定了"谁的内容可信"，丢了就得重新配对。 */
+export function serializeRoster(roster: DeviceRosterList): string {
+  const payload: PersistedRoster = { v: 1, devices: roster.list() };
+  return JSON.stringify(payload, null, 2);
+}
+
+export function parseRoster(text: string): DeviceRosterList {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (error) {
+    throw new Error(`设备名单解析失败：${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (parsed === null || typeof parsed !== 'object') throw new Error('设备名单必须是对象');
+  const record = parsed as Partial<PersistedRoster>;
+  if (record.v !== 1) throw new Error(`不支持的设备名单版本：${String(record.v)}`);
+  if (!Array.isArray(record.devices)) throw new Error('设备名单缺少 devices 数组');
+
+  const devices: DeviceRecord[] = record.devices.map((item, index) => {
+    if (item === null || typeof item !== 'object') throw new Error(`第 ${index + 1} 个设备记录不是对象`);
+    const entry = item as Partial<DeviceRecord>;
+    if (typeof entry.deviceId !== 'string' || entry.deviceId === '') throw new Error(`第 ${index + 1} 个设备缺少 deviceId`);
+    if (typeof entry.publicKey !== 'string' || entry.publicKey === '') {
+      throw new Error(`设备 ${entry.deviceId} 缺少公钥（没有公钥就无法验签，必须重新配对）`);
+    }
+    if (typeof entry.addedAt !== 'number') throw new Error(`设备 ${entry.deviceId} 缺少 addedAt`);
+    const result: DeviceRecord = { deviceId: entry.deviceId, publicKey: entry.publicKey, addedAt: entry.addedAt };
+    if (entry.name !== undefined) result.name = entry.name;
+    if (entry.revokedAt !== undefined) result.revokedAt = entry.revokedAt;
+    return result;
+  });
+
+  return new DeviceRosterList(devices);
+}
+
 /**
  * 所有活跃设备都已并入的最低位点：owner 的第 N 号段，只有 N <= 这个值才可回收。
  * 缺项按 0 处理（保守：没声明就当没并入）。
