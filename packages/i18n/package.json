@@ -1,0 +1,10 @@
+{
+  "name": "@storylantern/i18n",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Story Lantern 国际化：locale service、回退链、插值、复数、缺翻译报告",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

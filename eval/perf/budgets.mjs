@@ -165,7 +165,7 @@ skip('真 tokenizer 计数（10 万 token）', 300, 'tokenizer 属 M2；当前�
 
 // ---------------------------------------------------------------- 输出
 const nameWidth = Math.max(...rows.map((row) => row.name.length)) + 2;
-console.log('=== StoryForge 性能预算（PLAN §11）===');
+console.log('=== Story Lantern 性能预算（PLAN §11）===');
 console.log(`环境：Node ${process.version} / ${process.platform} / 单轮次\n`);
 console.log('项目'.padEnd(nameWidth) + '实测'.padStart(14) + '预算'.padStart(14) + '结论'.padStart(8));
 for (const row of rows) {

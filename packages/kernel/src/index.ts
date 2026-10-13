@@ -1,5 +1,5 @@
 /**
- * @storyforge/kernel —— 插件内核。
+ * @storylantern/kernel —— 插件内核。
  *
  * 内核之外没有非插件代码：一切能力都以 Service / Registry / Slot 的形式注册，
  * 注册即 effect，卸载即撤销。插件可以看到的 API 只有本包导出的内容。

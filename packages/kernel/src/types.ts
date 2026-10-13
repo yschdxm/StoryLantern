@@ -1,7 +1,7 @@
 /**
  * 内核的类型聚合层。
  *
- * 契约本身定义在 `@storyforge/plugin-api`（依赖方向：plugin-api ← kernel）；
+ * 契约本身定义在 `@storylantern/plugin-api`（依赖方向：plugin-api ← kernel）；
  * 本文件只补上内核自己的运行时设施（Logger 实现等），并重新导出契约，
  * 让内核内部代码可以继续从 `./types.ts` 取类型。
  */

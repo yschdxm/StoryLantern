@@ -1,5 +1,5 @@
 /**
- * @storyforge/sync-core —— 本地优先同步引擎。
+ * @storylantern/sync-core —— 本地优先同步引擎。
  *
  * 设计约束（见 docs/PLAN.md §8）：
  *  - 远端不存在"共享可变状态"：每台设备只写自己的命名空间，且文件名含内容摘要；

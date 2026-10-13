@@ -1,0 +1,10 @@
+{
+  "name": "@storylantern/plugin-locale",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "界面语言服务：注册 locale service 并内置核心文案（zh-CN / en）",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

@@ -1,6 +1,7 @@
 import { defineConfig } from '../../../packages/plugin-api/src/index.ts';
-import type { PluginContext } from '../../../packages/plugin-api/src/index.ts';
+import type { LocaleService, PluginContext } from '../../../packages/plugin-api/src/index.ts';
 import type { BlockContext, BlockDefinition, BlockPlacement, BlockRegistry } from '../../context-blocks/src/index.ts';
+import { fallbackTranslator, MESSAGES, MESSAGE_NAMESPACE, type Translator } from './messages.ts';
 
 export const name = 'writing-pipeline';
 export const inject = ['context.blocks'];
@@ -25,7 +26,7 @@ export interface PromptNode {
   priority: number;
   tokens: number;
   included: boolean;
-  /** 可解释性：为什么纳入 / 为什么被裁掉。 */
+  /** 可解释性：为什么纳入 / 为什么被裁掉（走 locale service）。 */
   reason: string;
   text?: string;
 }
@@ -50,11 +51,15 @@ export function estimateTokens(text: string): number {
  *
  * 这是"写作走确定性管线"的最小骨架：每个块都有优先级与 token 预算，
  * 被纳入与被裁掉都要留下可读理由——Request Inspector 展示的就是这份图。
+ *
+ * `translate` 可注入：插件在运行时会换成 `locale.t`，缺省则用内置中文兜底，
+ * 因此这个函数仍是可独立调用的纯函数。
  */
 export function assembleBlocks(
   blocks: readonly BlockDefinition[],
   context: BlockContext,
   budgetTokens: number,
+  translate: Translator = fallbackTranslator(),
 ): PromptGraph {
   const rendered = blocks
     .map((block) => ({ block, text: block.render(context) }))
@@ -79,8 +84,8 @@ export function assembleBlocks(
       tokens: item.tokens,
       included: fits,
       reason: fits
-        ? `纳入（优先级 ${item.block.priority}，占用 ${item.tokens} tokens）`
-        : `预算不足裁掉（已用 ${used}/${budgetTokens}，本块需 ${item.tokens}）`,
+        ? translate('pipeline.node.included', { priority: item.block.priority, tokens: item.tokens })
+        : translate('pipeline.node.omitted', { used, budget: budgetTokens, tokens: item.tokens }),
       ...(fits ? { text: item.text } : {}),
     };
     if (fits) used += item.tokens;
@@ -114,7 +119,32 @@ export function apply(ctx: PluginContext, config: Record<string, unknown>): void
     },
   });
 
-  const assemble: AssembleFn = (context, budget) =>
-    assembleBlocks(blocks.list().map((entry) => entry.value), context, budget ?? budgetTokens);
-  ctx.set('context.assemble', assemble);
+  let translate: Translator = fallbackTranslator();
+
+  const publish = (): void => {
+    const assemble: AssembleFn = (context, budget) =>
+      assembleBlocks(blocks.list().map((entry) => entry.value), context, budget ?? budgetTokens, translate);
+    ctx.set('context.assemble', assemble);
+  };
+
+  // 先发布一个能用的版本（无 locale 时走中文兜底）。
+  publish();
+
+  // locale 可用后换成真翻译，并注册本插件的语言包；两者都随本插件卸载一起撤销。
+  ctx.inject(['locale'], (target) => {
+    const locale = target.require<LocaleService>('locale');
+    translate = (key, params) => locale.t(key, params, { namespace: MESSAGE_NAMESPACE });
+    publish();
+
+    const registrations = Object.entries(MESSAGES).map(([localeTag, messages]) =>
+      locale.register({ namespace: MESSAGE_NAMESPACE, locale: localeTag, messages }),
+    );
+
+    return () => {
+      for (const off of registrations.reverse()) off();
+      translate = fallbackTranslator();
+      // 上下文销毁期间不能再注册（内核会拒绝）；只有在"locale 消失但插件仍在"时才需要换回兜底。
+      if (!target.disposed) publish();
+    };
+  });
 }

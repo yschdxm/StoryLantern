@@ -1,16 +1,16 @@
 {
-  "name": "@storyforge/bundle-sync",
+  "name": "@storylantern/bundle-sync",
   "version": "0.0.0",
   "private": true,
   "type": "module",
   "description": "同步 bundle：开启本地/远端同步后端（网盘目录、NAS WebDAV …）",
   "exports": {
-    "./patch": "./storyforge.patch.yml",
+    "./patch": "./storylantern.patch.yml",
     "./package.json": "./package.json"
   },
-  "storyforge": {
+  "storylantern": {
     "bundle": {
-      "patch": "./storyforge.patch.yml"
+      "patch": "./storylantern.patch.yml"
     }
   }
 }

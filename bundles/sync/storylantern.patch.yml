@@ -11,4 +11,4 @@
 
 - insert:
     - id: sync-webdav
-      name: '@storyforge/plugin-sync-webdav'
+      name: '@storylantern/plugin-sync-webdav'

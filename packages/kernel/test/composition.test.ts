@@ -22,19 +22,21 @@ async function readText(relative: string): Promise<string> {
 const host: CompositionHost = {
   async resolve(name: string) {
     switch (name) {
-      case '@storyforge/plugin-log-sink':
+      case '@storylantern/plugin-log-sink':
         return import('../../../plugins/log-sink/src/index.ts');
-      case '@storyforge/plugin-settings-store':
+      case '@storylantern/plugin-settings-store':
         return import('../../../plugins/settings-store/src/index.ts');
-      case '@storyforge/plugin-context-blocks':
+      case '@storylantern/plugin-context-blocks':
         return import('../../../plugins/context-blocks/src/index.ts');
-      case '@storyforge/plugin-writing-pipeline':
+      case '@storylantern/plugin-writing-pipeline':
         return import('../../../plugins/writing-pipeline/src/index.ts');
-      case '@storyforge/plugin-sync-memory':
+      case '@storylantern/plugin-sync-memory':
         return import('../../../plugins/sync-memory/src/index.ts');
-      case '@storyforge/plugin-sync-folder':
+      case '@storylantern/plugin-sync-folder':
         return import('../../../plugins/sync-folder/src/index.ts');
-      case '@storyforge/plugin-sync-webdav':
+      case '@storylantern/plugin-locale':
+        return import('../../../plugins/locale/src/index.ts');
+      case '@storylantern/plugin-sync-webdav':
         return import('../../../plugins/sync-webdav/src/index.ts');
       default:
         throw new Error(`未知插件包 ${name}`);
@@ -45,14 +47,14 @@ const host: CompositionHost = {
 test('bundle 清单：从 package.json 读出 patch 路径', async () => {
   const pkg = JSON.parse(await readText('bundles/core/package.json')) as unknown;
   const manifest = bundlePatchOf(pkg);
-  assert.deepEqual(manifest, { name: '@storyforge/bundle-core', patch: './storyforge.patch.yml' });
+  assert.deepEqual(manifest, { name: '@storylantern/bundle-core', patch: './storylantern.patch.yml' });
   assert.equal(bundlePatchOf({ name: 'x' }), undefined);
 });
 
-test('组合：core bundle 铺出 6 行，依赖驱动激活，禁用行不加载', async () => {
-  const patch = parseYaml(await readText('bundles/core/storyforge.patch.yml'));
-  const composition = composeProfile([{ source: '@storyforge/bundle-core', rows: patch }]);
-  assert.equal(composition.size, 6);
+test('组合：core bundle 铺出 7 行，依赖驱动激活，禁用行不加载', async () => {
+  const patch = parseYaml(await readText('bundles/core/storylantern.patch.yml'));
+  const composition = composeProfile([{ source: '@storylantern/bundle-core', rows: patch }]);
+  assert.equal(composition.size, 7);
   assert.deepEqual(composition.warnings, []);
 
   const ctx = createContext();
@@ -61,6 +63,7 @@ test('组合：core bundle 铺出 6 行，依赖驱动激活，禁用行不加�
 
   const byId = Object.fromEntries(tracker.list().map((outcome) => [outcome.id, outcome.status]));
   assert.deepEqual(byId, {
+    locale: 'active',
     'log-sink': 'active',
     settings: 'active',
     blocks: 'active',
@@ -79,7 +82,7 @@ test('组合：core bundle 铺出 6 行，依赖驱动激活，禁用行不加�
 });
 
 test('写作管线：块图装配带预算裁剪，每个块都有可读理由（Request Inspector 的数据源）', async () => {
-  const patch = parseYaml(await readText('bundles/core/storyforge.patch.yml'));
+  const patch = parseYaml(await readText('bundles/core/storylantern.patch.yml'));
   const ctx = createContext();
   await activateComposition(ctx, composeProfile([{ source: 'core', rows: patch }]), host);
 
@@ -120,17 +123,17 @@ test('写作管线：块图装配带预算裁剪，每个块都有可读理由�
 });
 
 test('bundle 叠加：sync bundle 覆盖 core 的禁用行并新增远端后端', async () => {
-  const core = parseYaml(await readText('bundles/core/storyforge.patch.yml'));
-  const sync = parseYaml(await readText('bundles/sync/storyforge.patch.yml'));
+  const core = parseYaml(await readText('bundles/core/storylantern.patch.yml'));
+  const sync = parseYaml(await readText('bundles/sync/storylantern.patch.yml'));
 
   const composition = composeProfile([
-    { source: '@storyforge/bundle-core', rows: core },
-    { source: '@storyforge/bundle-sync', rows: sync },
+    { source: '@storylantern/bundle-core', rows: core },
+    { source: '@storylantern/bundle-sync', rows: sync },
   ]);
   assert.deepEqual(composition.warnings, [], '跨 bundle 覆盖不得产生警告');
   assert.equal(composition.get('sync-folder')?.disabled, false, 'sync bundle 打开 core 默认关闭的行');
-  assert.equal(composition.get('sync-folder')?.source, '@storyforge/bundle-sync');
-  assert.equal(composition.size, 7, 'core 的 6 行 + 新增 1 行');
+  assert.equal(composition.get('sync-folder')?.source, '@storylantern/bundle-sync');
+  assert.equal(composition.size, 8, 'core 的 7 行 + 新增 1 行');
 
   const ctx = createContext();
   const tracker = new ActivationTracker();
@@ -145,9 +148,9 @@ test('bundle 叠加：sync bundle 覆盖 core 的禁用行并新增远端后端'
 });
 
 test('删除一行 = 该能力消失，其余不受影响（"没有特性被硬编码"）', async () => {
-  const patchText = await readText('bundles/core/storyforge.patch.yml');
+  const patchText = await readText('bundles/core/storylantern.patch.yml');
   const withoutPipeline = patchText.replace(
-    / {4}- id: pipeline\n {6}name: '@storyforge\/plugin-writing-pipeline'\n {6}config:\n {8}budgetTokens: 4096\n {8}historyLimit: 40\n/,
+    / {4}- id: pipeline\n {6}name: '@storylantern\/plugin-writing-pipeline'\n {6}config:\n {8}budgetTokens: 4096\n {8}historyLimit: 40\n/,
     '',
   );
   assert.notEqual(withoutPipeline, patchText, '测试自身的替换必须命中');
@@ -161,7 +164,7 @@ test('删除一行 = 该能力消失，其余不受影响（"没有特性被硬�
 });
 
 test('用户 patch 层可以按 id 覆盖配置并启用禁用行（组合层不需要改代码）', async () => {
-  const bundlePatch = parseYaml(await readText('bundles/core/storyforge.patch.yml'));
+  const bundlePatch = parseYaml(await readText('bundles/core/storylantern.patch.yml'));
   const userPatch = parseYaml(
     [
       '- id: sync-folder',
@@ -175,7 +178,7 @@ test('用户 patch 层可以按 id 覆盖配置并启用禁用行（组合层不
 
   const ctx = createContext();
   const composition = composeProfile([
-    { source: '@storyforge/bundle-core', rows: bundlePatch },
+    { source: '@storylantern/bundle-core', rows: bundlePatch },
     { source: 'user-patch', rows: userPatch },
   ]);
   await activateComposition(ctx, composition, host);

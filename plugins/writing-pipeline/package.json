@@ -1,5 +1,5 @@
 {
-  "name": "@storyforge/plugin-writing-pipeline",
+  "name": "@storylantern/plugin-writing-pipeline",
   "version": "0.0.0",
   "private": true,
   "type": "module",

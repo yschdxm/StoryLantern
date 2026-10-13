@@ -1,9 +1,9 @@
 {
-  "name": "@storyforge/sync-core",
+  "name": "@storylantern/sync-core",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "StoryForge 同步引擎：manifest 索引、设备名单、GC 判定、增量拉取与发布",
+  "description": "Story Lantern 同步引擎：manifest 索引、设备名单、GC 判定、增量拉取与发布",
   "exports": {
     ".": "./src/index.ts"
   }

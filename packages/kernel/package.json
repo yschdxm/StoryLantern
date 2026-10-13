@@ -1,9 +1,9 @@
 {
-  "name": "@storyforge/kernel",
+  "name": "@storylantern/kernel",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "StoryForge 插件内核：Context / Service / inject / effect / 事件 / Config / 组合加载器",
+  "description": "Story Lantern 插件内核：Context / Service / inject / effect / 事件 / Config / 组合加载器",
   "exports": {
     ".": "./src/index.ts"
   }

@@ -1,5 +1,5 @@
 {
-  "name": "@storyforge/plugin-settings-store",
+  "name": "@storylantern/plugin-settings-store",
   "version": "0.0.0",
   "private": true,
   "type": "module",

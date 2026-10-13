@@ -14,7 +14,7 @@ import type { DeviceRosterList, DeviceRecord } from './roster.ts';
  *  - 二维码里包含主密钥，因此只应显示在自己的屏幕上，不要截图外发。
  */
 
-export const PAIRING_SCHEME = 'storyforge://pair';
+export const PAIRING_SCHEME = 'storylantern://pair';
 
 export interface PairingInvite {
   v: 1;
@@ -71,7 +71,7 @@ export function encodePairingInvite(invite: PairingInvite): string {
 
 export function decodePairingInvite(uri: string, options: { now?: number } = {}): PairingParseResult {
   const trimmed = uri.trim();
-  if (!trimmed.startsWith(`${PAIRING_SCHEME}?`)) return { ok: false, error: '不是 StoryForge 配对二维码' };
+  if (!trimmed.startsWith(`${PAIRING_SCHEME}?`)) return { ok: false, error: '不是 Story Lantern 配对二维码' };
 
   const query = trimmed.slice(PAIRING_SCHEME.length + 1);
   const params = new URLSearchParams(query);

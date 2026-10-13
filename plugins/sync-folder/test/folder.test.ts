@@ -44,7 +44,7 @@ function harness(root: string, deviceId: string, keys: DeviceKeyPair, roster: De
 }
 
 test('文件夹后端：两个设备共用同一目录（网盘/NAS 场景）即可完成同步并收敛', async () => {
-  const root = await mkdtemp(path.join(tmpdir(), 'storyforge-sync-'));
+  const root = await mkdtemp(path.join(tmpdir(), 'storylantern-sync-'));
   try {
     const blindKey = new Uint8Array(32).fill(7);
     const keysA = generateDeviceKeyPair('device-a');
@@ -108,7 +108,7 @@ test('文件夹后端：两个设备共用同一目录（网盘/NAS 场景）即
 });
 
 test('文件夹后端拒绝越出同步目录的路径', async () => {
-  const root = await mkdtemp(path.join(tmpdir(), 'storyforge-sync-'));
+  const root = await mkdtemp(path.join(tmpdir(), 'storylantern-sync-'));
   try {
     const backend = createFolderBackend({ root });
     await assert.rejects(() => backend.get('../../etc/passwd'), /非法同步路径|越界/);

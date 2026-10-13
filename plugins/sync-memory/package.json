@@ -1,5 +1,5 @@
 {
-  "name": "@storyforge/plugin-sync-memory",
+  "name": "@storylantern/plugin-sync-memory",
   "version": "0.0.0",
   "private": true,
   "type": "module",

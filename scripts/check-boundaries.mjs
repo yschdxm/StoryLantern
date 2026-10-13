@@ -19,12 +19,13 @@ const SCAN_DIRS = ['packages', 'plugins', 'scripts'];
 /** 允许的内部依赖：包名 -> 允许依赖的包名集合（'*' 表示除自身外任意 packages/*）。 */
 const ALLOWED_DEPS = {
   'plugin-api': [],
+  i18n: ['plugin-api'],
   kernel: ['plugin-api'],
   oplog: [],
   'sync-core': ['kernel', 'oplog'],
   domain: ['kernel', 'plugin-api'],
   sqlstore: ['kernel', 'plugin-api', 'domain', 'oplog'],
-  'ui-kit': ['kernel', 'plugin-api'],
+  'ui-kit': ['kernel', 'plugin-api', 'i18n'],
 };
 
 const FORBID_ANY = new Set(['oplog', 'sync-core']);

@@ -1,5 +1,5 @@
 {
-  "name": "@storyforge/plugin-sync-webdav",
+  "name": "@storylantern/plugin-sync-webdav",
   "version": "0.0.0",
   "private": true,
   "type": "module",

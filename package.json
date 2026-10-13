@@ -1,9 +1,9 @@
 {
-  "name": "storyforge",
+  "name": "storylantern",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "StoryForge — 本地优先的 AI 角色扮演与创作工作台（一切皆插件）",
+  "description": "Story Lantern — 本地优先的 AI 角色扮演与创作工作台（一切皆插件）",
   "license": "AGPL-3.0-or-later",
   "packageManager": "pnpm@11.21.0",
   "engines": {

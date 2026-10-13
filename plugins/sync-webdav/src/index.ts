@@ -16,7 +16,7 @@ import type {
  */
 
 export interface WebDavOptions {
-  /** 远端根地址，例如 `https://nas.local:5006/storyforge/`。 */
+  /** 远端根地址，例如 `https://nas.local:5006/storylantern/`。 */
   baseUrl: string;
   username?: string;
   password?: string;
@@ -188,7 +188,7 @@ export function createWebDavBackend(options: WebDavOptions): WebDavBackend {
     },
 
     async probe(): Promise<BackendCapabilities> {
-      const probePath = `.storyforge-probe-${Math.random().toString(36).slice(2, 10)}.txt`;
+      const probePath = `.storylantern-probe-${Math.random().toString(36).slice(2, 10)}.txt`;
       const payload = new Uint8Array([1, 2, 3]);
 
       const first = await backend.put(probePath, payload, { ifNoneMatch: true });

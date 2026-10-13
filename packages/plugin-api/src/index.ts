@@ -1,7 +1,7 @@
 /**
- * @storyforge/plugin-api —— 插件作者唯一需要的依赖。
+ * @storylantern/plugin-api —— 插件作者唯一需要的依赖。
  *
- * 内核实现（Context/加载器/组合层）在 `@storyforge/kernel`，本包**不依赖任何内部包**，
+ * 内核实现（Context/加载器/组合层）在 `@storylantern/kernel`，本包**不依赖任何内部包**，
  * 因此第三方插件可以在不阅读内核源码的情况下写出来。
  */
 export type {
@@ -9,9 +9,14 @@ export type {
   ConfigLike,
   ConfigResult,
   Disposer,
+  LocaleMessages,
+  LocaleRegistration,
+  LocaleService,
   Logger,
+  MissingTranslation,
   PluginContext,
   PluginLike,
+  TranslateParams,
 } from './contract.ts';
 export {
   defineConfig,
