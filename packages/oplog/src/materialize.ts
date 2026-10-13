@@ -1,62 +1,26 @@
 import { compareHlc, compareOpOrder, type Hlc } from './hlc.ts';
+import { freezeSnapshot } from './freeze.ts';
 import type { MessageAuthor, Op } from './op.ts';
+import type { SessionSnapshot } from './snapshot.ts';
+import type {
+  CandidateRecord,
+  ForkGroup,
+  MaterializedState,
+  MessageRecord,
+  RevisionRecord,
+  SessionRecord,
+  Snapshot,
+} from './state-types.ts';
 
-export interface RevisionRecord {
-  revisionId: string;
-  content: string;
-  /** null 表示这是消息的首版；否则是它改写的基线版本。 */
-  baseRevisionId: string | null;
-  hlc: Hlc;
-  opId: string;
-  deviceId: string;
-}
-
-export interface CandidateRecord {
-  candidateId: string;
-  content: string;
-  hlc: Hlc;
-  opId: string;
-}
-
-export interface MessageRecord {
-  id: string;
-  sessionId: string;
-  author: MessageAuthor;
-  appendHlc: Hlc;
-  appendOpId: string;
-  revisions: RevisionRecord[];
-  /** 当前正文版本。`explicit` 表示用户显式选过。 */
-  activeRevision: { revisionId: string; hlc: Hlc; explicit: boolean };
-  candidates: CandidateRecord[];
-  selectedCandidate?: { candidateId: string; hlc: Hlc };
-  deleted?: { hlc: Hlc };
-}
-
-export interface SessionRecord {
-  id: string;
-  title: string;
-  titleHlc: Hlc;
-  characterId?: string;
-  forkedFrom?: string;
-}
-
-export interface MaterializedState {
-  sessions: Record<string, SessionRecord>;
-  messages: Record<string, MessageRecord>;
-  settings: Record<string, { value: unknown; hlc: Hlc; opId: string }>;
-}
-
-export interface Snapshot {
-  version: 1;
-  state: MaterializedState;
-  /** 已应用的 opId：投递是 at-least-once，因此幂等必须靠它。 */
-  appliedOpIds: string[];
-}
-
-export interface ForkGroup {
-  baseRevisionId: string | null;
-  revisionIds: string[];
-}
+export type {
+  CandidateRecord,
+  ForkGroup,
+  MaterializedState,
+  MessageRecord,
+  RevisionRecord,
+  SessionRecord,
+  Snapshot,
+} from './state-types.ts';
 
 function emptyState(): MaterializedState {
   return { sessions: {}, messages: {}, settings: {} };
@@ -199,34 +163,68 @@ export class Materializer {
     };
   }
 
-  /** 深拷贝快照，便于测试"两个副本收敛到相同状态"。 */
+  /**
+   * 导出某个会话的快照（换机/首次同步用）。
+   * `watermarks` 由调用方给出：它知道"该会话已并入各设备的第几号段"。
+   */
+  exportSessionSnapshot(input: {
+    deviceId: string;
+    blindSessionId: string;
+    sessionId: string;
+    watermarks: Record<string, number>;
+    now?: number;
+  }): SessionSnapshot {
+    const messages = Object.values(this.#state.messages).filter((message) => message.sessionId === input.sessionId);
+    const appliedOpIds: string[] = [];
+    for (const message of messages) {
+      appliedOpIds.push(message.appendOpId);
+      for (const revision of message.revisions) appliedOpIds.push(revision.opId);
+      for (const candidate of message.candidates) appliedOpIds.push(candidate.opId);
+    }
+
+    const session = this.#state.sessions[input.sessionId];
+    return {
+      v: 1,
+      deviceId: input.deviceId,
+      blindSessionId: input.blindSessionId,
+      createdAt: input.now ?? Date.now(),
+      watermarks: { ...input.watermarks },
+      appliedOpIds,
+      ...(session === undefined ? {} : { session }),
+      messages,
+    };
+  }
+
+  /**
+   * 恢复快照：**只补本地缺失的消息**，已存在的一律保留本地版本。
+   * 这条"本地优先"规则很重要：快照可能比本地旧，宁可少补也不能覆盖已有的编辑。
+   */
+  restoreSessionSnapshot(snapshot: SessionSnapshot): { restoredMessages: number; skippedExisting: number } {
+    let restoredMessages = 0;
+    let skippedExisting = 0;
+
+    if (snapshot.session && !this.#state.sessions[snapshot.session.id]) {
+      this.#state.sessions[snapshot.session.id] = snapshot.session;
+    }
+
+    for (const message of snapshot.messages) {
+      if (this.#state.messages[message.id]) {
+        skippedExisting += 1;
+        continue;
+      }
+      this.#state.messages[message.id] = message;
+      restoredMessages += 1;
+    }
+
+    // 把快照覆盖的 op 标记为已应用：尾巴段落里若重复出现这些 op，会被幂等去重。
+    for (const opId of snapshot.appliedOpIds) this.#applied.add(opId);
+
+    return { restoredMessages, skippedExisting };
+  }
+
+  /** 规范化序列化（先排序），便于断言"两个副本是否收敛"。实现见 `freeze.ts`。 */
   static freeze(snapshot: Snapshot): string {
-    return JSON.stringify({
-      version: snapshot.version,
-      sessions: Object.fromEntries(
-        Object.entries(snapshot.state.sessions)
-          .sort(([a], [b]) => a.localeCompare(b))
-          .map(([id, session]) => [id, { ...session }]),
-      ),
-      messages: Object.fromEntries(
-        Object.entries(snapshot.state.messages)
-          .sort(([a], [b]) => a.localeCompare(b))
-          .map(([id, message]) => [
-            id,
-            {
-              ...message,
-              revisions: [...message.revisions].sort((a, b) => a.revisionId.localeCompare(b.revisionId)),
-              candidates: [...message.candidates].sort((a, b) => a.candidateId.localeCompare(b.candidateId)),
-            },
-          ]),
-      ),
-      settings: Object.fromEntries(
-        Object.entries(snapshot.state.settings)
-          .sort(([a], [b]) => a.localeCompare(b))
-          .map(([key, value]) => [key, value]),
-      ),
-      appliedOpIds: [...snapshot.appliedOpIds].sort(),
-    });
+    return freezeSnapshot(snapshot);
   }
 
   #dispatch(op: Op): ApplyResult {

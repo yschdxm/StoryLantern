@@ -60,6 +60,8 @@ export {
   type SessionRecord,
   type Snapshot,
 } from './materialize.ts';
+export { SnapshotError, validateSessionSnapshot, type SessionSnapshot } from './snapshot.ts';
+export { freezeSnapshot } from './freeze.ts';
 export type {
   Compressor,
   CryptoPorts,

@@ -72,6 +72,34 @@ export {
 } from './pairing.ts';
 export { SyncEngine, type SyncEngineOptions, type SyncResult } from './engine.ts';
 export {
+  buildAndUploadSnapshot,
+  hydrateFromSnapshot,
+  pruneOwnManifests,
+  pullChanges,
+  verifyPublishedSegment,
+  type PullContext,
+  type PullOutcome,
+  type SnapshotContext,
+  type UploadedSnapshot,
+} from './engine-support.ts';
+export {
+  decodeEnvelope,
+  encodeEnvelope,
+  verifyEnvelope,
+  type DecodedEnvelope,
+  type Envelope,
+  type EncodeEnvelopeOptions,
+  type VerifyEnvelopeOptions,
+} from './envelope.ts';
+export { decodeSessionSnapshot, encodeSessionSnapshot, snapshotSignaturePayload } from './snapshot-store.ts';
+export {
+  ASSET_ALG_AES_GCM,
+  ASSET_ALG_NONE,
+  ASSET_FRAME_VERSION,
+  createAssetStore,
+  type AssetStore,
+} from './asset.ts';
+export {
   clone,
   DEFAULT_GRACE_MS,
   emptyState,

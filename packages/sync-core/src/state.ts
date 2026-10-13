@@ -5,6 +5,15 @@ export interface HostedSession {
   segments: Record<string, string>;
   bytes: number;
   epoch: number;
+  /** 自上次快照以来发布的段数：达到阈值就写一份新快照，换取更便宜的首次同步。 */
+  segmentsSinceSnapshot: number;
+  /** 最近一次发布的会话快照。 */
+  snapshot?: {
+    hash: string;
+    epoch: number;
+    watermarks: Record<string, number>;
+    bytes: number;
+  };
 }
 
 /** 引擎的持久化状态：整块可序列化，因此"同步进度"本身也能被备份/迁移。 */

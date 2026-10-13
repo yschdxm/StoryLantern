@@ -35,6 +35,10 @@ export interface WorldOptions {
   /** 每台设备的墙上时钟偏移（毫秒），用来复现时钟漂移。 */
   clockOffsets?: Record<string, number>;
   graceMs?: number;
+  /** 累积多少段后自动写快照（默认 8）。 */
+  snapshotThreshold?: number;
+  /** 懒加载过滤器：返回 false 的会话本轮不拉。 */
+  shouldPull?: (blindSessionId: string) => boolean;
 }
 
 export function createWorld(options: WorldOptions = {}): World {
@@ -74,6 +78,8 @@ export function createWorld(options: WorldOptions = {}): World {
       clock,
       now: () => wall,
       ...(options.graceMs === undefined ? {} : { graceMs: options.graceMs }),
+      ...(options.snapshotThreshold === undefined ? {} : { snapshotThreshold: options.snapshotThreshold }),
+      ...(options.shouldPull === undefined ? {} : { shouldPull: options.shouldPull }),
     });
 
     peers.set(deviceId, {
