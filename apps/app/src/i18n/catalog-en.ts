@@ -376,4 +376,9 @@ export const en: AppMessages = {
   'settings.sync.saf.picked': 'Selected: {{name}}',
   'settings.sync.saf.note': 'Note: this only picks and remembers the folder so far. Reading and writing still go through the path above; taking over I/O via SAF is the next step.',
   'settings.sync.saf.unavailable': 'System picker unavailable: no host bridge (Android shell only).',
+  'settings.sync.saf.use': 'Use the system-picked folder for sync',
+  'settings.sync.saf.using': 'Now: sync goes through the folder picked with the system picker (SAF). Pick the same shared folder on both devices.',
+  'settings.sync.saf.notUsing': 'Now: sync goes through the app-private folder (the path above). Tick the box to use the system-picked folder instead.',
+  'settings.sync.saf.noteOn': 'Reads and writes go through SAF on the Kotlin side (Android does not let Rust touch content://), so segments and manifests really land in the folder you picked.',
+  'settings.sync.saf.noteOff': 'When unticked, sync uses the path above (the app-private folder).',
 };

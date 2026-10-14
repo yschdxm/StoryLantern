@@ -387,4 +387,9 @@ export const zhCN: AppMessages = {
   'settings.sync.saf.picked': '已选择：{{name}}',
   'settings.sync.saf.note': '注意：现在只做到选中并记住。同步的读写还没走系统选择器（那一步要用 SAF 的文件接口接管），所以上面的路径框仍是实际生效的位置。',
   'settings.sync.saf.unavailable': '系统选择器不可用：没有拿到宿主桥（这一步只在 Android 壳里有）。',
+  'settings.sync.saf.use': '用系统选择器选的文件夹做同步目录',
+  'settings.sync.saf.using': '当前：同步走系统选择器选的目录（SAF）。两台设备都要选同一个共享目录。',
+  'settings.sync.saf.notUsing': '当前：同步走应用私有目录（上面的路径框）。勾选后才走系统选择器选中的目录。',
+  'settings.sync.saf.noteOn': '读写在 Kotlin 侧走 SAF（安卓不允许 Rust 碰 content://），所以同步的段/清单会真的落在你选中的目录里。',
+  'settings.sync.saf.noteOff': '未勾选时同步走上面的路径框（应用私有目录）。',
 };

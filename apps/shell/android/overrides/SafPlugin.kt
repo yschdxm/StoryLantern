@@ -1,20 +1,29 @@
 package app.storylantern
 
 import android.app.Activity
+import android.net.Uri
+import android.util.Base64
+import androidx.documentfile.provider.DocumentFile
 import app.tauri.annotation.Command
 import app.tauri.annotation.TauriPlugin
 import app.tauri.plugin.Invoke
 import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
+import org.json.JSONArray
+import java.io.File
 
 /**
- * SAF（系统目录选择器）的正式通道。
+ * SAF（系统目录选择器 + 文件读写）的正式通道。
  *
- * 为什么需要插件而不是自定义 scheme：JS 侧要能**拿到结果**（选中的目录名与 URI），
- * 而 scheme 只能单向触发。Tauri 的 Kotlin 插件正好提供 `invoke('plugin:saf|命令')` 这条往返通道。
+ * 为什么必须在这里做：SAF 是 Android 的 Java API，Rust 拿不到 `content://` 树，
+ * 所以"选目录"和"在选中的目录里读写"都只能在 Kotlin 侧。
  *
- * 真正的选择动作仍留在 `MainActivity`（它已经写好、编译通过、并且能拿到长期读写权限），
- * 这里只负责"被 JS 调用"与"把结果回给 JS"。
+ * 命令与 JS 侧的 `plugin:saf|…` 一一对应：
+ *  - `pick` / `root`：选目录、读回上次选中的目录；
+ *  - `list` / `read` / `write` / `remove`：文件读写。路径都是**相对于选中目录**的相对路径，
+ *    二进制用 base64 传（与 wire 上搬二进制的方式一致）。
+ *
+ * 文件 I/O 放后台线程、结果回主线程 resolve：SAF 读写会阻塞，在 UI 线程做会让界面卡住。
  */
 @TauriPlugin
 class SafPlugin(private val activity: Activity) : Plugin(activity) {
@@ -33,7 +42,7 @@ class SafPlugin(private val activity: Activity) : Plugin(activity) {
   /** 读回上次选中的目录（没有就是空对象）。 */
   @Command
   fun root(invoke: Invoke) {
-    val file = java.io.File(activity.filesDir, "sync/saf-root.txt")
+    val file = File(activity.filesDir, "sync/saf-root.txt")
     if (!file.exists()) {
       invoke.resolve(JSObject())
       return
@@ -45,10 +54,156 @@ class SafPlugin(private val activity: Activity) : Plugin(activity) {
     }
   }
 
-  /** 供 MainActivity 判断"是不是真的在跑"（也是给自己留的调试入口）。 */
   @Command
   fun available(invoke: Invoke) {
     invoke.resolve(JSObject().put("available", true))
   }
 
+  /** 列出目录下（递归）的文件；`prefix` 是相对路径前缀，可为空。 */
+  @Command
+  fun list(invoke: Invoke) {
+    val prefix = invoke.getArgs().optString("prefix", "")
+    if (treeRoot() == null) {
+      invoke.reject("还没有选择文件夹")
+      return
+    }
+    onWorker(invoke) {
+      val entries = JSONArray()
+      val root = treeRoot() ?: throw IllegalStateException("还没有选择文件夹")
+      collect(root, "", prefix, entries)
+      JSObject().put("entries", entries)
+    }
+  }
+
+  /** 读文件（base64）。 */
+  @Command
+  fun read(invoke: Invoke) {
+    val path = invoke.getArgs().optString("path", "")
+    val doc = resolve(path)
+    if (doc == null || !doc.isFile) {
+      invoke.reject("文件不存在：$path")
+      return
+    }
+    onWorker(invoke) {
+      val bytes = openBytes(doc.uri) ?: throw IllegalStateException("读不到：$path")
+      JSObject().put("base64", Base64.encodeToString(bytes, Base64.NO_WRAP))
+    }
+  }
+
+  /**
+   * 写文件。`ifNoneMatch=true` 表示"不存在才写"——已存在时返回 `{ok:false, exists:true}`，
+   * 这是同步里"两个设备不要互相覆盖"的依据。
+   */
+  @Command
+  fun write(invoke: Invoke) {
+    val path = invoke.getArgs().optString("path", "")
+    val base64 = invoke.getArgs().optString("base64", "")
+    val ifNoneMatch = invoke.getArgs().optBoolean("ifNoneMatch", false)
+    if (treeRoot() == null) {
+      invoke.reject("还没有选择文件夹")
+      return
+    }
+    onWorker(invoke) {
+      val root = treeRoot() ?: throw IllegalStateException("还没有选择文件夹")
+      val existing = resolve(path)
+      if (ifNoneMatch && existing != null && existing.isFile) {
+        return@onWorker JSObject().put("ok", false).put("exists", true)
+      }
+      val parent = ensureParent(root, path)
+      val name = path.substringAfterLast('/')
+      if (name.isEmpty()) throw IllegalArgumentException("路径不合法：$path")
+      val doc = if (existing != null && existing.isFile) {
+        existing
+      } else {
+        parent.createFile("application/octet-stream", name) ?: throw IllegalStateException("建不了文件：$path")
+      }
+      val bytes = Base64.decode(base64, Base64.DEFAULT)
+      activity.contentResolver.openOutputStream(doc.uri, "wt")?.use { it.write(bytes) }
+        ?: throw IllegalStateException("写不了：$path")
+      JSObject().put("ok", true)
+    }
+  }
+
+  /** 删文件（不存在也算成功：同步是幂等的）。 */
+  @Command
+  fun remove(invoke: Invoke) {
+    val path = invoke.getArgs().optString("path", "")
+    onWorker(invoke) {
+      val doc = resolve(path)
+      val removed = doc?.delete() ?: false
+      JSObject().put("removed", removed)
+    }
+  }
+
+  // ---------------------------------------------------------------- 内部工具
+
+  /** 选中的目录；没选过或权限没了就是 null。 */
+  private fun treeRoot(): DocumentFile? {
+    val file = File(activity.filesDir, "sync/saf-root.txt")
+    if (!file.exists()) return null
+    return try {
+      val json = org.json.JSONObject(file.readText())
+      val uri = json.optString("uri")
+      if (uri.isEmpty()) null else DocumentFile.fromTreeUri(activity, Uri.parse(uri))
+    } catch (_: Exception) {
+      null
+    }
+  }
+
+  /** 把相对路径解析成 DocumentFile（逐段找，不做路径穿越）。 */
+  private fun resolve(path: String): DocumentFile? {
+    if (path.isEmpty()) return treeRoot()
+    var current = treeRoot() ?: return null
+    for (segment in path.split('/')) {
+      if (segment.isEmpty() || segment == "." || segment == "..") return null
+      current = current.findFile(segment) ?: return null
+    }
+    return current
+  }
+
+  /** 确保父目录存在（按需创建），返回父目录。 */
+  private fun ensureParent(root: DocumentFile, path: String): DocumentFile {
+    val segments = path.split('/').filter { it.isNotEmpty() }
+    var current = root
+    for (index in 0 until segments.size - 1) {
+      val name = segments[index]
+      if (name == "." || name == "..") throw IllegalArgumentException("路径不允许：$path")
+      current = current.findFile(name) ?: current.createDirectory(name)
+        ?: throw IllegalStateException("建不了目录：$name")
+    }
+    return current
+  }
+
+  private fun collect(dir: DocumentFile, base: String, prefix: String, out: JSONArray) {
+    for (child in dir.listFiles()) {
+      val name = child.name ?: continue
+      val path = if (base.isEmpty()) name else "$base/$name"
+      if (child.isDirectory) {
+        collect(child, path, prefix, out)
+      } else if (path.startsWith(prefix)) {
+        out.put(
+          JSObject()
+            .put("path", path)
+            .put("size", child.length())
+            .put("mtime", child.lastModified()),
+        )
+      }
+    }
+  }
+
+  private fun openBytes(uri: Uri): ByteArray? =
+    activity.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+
+  /** 后台线程做 I/O，结果回主线程 resolve；出错就 reject（信息要能直接给用户看）。 */
+  private fun onWorker(invoke: Invoke, block: () -> JSObject) {
+    Thread {
+      try {
+        val result = block()
+        activity.runOnUiThread { invoke.resolve(result) }
+      } catch (cause: Exception) {
+        val message = cause.message ?: cause.toString()
+        activity.runOnUiThread { invoke.reject(message) }
+      }
+    }.start()
+  }
 }

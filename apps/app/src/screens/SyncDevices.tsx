@@ -14,7 +14,16 @@ import { Banner, Button, ConfirmDialog, ListRow, Sheet, SheetItem } from '../ui/
  * 判定依据在 `sync-core/gc.ts`：名单内全部活跃设备都已并入 + 超过宽限期，
  * 而且只会回收**本机自己发布的段**（对端段没有可信的发布时间记录，保守跳过）。
  */
-export function SyncDevices({ sync, safPick }: { sync: SyncAdmin; safPick?: SyncAdmin['safPick'] }): ReactNode {
+export function SyncDevices({
+  sync,
+  safPick,
+  safSync,
+}: {
+  sync: SyncAdmin;
+  safPick?: SyncAdmin['safPick'];
+  /** 用系统选择器选中的目录做同步目录的开关。 */
+  safSync?: { value: boolean; onChange: (next: boolean) => void } | undefined;
+}): ReactNode {
   const t = useT();
   const [devices, setDevices] = useState<SyncDevice[] | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
@@ -76,7 +85,20 @@ export function SyncDevices({ sync, safPick }: { sync: SyncAdmin; safPick?: Sync
             </Button>
           </div>
           {safNote !== undefined && <p className="muted">{safNote}</p>}
-          <p className="muted">{t('settings.sync.saf.note')}</p>
+          {safSync !== undefined && (
+            <label className="row">
+              <input
+                type="checkbox"
+                checked={safSync.value}
+                onChange={(event) => safSync.onChange(event.target.checked)}
+              />
+              <span>{t('settings.sync.saf.use')}</span>
+            </label>
+          )}
+          <p className="muted">{safSync?.value === true ? t('settings.sync.saf.using') : t('settings.sync.saf.notUsing')}</p>
+          <p className="muted">
+            {safSync?.value === true ? t('settings.sync.saf.noteOn') : t('settings.sync.saf.noteOff')}
+          </p>
         </>
       )}
 

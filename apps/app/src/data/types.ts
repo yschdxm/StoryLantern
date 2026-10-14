@@ -192,6 +192,8 @@ export const SETTING_KEYS = {
   syncPassword: 'sync.password',
   /** 本地文件夹同步的根目录（留空 = 宿主默认）。 */
   syncFolder: 'sync.folder',
+  /** 'on' = 文件夹同步走系统选择器选中的目录（Android SAF）。 */
+  syncFolderSaf: 'sync.folder.saf',
   syncLastAt: 'sync.last_at',
 } as const;
 

@@ -12,7 +12,7 @@ fn main() {
         tauri_build::Attributes::new().plugin(
             "saf",
             tauri_build::InlinedPlugin::new()
-                .commands(&["pick", "root", "available"])
+                .commands(&["pick", "root", "available", "list", "read", "write", "remove"])
                 .default_permission(tauri_build::DefaultPermissionRule::AllowAllCommands),
         ),
     )

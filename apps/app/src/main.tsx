@@ -16,6 +16,7 @@ import { buildSyncService, describeSyncProblem, readSyncConfig, runSync, SYNC_SE
 import { syncAvailable } from './data/sync/service.ts';
 import { createHostFetch } from './data/sync/host-fetch.ts';
 import { createHostFolderBackend } from './data/sync/folder-backend.ts';
+import { createSafFolderBackend } from './data/saf-folder.ts';
 import { registerPromptBlocks } from './data/prompt-blocks.ts';
 import type { BlockRegistry } from '../../../plugins/context-blocks/src/index.ts';
 import { createHostClient, type HostClient } from './host-panel.ts';
@@ -123,7 +124,24 @@ function Root(): ReturnType<typeof AppShell> {
 
   // 同步：WebDAV 后端来自组合出来的插件注册表（关掉那行就拿不到）；本地文件夹后端由宿主提供文件读写
   const backendFactory = boot.runtime?.ctx.get<SyncBackendFactory>('sync.backend.webdav');
-  const folderProvider: FolderBackendProvider | undefined =
+  /**
+   * 文件夹同步的两条路：
+   *  - 默认走宿主的 `files.*`（应用私有目录，Rust 能做）；
+   *  - 用户用系统选择器选了目录（Android SAF）时走插件——Rust 拿不到 `content://` 树。
+   * 由设置 `sync.folder.saf` 决定，界面会说明当前用的是哪条。
+   */
+  const safFolderProvider: FolderBackendProvider | undefined =
+    bridge === undefined
+      ? undefined
+      : {
+          backend: createSafFolderBackend(bridge),
+          setRoot: async () => {
+            const root = await bridge.invoke<{ uri?: string; name?: string }>('plugin:saf|root');
+            if (root.uri === undefined || root.uri === '') throw new Error('还没有用系统选择器选文件夹');
+            return root.name ?? root.uri;
+          },
+        };
+  const hostFolderProvider: FolderBackendProvider | undefined =
     transport === undefined
       ? undefined
       : {
@@ -132,6 +150,29 @@ function Root(): ReturnType<typeof AppShell> {
             const result = await new WireClient(transport).call<{ path: string }>('files', 'root', path);
             return result.path;
           },
+        };
+  /**
+   * 每次调用都**现读设置**决定走哪条：这样界面上开关立刻生效，不用"改完要重启"
+   * （provider 是启动时建一次的，所以必须在调用处动态判）。
+   */
+  const wantsSafFolder = (): boolean =>
+    store.getState().settings[SETTING_KEYS.syncFolderSaf] === 'on' && safFolderProvider !== undefined;
+  const folderProvider: FolderBackendProvider | undefined =
+    hostFolderProvider === undefined && safFolderProvider === undefined
+      ? undefined
+      : {
+          backend: {
+            // 能力与文件夹后端一致：只把每个调用转发给"当前该用的那个"
+            id: 'folder',
+            capabilities: { conditionalPut: true, rangeRead: true, delete: true, listPagination: false, watch: false },
+            list: (prefix, options) => (wantsSafFolder() ? safFolderProvider! : hostFolderProvider!).backend.list(prefix, options),
+            get: (path) => (wantsSafFolder() ? safFolderProvider! : hostFolderProvider!).backend.get(path),
+            put: (path, bytes, options) => (wantsSafFolder() ? safFolderProvider! : hostFolderProvider!).backend.put(path, bytes, options),
+            delete: async (path) => {
+              await (wantsSafFolder() ? safFolderProvider! : hostFolderProvider!).backend.delete?.(path);
+            },
+          },
+          setRoot: async (path: string) => (wantsSafFolder() ? safFolderProvider! : hostFolderProvider!).setRoot(path),
         };
   const [hasSyncSecret, setHasSyncSecret] = useState(false);
   /** 组装一次同步所需的输入：run / devices / revoke / collect 共用，避免四处各写一份。 */
