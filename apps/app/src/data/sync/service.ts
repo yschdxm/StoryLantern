@@ -10,7 +10,9 @@ import type { SyncDevice } from '../../screens/screen-props.ts';
 import type { DeviceStore } from '../op-ports.ts';
 import type { OpLogRepository } from '../op-repository.ts';
 import { createWebCryptoPorts, deriveSyncKeys, webCryptoAvailable } from './crypto.ts';
+import { detectKeyWrapSupport } from './envelope.ts';
 import { createDeviceSigner } from './signer.ts';
+import { createWebCryptoKeyWrap, loadOrCreateAgreementKeys } from './envelope.ts';
 import { describeDevice, loadRoster, mergeRoster, saveRoster } from './roster-store.ts';
 
 /**
@@ -194,6 +196,12 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
       snapshotThreshold: 0,
     };
     if (restored !== undefined) engineOptions.state = restored;
+    // 协商密钥对（X25519）：收自己那份内容密钥要用它，管理方式与签名密钥一致
+    if (await detectKeyWrapSupport()) {
+      const agreement = await loadOrCreateAgreementKeys(createWebCryptoKeyWrap(), options.device);
+      engineOptions.agreementKey = agreement.publicKey;
+    }
+
     if (signer.publicKeyHex !== '') {
       engineOptions.publicKey = signer.publicKeyHex;
       const self = roster.get(options.deviceId);

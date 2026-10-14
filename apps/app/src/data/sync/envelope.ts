@@ -1,5 +1,6 @@
 import type { KeyWrapPort } from '../../../../../packages/sync-core/src/keyring.ts';
 import { toHex } from '../../../../../packages/sync-core/src/signing.ts';
+import type { DeviceStore } from '../op-ports.ts';
 
 /**
  * "一人一把锁"的 WebCrypto 实现（X25519 + HKDF-SHA256 + AES-GCM）。
@@ -120,4 +121,33 @@ export function createWebCryptoKeyWrap(): KeyWrapPort {
       return new Uint8Array(plain);
     },
   };
+}
+
+/** 本机 X25519 密钥对在设备本地 kv 里的键。 */
+export const AGREEMENT_KEY_KEY = 'sync.agree.key.v1';
+
+/**
+ * 取（或第一次生成）本机的协商密钥对。
+ *
+ * 公私钥一起存：解包时 HKDF 的 salt 绑了双方公钥，而浏览器里**不能**从私钥导出公钥。
+ * 与签名私钥一样是明文存本地（类似 0600 的 SSH 私钥），这条取舍写进文档，不假装更安全。
+ */
+export async function loadOrCreateAgreementKeys(
+  port: KeyWrapPort,
+  device: DeviceStore,
+): Promise<{ publicKey: string; privateKey: string }> {
+  const stored = await device.get(AGREEMENT_KEY_KEY);
+  if (stored !== undefined && stored !== '') {
+    try {
+      const parsed = JSON.parse(stored) as { v?: number; publicKey?: string; privateKey?: string };
+      if (parsed.v === 1 && typeof parsed.publicKey === 'string' && typeof parsed.privateKey === 'string' && parsed.publicKey !== '') {
+        return { publicKey: parsed.publicKey, privateKey: parsed.privateKey };
+      }
+    } catch {
+      // 坏数据按"还没有密钥"处理：重新生成一把（旧的包再也解不开，这是正确行为）
+    }
+  }
+  const created = await port.generateAgreementKeys();
+  await device.set(AGREEMENT_KEY_KEY, JSON.stringify({ v: 1, ...created }));
+  return created;
 }

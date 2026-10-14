@@ -42,6 +42,8 @@ export interface SyncEngineOptions {
    * 不给就等于"暂时不参与验签"：别人收到你的段会因拿不到公钥而拒绝（强模式下的正确行为）。
    */
   publicKey?: string;
+  /** 本机 X25519 公钥（十六进制）；发布在设备清单里，别人用它把内容密钥包给本机。 */
+  agreementKey?: string;
   /**
    * 拉到远端 op 后的回调（落进调用方自己的日志）。
    * "日志是唯一事实源"的客户端必须实现它，否则重启后按日志重建会丢掉同步来的数据。
@@ -269,11 +271,13 @@ export class SyncEngine {
   async #publishManifest(warnings: string[]): Promise<void> {
     const { deviceId, ports } = this.#options;
     const publicKey = this.#options.publicKey;
+    const agreementKey = this.#options.agreementKey;
     const manifest: Manifest = {
       v: 1,
       deviceId,
       // 有公钥就发布：对端要拿它验签
       ...(publicKey === undefined || publicKey === '' ? {} : { publicKey }),
+      ...(agreementKey === undefined || agreementKey === '' ? {} : { agreementKey }),
       seq: this.#state.manifestSeq,
       epoch: 0,
       updatedAt: this.#options.now?.() ?? Date.now(),

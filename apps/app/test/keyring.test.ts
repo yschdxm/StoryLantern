@@ -1,7 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createKeyring, openKeyring, parseKeyring, serializeKeyring } from '../../../packages/sync-core/src/keyring.ts';
-import { createWebCryptoKeyWrap, detectKeyWrapSupport } from '../src/data/sync/envelope.ts';
+import { AGREEMENT_KEY_KEY, createWebCryptoKeyWrap, detectKeyWrapSupport, loadOrCreateAgreementKeys } from '../src/data/sync/envelope.ts';
+import { createMemoryKeyValue } from '../src/data/local-repository.ts';
+import type { DeviceStore } from '../src/data/op-ports.ts';
 
 /**
  * "一人一把锁"：**用真的 WebCrypto 跑**（X25519 + HKDF + AES-GCM，Node 与浏览器同一套 API）。
@@ -93,4 +95,28 @@ test('没公布公钥的设备：宁可不给它包，也不发一份"谁都能�
     () => createKeyring(port, [{ deviceId: 'newbie', publicKey: '' }], 1),
     /还没公布公钥/,
   );
+});
+
+test('协商密钥：第一次生成并落地，之后每次复用同一把（换身份等于换人，别人包给旧的会解不开）', async () => {
+  const store = createMemoryKeyValue();
+  const device: DeviceStore = {
+    async get(key) {
+      return store.read(key);
+    },
+    async set(key, value) {
+      store.write(key, value);
+    },
+  };
+  const port = createWebCryptoKeyWrap();
+  const first = await loadOrCreateAgreementKeys(port, device);
+  assert.equal(first.publicKey.length > 0, true);
+  assert.ok((await device.get(AGREEMENT_KEY_KEY)) !== undefined);
+
+  const second = await loadOrCreateAgreementKeys(port, device);
+  assert.deepEqual(second, first);
+
+  // 坏数据要被当成"还没有密钥"，重新生成一把并覆盖
+  await device.set(AGREEMENT_KEY_KEY, '{坏的');
+  const third = await loadOrCreateAgreementKeys(port, device);
+  assert.notDeepEqual(third, first);
 });

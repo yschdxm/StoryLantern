@@ -37,6 +37,12 @@ export interface Manifest {
    * 清单本身是加密的（只有组内能读），所以公钥放这儿是安全的；而它本来就是要公开的东西。
    */
   publicKey?: string;
+  /**
+   * 本机的 X25519 公钥（十六进制）：**收自己那份内容密钥**要用它。
+   *
+   * 与签名公钥分开：Ed25519 只能签名，不能做密钥协商。
+   */
+  agreementKey?: string;
 }
 
 export interface EncodedManifest {

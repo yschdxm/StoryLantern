@@ -98,6 +98,9 @@ export async function pullChanges(ctx: PullContext, materializer: Materializer):
     if (manifest.publicKey !== undefined && manifest.publicKey !== '') {
       ctx.state.peerPublicKeys[owner] = manifest.publicKey;
     }
+    if (manifest.agreementKey !== undefined && manifest.agreementKey !== '') {
+      ctx.state.peerAgreementKeys[owner] = manifest.agreementKey;
+    }
     ctx.state.peerHosted[owner] = Object.fromEntries(
       Object.entries(manifest.sessions).map(([blind, ref]) => [
         blind,
