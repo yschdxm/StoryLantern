@@ -19,6 +19,7 @@ import {
   applyLorebookUpsert,
   listLorebooks,
 } from './lorebook-projection.ts';
+import { applyMemoryDelete, applyMemoryUpsert, listMemories, memoriesFor } from './memory-projection.ts';
 import type { MessageAuthor, Op } from './op.ts';
 import type { SessionSnapshot } from './snapshot.ts';
 import type {
@@ -27,6 +28,7 @@ import type {
   ForkGroup,
   LorebookRecord,
   MaterializedState,
+  MemoryRecord,
   MessageRecord,
   RevisionRecord,
   SessionRecord,
@@ -40,6 +42,7 @@ export type {
   LoreEntryRecord,
   LorebookRecord,
   MaterializedState,
+  MemoryRecord,
   MessageRecord,
   RevisionRecord,
   SessionRecord,
@@ -152,6 +155,16 @@ export class Materializer {
     return this.lorebooks().filter(
       (book) => book.enabled && (book.characterIds.length === 0 || (characterId !== undefined && book.characterIds.includes(characterId))),
     );
+  }
+
+  /** 长期记忆列表（墓碑不出现）。 */
+  memories(): MemoryRecord[] {
+    return listMemories(this.#state);
+  }
+
+  /** 与某个角色相关的记忆：绑定了它的 + 全局的。 */
+  memoriesFor(characterId: string | undefined): MemoryRecord[] {
+    return memoriesFor(this.#state, characterId);
   }
 
   /** 会话内的消息顺序：按 append 的 HLC 排序派生，因此与到达顺序无关。 */  orderOf(sessionId: string): MessageRecord[] {
@@ -304,6 +317,10 @@ export class Materializer {
         return applyLoreEntryUpsert(this.#state, op);
       case 'lore.entry.delete':
         return applyLoreEntryDelete(this.#state, op);
+      case 'memory.upsert':
+        return applyMemoryUpsert(this.#state, op);
+      case 'memory.delete':
+        return applyMemoryDelete(this.#state, op);
       default:
         // 未知 op 类型：向前兼容地忽略（未来版本写入的新 op 不应让旧客户端崩溃）。
         return 'applied';

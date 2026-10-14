@@ -1,6 +1,7 @@
 import { scanLore, type ScanBook, type ScoredEntry } from '../../../../packages/lore/src/index.ts';
+import { formatMemoryBlock, selectMemories, type RetrievedMemory } from './memory-retrieval.ts';
 import type { BlockContext, BlockDefinition, BlockRegistry } from '../../../../plugins/context-blocks/src/index.ts';
-import type { MessageRole } from './types.ts';
+import type { Memory, MessageRole } from './types.ts';
 
 /**
  * 应用侧的上下文块：**唯一决定"模型看到什么"的代码**都在这里和 `prompt.ts`。
@@ -26,10 +27,14 @@ export interface PromptBlockData {
   custom: string;
   character?: PromptBlockCharacter;
   lorebooks: readonly ScanBook[];
-  /** 历史消息（扫描世界书用；已按角色映射过）。 */
+  /** 长期记忆（已按角色筛过）。 */
+  memories: readonly Memory[];
+  /** 历史消息（扫描世界书/记忆用；已按角色映射过）。 */
   history: ReadonlyArray<{ role: MessageRole; content: string }>;
   /** 世界书扫描结果：块渲染时写入，供可解释性面板读取。 */
   matchedLore?: ScoredEntry[];
+  /** 长期记忆检索结果：块渲染时写入，供可解释性面板读取。 */
+  matchedMemories?: RetrievedMemory[];
 }
 
 /** 块渲染时读取的类型化视图（唯一的 `as` 收口）。 */
@@ -61,6 +66,19 @@ export function loreBlockText(context: BlockContext): string | undefined {
   return `【相关设定】\n${result.matched.map((entry) => entry.content.trim()).join('\n')}`;
 }
 
+/** 长期记忆块：按相关度挑出记忆并注入，命中详情写回 `data.matchedMemories`。 */
+export function memoryBlockText(context: BlockContext): string | undefined {
+  const data = dataOf(context);
+  if (data.memories === undefined || data.memories.length === 0) return undefined;
+  const result = selectMemories({
+    memories: data.memories,
+    messages: (data.history ?? []).map((item) => ({ role: item.role, content: item.content })),
+  });
+  data.matchedMemories = result.matched;
+  if (result.matched.length === 0) return undefined;
+  return formatMemoryBlock(result.matched);
+}
+
 /** 注册应用侧的块。返回反注册函数（交给内核的 effect 生命周期）。 */
 export function registerPromptBlocks(blocks: BlockRegistry): () => void {
   const definitions: BlockDefinition[] = [
@@ -79,6 +97,13 @@ export function registerPromptBlocks(blocks: BlockRegistry): () => void {
       placement: 'system',
       priority: 90,
       render: (context) => characterBlockText(dataOf(context).character),
+    },
+    {
+      id: 'app.memory.matched',
+      placement: 'before-history',
+      // 比世界书略高：记忆是"这个人/这段关系"的事实，通常比设定更该在场
+      priority: 85,
+      render: (context) => memoryBlockText(context),
     },
     {
       id: 'app.lore.matched',

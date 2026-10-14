@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { useT } from '../i18n/context.tsx';
 import { Icon, type IconName } from './icons.tsx';
 
@@ -259,24 +260,21 @@ export function Sheet({
   }, [open]);
 
   if (!open) return null;
-  return (
+  // 挂到 body：祖先带 backdrop-filter/transform 时会成为 position:fixed 的包含块，
+  // 面板会被"钉"在那个祖先里（真机上表现为顶栏菜单跑到屏幕外）。
+  return createPortal(
     <div className="sheet" role="dialog" aria-modal="true">
       <button type="button" className="sheet__backdrop" aria-label={t('common.close')} onClick={onClose} />
       <div className="sheet__panel">
         {title !== undefined && <p className="sheet__title">{title}</p>}
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
-export function SheetItem({
-  icon,
-  label,
-  onClick,
-  danger = false,
-  disabled = false,
-}: {
+export function SheetItem({ icon, label, onClick, danger = false, disabled = false }: {
   icon?: IconName;
   label: string;
   onClick: () => void;
@@ -313,7 +311,8 @@ export function ConfirmDialog({
 }): ReactNode {
   const t = useT();
   if (!open) return null;
-  return (
+  // 同 Sheet：挂到 body，避免被祖先的 backdrop-filter/transform 当包含块
+  return createPortal(
     <div className="modal" role="dialog" aria-modal="true">
       <button type="button" className="modal__backdrop" aria-label={t('common.cancel')} onClick={onCancel} />
       <div className="modal__panel">
@@ -328,7 +327,8 @@ export function ConfirmDialog({
           </Button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

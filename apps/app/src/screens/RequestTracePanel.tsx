@@ -11,8 +11,7 @@ import { Sheet } from '../ui/components.tsx';
  */
 
 /** 一次模型尝试（多模型路由的回退链里，谁试过、成没成、多久）。 */
-export interface ModelAttempt {
-  label: string;
+export interface ModelAttempt {  label: string;
   ok: boolean;
   ms: number;
   error?: string;
@@ -83,6 +82,22 @@ export function RequestTracePanel({
               </li>
             ))}
           </ul>
+
+          {state.trace.memory.length > 0 && (
+            <>
+              <h3 className="trace__heading">{t('chat.trace.memory')}</h3>
+              <ul className="trace__list">
+                {state.trace.memory.map((item) => (
+                  <li key={item.memory.id}>
+                    <span className="trace__name">
+                      {item.matchedKeys.length > 0 ? item.matchedKeys.join('、') : t('chat.trace.memory.constant')}
+                    </span>
+                    <span className="trace__meta">{item.memory.text.slice(0, 60)}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
 
           {state.trace.lore.length > 0 && (
             <>

@@ -97,6 +97,10 @@ export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings }:
       lorebooks: fresh.lorebooks.filter(
         (book) => book.enabled && (book.characterIds.length === 0 || (character !== undefined && book.characterIds.includes(character.id))),
       ),
+      // 长期记忆：同样是全局的 + 绑定到这个角色的
+      memories: fresh.memories.filter(
+        (memory) => memory.characterId === '' || (character !== undefined && memory.characterId === character.id),
+      ),
       // 系统提示交给组装管线：优先级 / 预算 / 每条理由都在那里算
       ...(assemble === undefined ? {} : { assemble }),
       sessionTitle: current?.title ?? '',

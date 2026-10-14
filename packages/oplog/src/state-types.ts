@@ -79,7 +79,35 @@ export interface MaterializedState {
   sessions: Record<string, SessionRecord>;
   messages: Record<string, MessageRecord>;
   lorebooks: Record<string, LorebookRecord>;
+  memories: Record<string, MemoryRecord>;
   settings: Record<string, { value: unknown; hlc: Hlc; opId: string }>;
+}
+
+/**
+ * 长期记忆条目：从旧对话里压出来的一条"值得记住的事"。
+ *
+ * 为什么它是一条 op 而不是本地缓存：
+ *  - 它属于**内容**（跨设备该一致），因此必须进日志、跟着同步走；
+ *  - 它是"谁写的"有区别的数据：`createdBy` 区分用户手写与 agent 建议，
+ *    后者应当由用户确认后才落地（见 `proposeMemories` 的界面流程）。
+ */
+export interface MemoryRecord {
+  id: string;
+  /** 绑定的角色；undefined = 全局（所有角色可用）。 */
+  characterId?: string;
+  text: string;
+  /** 关键词：检索时用（与检索窗口里的消息做匹配）。 */
+  keys: string[];
+  /** 重要度 0-100：同分时按它排序（越重要越靠前）。 */
+  importance: number;
+  /** 来源：从哪个会话/哪些消息整理出来的（可追溯，也可用来"回看原文"）。 */
+  sourceSessionId?: string;
+  sourceMessageIds: string[];
+  createdBy: 'user' | 'agent';
+  createdHlc: Hlc;
+  updatedHlc: Hlc;
+  opId: string;
+  deleted?: { hlc: Hlc; opId: string };
 }
 
 /**

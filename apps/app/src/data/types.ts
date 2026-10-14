@@ -117,6 +117,40 @@ export interface LoreEntryDraft {
   constant?: boolean;
 }
 
+// ---------------------------------------------------------------- 长期记忆
+
+/**
+ * 一条长期记忆：从旧对话里压出来的"值得记住的事"。
+ *
+ * 和其它内容一样是 op（跨设备一致）；`createdBy` 区分用户手写与 agent 建议——
+ * 后者必须先经用户确认才落地（"agent 只做整理，不写正文"）。
+ */
+export interface Memory {
+  id: string;
+  /** 绑定的角色；空字符串 = 全局。 */
+  characterId: string;
+  text: string;
+  keys: string[];
+  /** 重要度 0-100：检索同分时按它排。 */
+  importance: number;
+  sourceSessionId: string;
+  sourceMessageIds: string[];
+  createdBy: 'user' | 'agent';
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface MemoryDraft {
+  id?: string;
+  characterId?: string;
+  text: string;
+  keys?: string[];
+  importance?: number;
+  sourceSessionId?: string;
+  sourceMessageIds?: string[];
+  createdBy?: 'user' | 'agent';
+}
+
 /** 设置键集中在这里，避免界面各处写字符串。 */
 export const SETTING_KEYS = {
   providerKind: 'model.provider',

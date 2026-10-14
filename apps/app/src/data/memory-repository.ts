@@ -3,16 +3,20 @@ import {
   validateCharacterDraft,
   validateLoreEntryDraft,
   validateLorebookDraft,
+  validateMemoryDraft,
   validateMessageRole,
   validateSessionTitle,
   type CharacterStore,
   type LorebookStore,
+  type MemoryStore,
   type MessageStore,
   type ProbeInfo,
   type Repository,
   type SessionStore,
   type SettingsStore,
 } from './repository.ts';
+import { createLocalLoreStore } from './local-lore-store.ts';
+import { createLocalMemoryStore } from './local-memory-store.ts';
 import type {
   Character,
   CharacterDraft,
@@ -20,6 +24,8 @@ import type {
   LorebookDraft,
   LoreEntry,
   LoreEntryDraft,
+  Memory,
+  MemoryDraft,
   Message,
   MessageRole,
   MessageStatus,
@@ -44,12 +50,13 @@ export interface RepositoryState {
   sessions: Session[];
   messages: Message[];
   lorebooks: Lorebook[];
+  memories: Memory[];
   settings: SettingsMap;
   sequence: number;
 }
 
 export function emptyState(): RepositoryState {
-  return { characters: [], sessions: [], messages: [], lorebooks: [], settings: {}, sequence: 0 };
+  return { characters: [], sessions: [], messages: [], lorebooks: [], memories: [], settings: {}, sequence: 0 };
 }
 
 export interface MemoryRepositoryOptions {
@@ -72,6 +79,7 @@ export function createMemoryRepository(
     sessions: [...initial.sessions],
     messages: [...initial.messages],
     lorebooks: (initial.lorebooks ?? []).map((book) => ({ ...book, entries: book.entries.map((entry) => ({ ...entry })) })),
+    memories: (initial.memories ?? []).map((memory) => ({ ...memory, keys: [...memory.keys], sourceMessageIds: [...memory.sourceMessageIds] })),
     settings: { ...initial.settings },
     sequence: initial.sequence,
   };
@@ -261,108 +269,26 @@ export function createMemoryRepository(
   const findBook = (id: string): Lorebook | undefined => state.lorebooks.find((book) => book.id === id);
 
   /** 与宿主实现同样的规则：书删掉，条目一起消失。 */
-  const lorebooks: LorebookStore = {
-    async list() {
-      return [...state.lorebooks].sort((a, b) => b.updatedAt - a.updatedAt || b.id.localeCompare(a.id)).map(copyBook);
-    },
+  const lorebooks: LorebookStore = createLocalLoreStore({
+    state,
+    nextId,
+    now: () => now(),
+    commit,
+  });
 
-    async get(id) {
-      const book = findBook(id);
-      return book === undefined ? undefined : copyBook(book);
-    },
-
-    async forCharacter(characterId) {
-      return state.lorebooks
-        .filter((book) => book.enabled && (book.characterIds.length === 0 || (characterId !== undefined && book.characterIds.includes(characterId))))
-        .map(copyBook);
-    },
-
-    async save(draft: LorebookDraft) {
-      const clean = validateLorebookDraft(draft);
-      const stamp = now();
-      if (draft.id !== undefined) {
-        const existing = findBook(draft.id);
-        if (existing === undefined) throw new DataError('invalid-argument', '找不到该世界书');
-        Object.assign(existing, clean, { updatedAt: stamp });
-        commit();
-        return copyBook(existing);
-      }
-      const created: Lorebook = { id: nextId('l'), ...clean, entries: [], createdAt: stamp, updatedAt: stamp };
-      state.lorebooks.push(created);
-      commit();
-      return copyBook(created);
-    },
-
-    async remove(id) {
-      const before = state.lorebooks.length;
-      state.lorebooks = state.lorebooks.filter((book) => book.id !== id);
-      if (state.lorebooks.length === before) return false;
-      commit();
-      return true;
-    },
-
-    async saveEntry(draft: LoreEntryDraft) {
-      const book = findBook(draft.lorebookId);
-      if (book === undefined) throw new DataError('invalid-argument', '找不到该世界书');
-      const stamp = now();
-      if (draft.id !== undefined) {
-        const existing = book.entries.find((entry) => entry.id === draft.id);
-        if (existing === undefined) throw new DataError('invalid-argument', '找不到该条目');
-        // 部分更新：没给的字段沿用原值（与 op 仓储同一条规则）
-        const clean = validateLoreEntryDraft({
-          ...draft,
-          keys: draft.keys ?? existing.keys,
-          secondaryKeys: draft.secondaryKeys ?? existing.secondaryKeys,
-          content: draft.content ?? existing.content,
-          enabled: draft.enabled ?? existing.enabled,
-          order: draft.order ?? existing.order,
-          caseSensitive: draft.caseSensitive ?? existing.caseSensitive,
-          recursive: draft.recursive ?? existing.recursive,
-          depth: draft.depth ?? existing.depth,
-          constant: draft.constant ?? existing.constant,
-        });
-        Object.assign(existing, clean, { updatedAt: stamp });
-      } else {
-        const clean = validateLoreEntryDraft(draft);
-        const created: LoreEntry = {
-          id: nextId('e'),
-          keys: clean.keys,
-          secondaryKeys: clean.secondaryKeys,
-          content: clean.content,
-          enabled: clean.enabled,
-          order: clean.order,
-          caseSensitive: clean.caseSensitive,
-          recursive: clean.recursive,
-          depth: clean.depth,
-          constant: clean.constant,
-          createdAt: stamp,
-          updatedAt: stamp,
-        };
-        book.entries.push(created);
-      }
-      book.updatedAt = stamp;
-      commit();
-      return copyBook(book);
-    },
-
-    async removeEntry(lorebookId, entryId) {
-      const book = findBook(lorebookId);
-      if (book === undefined) return undefined;
-      const before = book.entries.length;
-      book.entries = book.entries.filter((entry) => entry.id !== entryId);
-      if (book.entries.length === before) return undefined;
-      book.updatedAt = now();
-      commit();
-      return copyBook(book);
-    },
-  };
-
+  const memories: MemoryStore = createLocalMemoryStore({
+    state,
+    nextId,
+    now: () => now(),
+    commit,
+  });
   return {
     kind: 'local',
     characters,
     sessions,
     messages,
     lorebooks,
+    memories,
     settings,
     async probe(): Promise<ProbeInfo> {
       return {
@@ -381,6 +307,7 @@ export function createMemoryRepository(
       sessions: [...state.sessions],
       messages: [...state.messages],
       lorebooks: state.lorebooks.map(copyBook),
+      memories: state.memories.map((memory) => ({ ...memory, keys: [...memory.keys], sourceMessageIds: [...memory.sourceMessageIds] })),
       settings: { ...state.settings },
       sequence: state.sequence,
     }),
@@ -395,3 +322,4 @@ function copyBook(book: Lorebook): Lorebook {
     entries: book.entries.map((entry) => ({ ...entry, keys: [...entry.keys], secondaryKeys: [...entry.secondaryKeys] })),
   };
 }
+

@@ -14,10 +14,12 @@ export function ScreenMenu({
   route,
   store,
   onDeleted,
+  onNavigate,
 }: {
   route: Route;
   store: AppStore;
   onDeleted: () => void;
+  onNavigate?: (route: Route) => void;
 }): ReactNode {
   const t = useT();
   const state = useAppState(store);
@@ -34,6 +36,14 @@ export function ScreenMenu({
       <IconButton icon="more" label={t('sessions.actionMenu')} onClick={() => setOpen(true)} />
 
       <Sheet open={open} title={session.title} onClose={() => setOpen(false)}>
+        <SheetItem
+          icon="book"
+          label={t('memory.menu')}
+          onClick={() => {
+            setOpen(false);
+            onNavigate?.({ name: 'memories', characterId: session.characterId });
+          }}
+        />
         <SheetItem
           icon="edit"
           label={t('sessions.rename.action')}

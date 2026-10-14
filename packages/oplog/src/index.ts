@@ -68,6 +68,14 @@ export {
   type LorebookUpsertPayload,
 } from './lore-ops.ts';
 export { listLorebooks, listLoreEntries } from './lorebook-projection.ts';
+export { listMemories, memoriesFor } from './memory-projection.ts';
+export {
+  memoryDelete,
+  memoryUpsert,
+  type MemoryAuthor,
+  type MemoryDeletePayload,
+  type MemoryUpsertPayload,
+} from './memory-ops.ts';
 export {
   Materializer,
   type CandidateRecord,
@@ -76,6 +84,7 @@ export {
   type LoreEntryRecord,
   type LorebookRecord,
   type MaterializedState,
+  type MemoryRecord,
   type MessageRecord,
   type RevisionRecord,
   type SessionRecord,

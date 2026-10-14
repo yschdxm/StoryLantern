@@ -13,7 +13,8 @@ export type Route =
   | { name: 'import' }
   | { name: 'chat'; sessionId: string }
   | { name: 'character'; characterId: string | 'new' }
-  | { name: 'lorebook'; lorebookId: string };
+  | { name: 'lorebook'; lorebookId: string }
+  | { name: 'memories'; characterId: string };
 
 export const ROOT_ROUTE: Route = { name: 'sessions' };
 
@@ -33,6 +34,8 @@ export function parseRoute(hash: string): Route {
       return { name: 'lore' };
     case 'lorebook':
       return tail === undefined || tail === '' ? { name: 'lore' } : { name: 'lorebook', lorebookId: tail };
+    case 'memories':
+      return tail === undefined || tail === '' ? { name: 'characters' } : { name: 'memories', characterId: tail };
     case 'settings':
       return { name: 'settings' };
     case 'import':
@@ -60,6 +63,8 @@ export function routeToHash(route: Route): string {
       return '#/lore';
     case 'lorebook':
       return `#/lorebook/${route.lorebookId}`;
+    case 'memories':
+      return `#/memories/${route.characterId}`;
     case 'settings':
       return '#/settings';
     case 'import':
@@ -86,7 +91,7 @@ export function isRootRoute(route: Route): boolean {
 /** 当前标签（二级页面归属它的来源标签，保证底栏高亮不闪）。 */
 export function activeTabName(route: Route): Route['name'] {
   if (route.name === 'chat') return 'sessions';
-  if (route.name === 'character' || route.name === 'import') return 'characters';
+  if (route.name === 'character' || route.name === 'import' || route.name === 'memories') return 'characters';
   if (route.name === 'lorebook') return 'lore';
   return route.name;
 }
@@ -106,6 +111,7 @@ export function parentOf(route: Route): Route | undefined {
       return { name: 'sessions' };
     case 'character':
     case 'import':
+    case 'memories':
       return { name: 'characters' };
     case 'lorebook':
       return { name: 'lore' };

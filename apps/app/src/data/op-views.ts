@@ -1,7 +1,7 @@
 import { HlcClock } from '../../../../packages/oplog/src/index.ts';
-import type { CharacterRecord, LoreEntryRecord, LorebookRecord, Materializer } from '../../../../packages/oplog/src/index.ts';
+import type { CharacterRecord, LoreEntryRecord, LorebookRecord, Materializer, MemoryRecord } from '../../../../packages/oplog/src/index.ts';
 import type { MessageAuthor } from '../../../../packages/oplog/src/op.ts';
-import type { Character, Lorebook, Message, MessageRole, Session } from './types.ts';
+import type { Character, Lorebook, Memory, Message, MessageRole, Session } from './types.ts';
 
 /**
  * 物化状态 → 界面用的领域对象。
@@ -112,3 +112,19 @@ export function normalizeRole(role: string): MessageRole {
 }
 
 export type { HlcClock };
+
+/** 长期记忆：墓碑不出现；界面列表按重要度倒序（同分按更新时间）。 */
+export function memoryView(record: MemoryRecord): Memory {
+  return {
+    id: record.id,
+    characterId: record.characterId ?? '',
+    text: record.text,
+    keys: [...record.keys],
+    importance: record.importance,
+    sourceSessionId: record.sourceSessionId ?? '',
+    sourceMessageIds: [...record.sourceMessageIds],
+    createdBy: record.createdBy,
+    createdAt: record.createdHlc.t,
+    updatedAt: record.updatedHlc.t,
+  };
+}

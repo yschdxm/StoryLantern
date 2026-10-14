@@ -6,29 +6,29 @@ import {
   decodeOp,
   encodeOp,
   messageAppend,
-  messageDelete,
-  messageEdit,
   sessionCreate,
   sessionDelete,
   ulid,
   type Op,
 } from '../../../../packages/oplog/src/index.ts';
 import { createLoreStore } from './op-lore-store.ts';
+import { createMessageStore } from './op-message-store.ts';
+import { createMemoryStore } from './op-memory-store.ts';
 import { opsFromLegacy } from './op-migration.ts';
 import type { LegacyDump, OpLogPort, OpLogStats } from './op-types.ts';
-import { authorOf, characterView, lorebookView, messageView, sessionView } from './op-views.ts';
+import { characterView, lorebookView, messageView, sessionView } from './op-views.ts';
 import {
   DataError,
-  validateMessageRole,
   type CharacterStore,
   type LorebookStore,
+  type MemoryStore,
   type MessageStore,
   type ProbeInfo,
   type Repository,
   type SessionStore,
   type SettingsStore,
 } from './repository.ts';
-import type { CharacterDraft, Message, MessageStatus, Session } from './types.ts';
+import type { CharacterDraft, Message, Session } from './types.ts';
 
 /**
  * **op-log 仓储**：M1 之后的唯一写入路径。
@@ -248,67 +248,22 @@ export function createOpLogRepository(options: OpLogRepositoryOptions): OpLogRep
       }),
   };
 
-  const messages: MessageStore = {
-    list: (sessionId) =>
-      withReady(async () => {
-        const session = materializer.state.sessions[sessionId];
-        if (session === undefined || session.deleted !== undefined) return [];
-        return materializer
-          .orderOf(sessionId)
-          .map((record) => messageView(materializer, record.id))
-          .filter((message): message is Message => message !== undefined);
-      }),
-
-    append: (sessionId, role, content, status: MessageStatus = 'done', createdAt?: number) =>
-      withReady(async () => {
-        // 与其它实现保持同样的校验（未知角色要报 invalid-argument，而不是写进日志）
-        const safeRole = validateMessageRole(role);
-        const id = ulid();
-        await appendAndApply([
-          messageAppend(
-            base(),
-            {
-              sessionId,
-              messageId: id,
-              author: authorOf(safeRole),
-              content,
-              ...(status === 'error' ? { status: 'error' as const } : {}),
-            },
-            // 导入历史时保留原始时间；其余情况用本机时钟
-            createdAt === undefined || createdAt <= 0 ? {} : { hlc: { t: createdAt, c: 0 } },
-          ),
-        ]);
-        const view = messageView(materializer, id);
-        if (view === undefined) throw new DataError('store-error', '写入后读不到该消息');
-        return view;
-      }),
-
-    update: (id, content, status: MessageStatus = 'done') =>
-      withReady(async () => {
-        const record = materializer.state.messages[id];
-        if (record === undefined || record.deleted !== undefined) return false;
-        await appendAndApply([
-          messageEdit(base(), {
-            messageId: id,
-            revisionId: `${id}:r${record.revisions.length}`,
-            baseRevisionId: record.activeRevision.revisionId,
-            content,
-            status: status === 'error' ? 'error' : 'done',
-          }),
-        ]);
-        return true;
-      }),
-
-    remove: (id) =>
-      withReady(async () => {
-        const record = materializer.state.messages[id];
-        if (record === undefined || record.deleted !== undefined) return false;
-        await appendAndApply([messageDelete(base(), { messageId: id })]);
-        return true;
-      }),
-  };
+  const messages: MessageStore = createMessageStore({
+    withReady,
+    materializer: () => materializer,
+    appendAndApply,
+    base,
+  });
+;
 
   const lorebooks: LorebookStore = createLoreStore({
+    withReady,
+    materializer: () => materializer,
+    appendAndApply,
+    base,
+  });
+
+  const memories: MemoryStore = createMemoryStore({
     withReady,
     materializer: () => materializer,
     appendAndApply,
@@ -325,6 +280,7 @@ export function createOpLogRepository(options: OpLogRepositoryOptions): OpLogRep
     sessions,
     messages,
     lorebooks,
+    memories,
     // 设备配置不进 op 日志：密钥不该离开本机，主题/语言属于设备偏好
     settings: options.settings,
 

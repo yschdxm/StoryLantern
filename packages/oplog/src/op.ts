@@ -20,7 +20,9 @@ export type OpType =
   | 'lorebook.upsert'
   | 'lorebook.delete'
   | 'lore.entry.upsert'
-  | 'lore.entry.delete';
+  | 'lore.entry.delete'
+  | 'memory.upsert'
+  | 'memory.delete';
 
 /** 角色卡字段：整体覆盖写入（LWW 由 op 的 HLC 决定）。id 放在 entity 里，不重复进 payload。 */
 export interface CharacterUpsertPayload {

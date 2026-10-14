@@ -6,6 +6,8 @@ import type {
   Lorebook,
   LorebookDraft,
   LoreEntryDraft,
+  Memory,
+  MemoryDraft,
   Message,
   Session,
   SettingsMap,
@@ -28,6 +30,8 @@ export interface AppState {
   messages: Message[];
   /** 所有世界书（含未绑定的）；按角色筛选交给 `forCharacter` 这类工具函数。 */
   lorebooks: Lorebook[];
+  /** 所有长期记忆；同样在这里按角色筛。 */
+  memories: Memory[];
   activeSessionId?: string;
   settings: SettingsMap;
   /** 正在写库的操作名（用于按钮禁用/局部 loading）。 */
@@ -61,6 +65,10 @@ export interface AppActions {
   deleteLorebook(id: string): Promise<void>;
   saveLoreEntry(draft: LoreEntryDraft): Promise<Lorebook>;
   removeLoreEntry(lorebookId: string, entryId: string): Promise<void>;
+  // ---- 长期记忆 ----
+  refreshMemories(): Promise<void>;
+  saveMemory(draft: MemoryDraft): Promise<Memory>;
+  deleteMemory(id: string): Promise<void>;
 }
 
 export interface AppStore {
@@ -75,6 +83,7 @@ const INITIAL: AppState = {
   sessions: [],
   messages: [],
   lorebooks: [],
+  memories: [],
   settings: {},
 };
 
@@ -128,13 +137,14 @@ export function createAppStore(repository: Repository): AppStore {
     async refresh() {
       set({ status: 'loading', error: undefined });
       try {
-        const [characters, sessions, lorebooks, settings] = await Promise.all([
+        const [characters, sessions, lorebooks, memories, settings] = await Promise.all([
           repository.characters.list(),
           repository.sessions.list(),
           repository.lorebooks.list(),
+          repository.memories.list(),
           repository.settings.all(),
         ]);
-        set({ characters, sessions, lorebooks, settings, status: 'ready' });
+        set({ characters, sessions, lorebooks, memories, settings, status: 'ready' });
       } catch (cause) {
         set({ status: 'error', error: messageOf(cause) });
       }
@@ -171,6 +181,23 @@ export function createAppStore(repository: Repository): AppStore {
         await repository.lorebooks.removeEntry(lorebookId, entryId);
       });
       await actions.refreshLorebooks();
+    },
+
+    async refreshMemories() {
+      set({ memories: await repository.memories.list() });
+    },
+
+    async saveMemory(draft) {
+      const memory = await run('saveMemory', () => repository.memories.save(draft));
+      await actions.refreshMemories();
+      return memory;
+    },
+
+    async deleteMemory(id) {
+      await run('deleteMemory', async () => {
+        await repository.memories.remove(id);
+      });
+      await actions.refreshMemories();
     },
 
     async loadMessages(sessionId) {

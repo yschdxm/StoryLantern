@@ -5,6 +5,8 @@ import type {
   LoreEntryDraft,
   Lorebook,
   LorebookDraft,
+  Memory,
+  MemoryDraft,
   Message,
   MessageRole,
   MessageStatus,
@@ -27,6 +29,7 @@ export interface Repository {
   readonly sessions: SessionStore;
   readonly messages: MessageStore;
   readonly lorebooks: LorebookStore;
+  readonly memories: MemoryStore;
   readonly settings: SettingsStore;
   /** 只读诊断信息（浏览器实现返回 undefined）。 */
   probe?(): Promise<ProbeInfo>;
@@ -75,6 +78,38 @@ export interface LorebookStore {
   remove(id: string): Promise<boolean>;
   saveEntry(draft: LoreEntryDraft): Promise<Lorebook>;
   removeEntry(lorebookId: string, entryId: string): Promise<Lorebook | undefined>;
+}
+
+/**
+ * 长期记忆仓储。记忆是**内容**（跟着同步走），因此和其它内容一样只能通过 op 写入；
+ * 这里的接口只负责校验与视图转换。
+ */
+export interface MemoryStore {
+  list(): Promise<Memory[]>;
+  /** 某角色能用的记忆：绑定了它的 + 全局的。 */
+  forCharacter(characterId: string | undefined): Promise<Memory[]>;
+  save(draft: MemoryDraft): Promise<Memory>;
+  remove(id: string): Promise<boolean>;
+}
+
+/** 记忆正文的公共校验：两个实现必须给出同样的错误码与文案。 */
+export function validateMemoryDraft(draft: MemoryDraft): Required<Omit<MemoryDraft, 'id' | 'characterId' | 'sourceSessionId'>> & {
+  characterId?: string;
+  sourceSessionId?: string;
+} {
+  const text = (draft.text ?? '').trim();
+  if (text === '') throw new DataError('invalid-argument', '记忆内容不能为空');
+  if (text.length > 500) throw new DataError('invalid-argument', '记忆内容过长（最多 500 字）');
+  const importance = Number.isFinite(draft.importance) ? Number(draft.importance) : 50;
+  return {
+    text,
+    keys: normalizeLoreKeys(draft.keys ?? []),
+    importance: Math.max(0, Math.min(100, Math.round(importance))),
+    sourceMessageIds: [...new Set(draft.sourceMessageIds ?? [])],
+    createdBy: draft.createdBy === 'agent' ? 'agent' : 'user',
+    ...(draft.characterId === undefined || draft.characterId === '' ? {} : { characterId: draft.characterId }),
+    ...(draft.sourceSessionId === undefined || draft.sourceSessionId === '' ? {} : { sourceSessionId: draft.sourceSessionId }),
+  };
 }
 
 export interface ProbeInfo {
