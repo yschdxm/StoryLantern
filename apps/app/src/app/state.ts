@@ -43,6 +43,8 @@ export interface AppActions {
   refreshCharacters(): Promise<void>;
   refreshSessions(): Promise<void>;
   loadMessages(sessionId: string): Promise<void>;
+  /** 只读地取某个会话的消息：整理记忆时不该偷偷把用户的当前会话切走。 */
+  messagesOf(sessionId: string): Promise<Message[]>;
   saveCharacter(draft: CharacterDraft): Promise<Character>;
   deleteCharacter(id: string): Promise<void>;
   createSession(characterId: string, title?: string): Promise<Session>;
@@ -203,6 +205,10 @@ export function createAppStore(repository: Repository): AppStore {
     async loadMessages(sessionId) {
       const messages = await repository.messages.list(sessionId);
       set({ messages, activeSessionId: sessionId });
+    },
+
+    messagesOf(sessionId) {
+      return repository.messages.list(sessionId);
     },
 
     saveCharacter(draft) {

@@ -13,8 +13,31 @@ import http from 'node:http';
 const port = Number(process.argv[2] ?? 15198);
 const REPLY = '风从北面来。铜铃响的时候，别回头——这是我唯一能确定的事。';
 
-const server = http.createServer((request, response) => {
-  if (!request.url?.includes('/chat/completions')) {
+/** 记忆整理请求：按真实模型最可能的样子回一段"套了代码块 + 前后多说两句"的 JSON。 */
+const PROPOSALS = [
+  "```json",
+  JSON.stringify(
+    [
+      { text: '星野在隘口守了三年，等一个不会回来的人。', keys: ['隘口', '三年'], importance: 85 },
+      { text: '铜铃响时必须回头看一眼，这是隘口的规矩。', keys: ['铜铃'], importance: 70 },
+      { text: '旅人怕水。', keys: ['水'], importance: 50 },
+    ],
+    null,
+    2,
+  ),
+  "```",
+  '（以上是从最近对话整理出的建议，请你确认后再记住。）',
+].join('\n');
+
+/** 判断这次请求是"记忆整理"还是普通对话，并给出对应的假回复。 */
+function replyFor(system = '') {
+  if (system.includes('记忆整理助手')) {
+    console.log('[mock-openai]   识别为记忆整理请求，返回 JSON 建议');
+    return PROPOSALS;
+  }
+  return REPLY;
+}
+const server = http.createServer((request, response) => {  if (!request.url?.includes('/chat/completions')) {
     response.writeHead(404, { 'content-type': 'application/json' });
     response.end(JSON.stringify({ error: { message: `未知路径 ${request.url}` } }));
     return;
@@ -53,7 +76,7 @@ const server = http.createServer((request, response) => {
           id: 'mock-1',
           object: 'chat.completion',
           model: payload.model ?? 'mock',
-          choices: [{ index: 0, message: { role: 'assistant', content: REPLY }, finish_reason: 'stop' }],
+          choices: [{ index: 0, message: { role: 'assistant', content: replyFor(system) }, finish_reason: 'stop' }],
         }),
       );
       return;
@@ -65,7 +88,7 @@ const server = http.createServer((request, response) => {
       connection: 'keep-alive',
     });
 
-    const characters = [...REPLY];
+    const characters = [...replyFor(system)];
     let index = 0;
     const timer = setInterval(() => {
       if (index >= characters.length) {

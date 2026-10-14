@@ -320,4 +320,13 @@ export const en: AppMessages = {
   'memory.delete.message': 'Delete this memory? It will stop being injected.',
   'memory.menu': 'Long-term memory',
   'tab.memories': 'Long-term memory',
+  'memory.organize': 'Distil from recent chat',
+  'memory.organize.running': 'Distilling…',
+  'memory.organize.title': 'Memory drafts ({{count}} selected)',
+  'memory.organize.hint': 'Drafts the model distilled from the recent chat. It only organises, never writes prose; nothing is saved until you pick it.',
+  'memory.organize.adopt': 'Adopt selected drafts',
+  'memory.organize.duplicate': 'similar memory exists',
+  'memory.organize.empty': 'Nothing worth keeping came out of this run (the model may also have ignored the format)',
+  'memory.organize.noModel': 'No model for distilling: tag a profile "Summary" under Settings → Model, or clear its task tags to make it a general fallback',
+  'memory.organize.noSession': 'This character has no conversation to distil yet',
 };

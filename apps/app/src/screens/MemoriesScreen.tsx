@@ -3,7 +3,9 @@ import type { ScreenProps } from './screen-props.ts';
 import { useAppState } from './screen-props.ts';
 import { useT } from '../i18n/context.tsx';
 import type { Memory } from '../data/types.ts';
-import { Button, ConfirmDialog, EmptyState, Field, ListRow, Sheet, SheetItem, TextInput } from '../ui/components.tsx';
+import { candidatesFor, targetLabel } from '../data/model-routing.ts';
+import { PROPOSAL_INSTRUCTION, buildProposalMessages, parseProposals, proposalToDraft, type MemoryProposal } from '../data/memory-proposals.ts';
+import { Banner, Button, ConfirmDialog, EmptyState, Field, ListRow, Sheet, SheetItem, TextInput } from '../ui/components.tsx';
 
 /**
  * 长期记忆列表（按角色）。
@@ -14,13 +16,18 @@ import { Button, ConfirmDialog, EmptyState, Field, ListRow, Sheet, SheetItem, Te
  *  - 没写关键词的记忆会被当作"常量"（每轮都在场），界面把这句话说清楚，
  *    否则用户会以为它坏了。
  */
-export function MemoriesScreen({ store, characterId }: MemoriesScreenProps): ReactNode {
+export function MemoriesScreen({ store, characterId, chat }: MemoriesScreenProps): ReactNode {
   const t = useT();
   const state = useAppState(store);
   const character = state.characters.find((item) => item.id === characterId);
   const [editing, setEditing] = useState<Memory | 'new' | undefined>(undefined);
   const [menuFor, setMenuFor] = useState<string | undefined>(undefined);
   const [confirmDelete, setConfirmDelete] = useState<string | undefined>(undefined);
+  const [organizing, setOrganizing] = useState(false);
+  const [organizeError, setOrganizeError] = useState<string | undefined>(undefined);
+  const [proposals, setProposals] = useState<{ items: MemoryProposal[]; sessionId: string; picked: boolean[] } | undefined>(
+    undefined,
+  );
 
   const mine = state.memories
     .filter((memory) => memory.characterId === characterId || memory.characterId === '')
@@ -28,10 +35,93 @@ export function MemoriesScreen({ store, characterId }: MemoriesScreenProps): Rea
 
   const menu = mine.find((memory) => memory.id === menuFor);
   const deleting = mine.find((memory) => memory.id === confirmDelete);
+  // 这个角色最近的会话（整理的材料来自它）
+  const session = state.sessions
+    .filter((item) => item.characterId === characterId)
+    .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+
+  /**
+   * 整理：让模型给出**建议**，用户确认后才写。
+   *
+   * 三件事刻意分开：候选模型（多模型路由的 summary 任务）、解析（扛坏输出）、落地（用户勾选）。
+   * 任何一步失败都如实说出来，不猜、不自动写入。
+   */
+  const organize = async (): Promise<void> => {
+    setOrganizeError(undefined);
+    setOrganizing(true);
+    try {
+      if (session === undefined) throw new Error(t('memory.organize.noSession'));
+      const candidates = candidatesFor(store.getState().settings, 'summary');
+      if (candidates.length === 0) throw new Error(t('memory.organize.noModel'));
+
+      const history = await store.actions.messagesOf(session.id);
+      const messages = buildProposalMessages({
+        characterName: character?.name ?? '',
+        history: history.map((message) => ({ role: message.role, content: message.content, status: message.status })),
+        existing: mine,
+      });
+
+      let raw: string | undefined;
+      const errors: string[] = [];
+      for (const candidate of candidates) {
+        try {
+          const result = await chat.reply(
+            {
+              ...(candidate.id === '' ? {} : { profileId: candidate.id }),
+              messages,
+              systemPrompt: PROPOSAL_INSTRUCTION,
+            },
+            {},
+          );
+          raw = result.text;
+          break;
+        } catch (cause) {
+          errors.push(`${targetLabel(candidate)}：${cause instanceof Error ? cause.message : String(cause)}`);
+        }
+      }
+      if (raw === undefined) throw new Error(errors.join(' / '));
+
+      const items = parseProposals(raw, { existing: mine });
+      if (items.length === 0) throw new Error(t('memory.organize.empty'));
+      setProposals({ items, sessionId: session.id, picked: items.map((item) => item.duplicateOf === undefined) });
+    } catch (cause) {
+      setOrganizeError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setOrganizing(false);
+    }
+  };
+
+  const adopt = async (): Promise<void> => {
+    const current = proposals;
+    if (current === undefined) return;
+    setProposals(undefined);
+    setOrganizing(true);
+    try {
+      const history = await store.actions.messagesOf(current.sessionId);
+      const messageIds = history.slice(-60).map((message) => message.id);
+      for (const [index, proposal] of current.items.entries()) {
+        if (current.picked[index] !== true) continue;
+        await store.actions.saveMemory(proposalToDraft(proposal, { characterId, sessionId: current.sessionId, messageIds }));
+      }
+    } catch (cause) {
+      setOrganizeError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setOrganizing(false);
+    }
+  };
 
   return (
     <>
       <p className="muted">{t('memory.hint', { name: character?.name ?? '' })}</p>
+
+      {organizeError !== undefined && <Banner tone="error">{organizeError}</Banner>}
+      {session !== undefined && (
+        <div className="row">
+          <Button variant="ghost" disabled={organizing || !chat.available} onClick={() => void organize()}>
+            {organizing ? t('memory.organize.running') : t('memory.organize')}
+          </Button>
+        </div>
+      )}
 
       {mine.length === 0 ? (
         <EmptyState
@@ -120,6 +210,49 @@ export function MemoriesScreen({ store, characterId }: MemoriesScreenProps): Rea
           if (id !== undefined) void store.actions.deleteMemory(id);
         }}
       />
+
+      {/* 整理建议：agent 只提建议，勾选与落地都由用户决定 */}
+      <Sheet
+        open={proposals !== undefined}
+        title={t('memory.organize.title', { count: proposals?.picked.filter(Boolean).length ?? 0 })}
+        onClose={() => setProposals(undefined)}
+      >
+        {proposals !== undefined && (
+          <>
+            <p className="muted">{t('memory.organize.hint')}</p>
+            <ul className="list">
+              {proposals.items.map((item, index) => (
+                <ListRow
+                  key={`${item.text}-${index}`}
+                  title={item.text}
+                  subtitle={item.keys.length === 0 ? t('memory.constant') : item.keys.map((key) => `#${key}`).join(' ')}
+                  meta={
+                    item.duplicateOf === undefined
+                      ? t('memory.importance', { value: item.importance })
+                      : t('memory.organize.duplicate')
+                  }
+                  trailing={proposals.picked[index] === true ? '✓' : ''}
+                  onClick={() =>
+                    setProposals((current) =>
+                      current === undefined
+                        ? current
+                        : { ...current, picked: current.picked.map((value, at) => (at === index ? !value : value)) },
+                    )
+                  }
+                />
+              ))}
+            </ul>
+            <div className="row">
+              <Button disabled={organizing} onClick={() => void adopt()}>
+                {t('memory.organize.adopt')}
+              </Button>
+              <Button variant="ghost" onClick={() => setProposals(undefined)}>
+                {t('common.cancel')}
+              </Button>
+            </div>
+          </>
+        )}
+      </Sheet>
     </>
   );
 }

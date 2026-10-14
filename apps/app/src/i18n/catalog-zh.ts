@@ -331,4 +331,13 @@ export const zhCN: AppMessages = {
   'memory.delete.message': '删除这条记忆？它不会再进上下文。',
   'memory.menu': '长期记忆',
   'tab.memories': '长期记忆',
+  'memory.organize': '从最近的对话整理',
+  'memory.organize.running': '整理中…',
+  'memory.organize.title': '记忆建议（已选 {{count}} 条）',
+  'memory.organize.hint': '这些是模型从最近对话里整理出的建议。它只做整理、不写正文；勾选后才会成为记忆。',
+  'memory.organize.adopt': '采纳勾选的建议',
+  'memory.organize.duplicate': '已有类似记忆',
+  'memory.organize.empty': '这次没整理出值得长期记住的内容（也可能模型没按格式回答）',
+  'memory.organize.noModel': '没有可用于整理的模型：到「设置 → 模型配置」给一份配置加上「摘要」，或去掉它的用途标签（通用兜底）',
+  'memory.organize.noSession': '这个角色还没有会话，没有可整理的对话',
 };

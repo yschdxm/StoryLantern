@@ -1,6 +1,6 @@
 import { WireClient, WireError, type WireTransport } from '../../../../packages/wire/src/index.ts';
 import { DataError } from './repository.ts';
-import type { ChatRequest } from './prompt.ts';
+import type { ChatPromptMessage } from './prompt.ts';
 
 /**
  * 聊天（模型调用）客户端。
@@ -18,10 +18,24 @@ export interface ChatReplyResult {
   aborted: boolean;
 }
 
+/**
+ * 一次模型调用真正需要的东西。
+ *
+ * 刻意**不是** `ChatRequest`：宿主只关心"发什么"与"用哪份配置"，
+ * 世界书/记忆/可解释性痕迹都是应用侧的东西，不该出现在这一层。
+ * 这样摘要、抽取这些**非聊天**的调用也能复用同一个客户端。
+ */
+export interface ChatCall {
+  messages: ChatPromptMessage[];
+  systemPrompt?: string;
+  /** 多模型路由：只传 id，密钥由宿主自己取。 */
+  profileId?: string;
+}
+
 export interface ChatClient {
   readonly available: boolean;
   reply(
-    request: ChatRequest & { profileId?: string },
+    request: ChatCall,
     handlers: { onDelta?: (delta: ChatDelta) => void; signal?: AbortSignal },
   ): Promise<ChatReplyResult>;
   probe(profileId?: string): Promise<{ ok: boolean; message: string }>;
