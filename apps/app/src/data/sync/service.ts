@@ -244,6 +244,7 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
             agreement,
             peerAgreementKeys: restored?.peerAgreementKeys ?? {},
             keyWrap: createWebCryptoKeyWrap(),
+            roster,
           });
     // **切换**：钥匙包给我过，就改用数据钥匙（不再用口令派生的那把）加密段/清单。
     // **不做"读旧数据回退"**（已定）：换代时把同步进度作废、从本地 op 日志全量重发。

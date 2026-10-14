@@ -1,4 +1,5 @@
 import type { SyncBackend } from './backend.ts';
+import type { DeviceRosterList } from './roster.ts';
 import {
   KEYRING_FILE,
   createKeyring,
@@ -46,10 +47,28 @@ export interface EnsureKeyringInput {
   peerAgreementKeys: Readonly<Record<string, string>>;
   /** 包装/解包实现（app 侧是 WebCrypto 的 X25519 + HKDF + AES-GCM）。 */
   keyWrap: KeyWrapPort;
+  /** 设备名单：给了就先自愈（把已被永久禁用的设备从钥匙包里剔掉）。 */
+  roster?: DeviceRosterList;
 }
 
 export async function ensureKeyring(input: EnsureKeyringInput): Promise<EnsureKeyringResult> {
   const { backend, deviceId, agreement, keyWrap } = input;
+
+  // 先自愈：钥匙包里还留着已被永久禁用的设备时，换代把它剔掉（必须在下面读钥匙之前）。
+  if (input.roster !== undefined && input.roster.bannedIds().length > 0) {
+    try {
+      await healBannedFromKeyring({
+        backend,
+        keyWrap,
+        roster: input.roster,
+        deviceId,
+        selfAgreementKey: agreement.publicKey,
+        peerAgreementKeys: input.peerAgreementKeys,
+      });
+    } catch {
+      // 还是失败：下次同步再试（黑名单已生效）
+    }
+  }
   const recipients = [
     { deviceId, publicKey: agreement.publicKey },
     ...Object.entries(input.peerAgreementKeys)
@@ -104,4 +123,46 @@ export async function rotateKeyring(input: RotateKeyringInput): Promise<{ keyrin
   const verify = await readKeyring(input.backend);
   if (verify?.epoch !== epoch) throw new Error(`换代写入被抢先（期望 epoch ${epoch}，读到 ${verify?.epoch ?? 0}），下次同步再试`);
   return created;
+}
+
+export interface HealKeyringInput {
+  backend: SyncBackend;
+  keyWrap: KeyWrapPort;
+  roster: DeviceRosterList;
+  deviceId: string;
+  /** 本机协商公钥（留下的人里包含本机）。 */
+  selfAgreementKey: string;
+  /** 已认识的对端协商公钥（只有它们才包得进去）。 */
+  peerAgreementKeys: Readonly<Record<string, string>>;
+}
+
+/**
+ * 自愈：keyring 里还留着**已被永久禁用**的设备时，换代把它剔掉。
+ *
+ * 为什么需要：拉黑时的换代可能失败（被别的设备抢先写了另一个 epoch）或写回被回滚，
+ * 那时黑名单已生效但钥匙包里还留着它——下一次同步在这里自动收敛。
+ * 只剔**永久禁用**的：临时吊销（revokedAt）按设计仍可读，不该被踢出钥匙包。
+ *
+ * 返回是否真的换了一代。
+ */
+export async function healBannedFromKeyring(input: HealKeyringInput): Promise<boolean> {
+  const banned = new Set(input.roster.bannedIds());
+  if (banned.size === 0) return false;
+  const current = await readKeyring(input.backend);
+  const stale =
+    current === undefined
+      ? false
+      : current.entries.some((entry) => entry.deviceId !== input.deviceId && banned.has(entry.deviceId));
+  if (!stale) return false;
+
+  const kept = input.roster
+    .list()
+    .filter((record) => record.bannedAt === undefined && record.revokedAt === undefined)
+    .flatMap((record) => {
+      if (record.deviceId === input.deviceId) return [{ deviceId: record.deviceId, publicKey: input.selfAgreementKey }];
+      const publicKey = input.peerAgreementKeys[record.deviceId] ?? '';
+      return publicKey === '' ? [] : [{ deviceId: record.deviceId, publicKey }];
+    });
+  await rotateKeyring({ backend: input.backend, keyWrap: input.keyWrap, recipients: kept });
+  return true;
 }

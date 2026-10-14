@@ -147,6 +147,7 @@ export {
   ensureKeyring,
   readKeyring,
   rotateKeyring,
+  healBannedFromKeyring,
   type EnsureKeyringInput,
   type EnsureKeyringResult,
   type RotateKeyringInput,

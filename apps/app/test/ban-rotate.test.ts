@@ -133,3 +133,30 @@ test('永久禁用：被禁用的人后来发加入请求也进不来（黑名�
     '被禁用的人即便知道口令也拿不到新钥匙',
   );
 });
+
+test('自愈：keyring 里还留着已被永久禁用的设备时，下一次同步会换代把它剔掉', async () => {
+  const backend = memoryBackend();
+  const a = await createDevice('dev-a', backend, 'shared-secret');
+  const b = await createDevice('dev-b', backend, 'shared-secret');
+  await a.service.sync();
+  await b.service.sync();
+  await a.service.sync();
+  await b.service.sync();
+
+  await a.service.ban('dev-b');
+  const afterBan = parseKeyring(decode(await backend.get(KEYRING_FILE)));
+
+  // 模拟"拉黑时换代失败（或写完被别的设备回滚）"：把带 dev-b 的旧 keyring 写回去
+  const stale = { ...afterBan, entries: [...afterBan.entries, { deviceId: "dev-b", wrapped: "stale" }] };
+  await backend.put(KEYRING_FILE, new TextEncoder().encode(JSON.stringify(stale)));
+
+  // 下一次同步应当自愈：换代并把被禁的设备剔掉
+  await a.service.sync();
+  const healed = parseKeyring(decode(await backend.get(KEYRING_FILE)));
+  assert.equal(healed.epoch > afterBan.epoch, true, "应当再换代一次");
+  assert.equal(
+    healed.entries.some((entry) => entry.deviceId === "dev-b"),
+    false,
+    "被永久禁用的设备不能留在钥匙包里",
+  );
+});
