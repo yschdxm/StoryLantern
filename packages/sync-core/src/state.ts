@@ -7,6 +7,13 @@ export interface HostedSession {
   epoch: number;
   /** 自上次快照以来发布的段数：达到阈值就写一份新快照，换取更便宜的首次同步。 */
   segmentsSinceSnapshot: number;
+  /**
+   * 每一号段的发布时间（seq -> 毫秒）。
+   *
+   * 为什么必须记：GC 的宽限期要判"这段存在多久了"。之前判定里把"最后出现时间"当成 `now`，
+   * 于是宽限期永远满足不了——回收逻辑等于死的。
+   */
+  publishedAt?: Record<string, number>;
   /** 最近一次发布的会话快照。 */
   snapshot?: {
     hash: string;

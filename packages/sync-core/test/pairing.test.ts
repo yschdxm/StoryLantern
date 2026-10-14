@@ -183,7 +183,7 @@ test('配对是信任根：配对前拒绝对方签名，配对后接受', async
   assert.equal((unpacked.ops[0]?.payload as { content: string }).content, '来自尚未配对的设备');
 });
 
-test('名单可落盘并恢复（含退役状态），缺公钥即拒绝', () => {
+test('名单可落盘并恢复（含退役状态）；没有公钥的设备允许存在但不参与验签', () => {
   const roster = new DeviceRosterList([
     { deviceId: 'a', publicKey: 'pem-a', addedAt: 1, name: '手机' },
     { deviceId: 'b', publicKey: 'pem-b', addedAt: 2 },
@@ -196,6 +196,11 @@ test('名单可落盘并恢复（含退役状态），缺公钥即拒绝', () =>
   assert.equal(restored.toVerifierMap().has('b'), false, '退役设备不得用于验签');
 
   assert.throws(() => parseRoster('{"v":2,"devices":[]}'), /版本/);
-  assert.throws(() => parseRoster('{"v":1,"devices":[{"deviceId":"c","addedAt":1}]}'), /公钥/);
+  // 共享口令（自动发现）模式下没有公钥可记：空公钥允许，名单仍要能落盘，
+  // 否则吊销一重启就丢；类型不对仍然整体拒绝。
+  const keyless = parseRoster('{"v":1,"devices":[{"deviceId":"c","publicKey":"","addedAt":1}]}');
+  assert.equal(keyless.get('c')?.publicKey, '');
+  assert.equal(keyless.toVerifierMap().has('c'), false, '没有公钥就不参与验签');
+  assert.throws(() => parseRoster('{"v":1,"devices":[{"deviceId":"c","publicKey":5,"addedAt":1}]}'));
   assert.throws(() => parseRoster('not json'), /解析失败/);
 });

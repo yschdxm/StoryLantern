@@ -73,6 +73,7 @@ async function createDevice(name: string, files: FilePort, secret: string): Prom
     deviceId: name,
     secret,
     store: createMemorySyncStore(),
+    device: ports.device,
   });
   return {
     repository,

@@ -15,6 +15,14 @@ export interface CollectInput {
   peerHosted: Record<string, Record<string, HostedSession>>;
   now(): number;
   graceMs: number;
+  /**
+   * 只分析、不动手（默认 true）。
+   *
+   * 为什么默认是"只看不做"：回收是**不可恢复**的动作，而判定依赖"所有活跃设备都已并入"
+   * 这个前提。让界面先把"会删哪些、为什么"摊开、由用户确认，再显式传 `dryRun: false`，
+   * 比默认就删安全得多。
+   */
+  dryRun?: boolean;
 }
 
 export interface CollectResult {
@@ -31,6 +39,7 @@ export interface CollectResult {
  * 只报告候选、绝不删除。宁可多占一点空间，也不冒丢历史的风险。
  */
 export async function collectTrash(input: CollectInput): Promise<CollectResult> {
+  const dryRun = input.dryRun !== false;
   const activeIds = input.roster.activeIds();
   const activeSet = new Set(activeIds);
   const sources = [
@@ -42,24 +51,35 @@ export async function collectTrash(input: CollectInput): Promise<CollectResult> 
   const moved: string[] = [];
   const reasons: string[] = [];
 
-  const owners: Array<[string, Record<string, HostedSession>]> = [
-    [input.deviceId, input.hosted],
-    ...Object.entries(input.peerHosted),
+  const owners: Array<[string, Record<string, HostedSession>, boolean]> = [
+    [input.deviceId, input.hosted, true],
+    ...Object.entries(input.peerHosted).map(
+      ([id, sessions]): [string, Record<string, HostedSession>, boolean] => [id, sessions, false],
+    ),
   ];
 
-  for (const [owner, sessions] of owners) {
+  for (const [owner, sessions, isOwn] of owners) {
     const safeThrough = safeThroughSeq(sources, activeIds, owner);
     for (const [blind, hosted] of Object.entries(sessions)) {
       for (const [seqText, hash8] of Object.entries(hosted.segments)) {
         const seq = Number.parseInt(seqText, 10);
         const path = segmentPath(owner, blind, `${String(seq).padStart(8, '0')}-${hash8}.jsonl.gz`);
+
+        // 只有**自己发布的段**有可信的发布时间（存在本地状态里）。
+        // 对端段的"最后出现时间"没有记录，宁可不回收，也不猜。
+        const lastSeenAt = isOwn ? hosted.publishedAt?.[seqText] : undefined;
+        if (lastSeenAt === undefined) {
+          reasons.push(`${path}：${isOwn ? '本地没有它的发布时间记录' : '对端段的发布时间不在本地记录里'}，保守跳过`);
+          continue;
+        }
+
         const decision = decideCollection({
           owner,
           seq,
           ownerActive: activeSet.has(owner),
           safeThrough,
           now: input.now(),
-          lastSeenAt: input.now(),
+          lastSeenAt,
           graceMs: input.graceMs,
         });
 
@@ -69,7 +89,9 @@ export async function collectTrash(input: CollectInput): Promise<CollectResult> 
         }
 
         candidates.push(path);
-        if (input.backend.delete) {
+        if (dryRun) {
+          reasons.push(`${path}：${decision.reason}（仅分析）`);
+        } else if (input.backend.delete) {
           await input.backend.delete(trashPath(new Date(input.now()), path));
           moved.push(path);
         } else {

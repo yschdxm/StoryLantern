@@ -34,6 +34,34 @@ export interface SyncAdmin {
   folderRoot(): Promise<string>;
   /** 跑一次同步；`secret` 非空时先存进设备本地 kv。 */
   run(secret?: string): Promise<{ uploaded: number; downloaded: number; appliedOps: number; warnings: string[]; root?: string }>;
+  /**
+   * 设备名单（配对即登记；吊销是显式动作）。
+   *
+   * 为什么要它：GC 需要"所有活跃设备都已并入"这个判据，哑存储给不出，
+   * 只能在客户端维护名单——没有名单就只能永不回收。
+   */
+  devices(): Promise<SyncDevice[]>;
+  /** 吊销某台设备：它离线期间的新数据将不再被保留（界面必须先警告）。 */
+  revoke(deviceId: string): Promise<boolean>;
+  /**
+   * 回收分析（默认只分析、不动手）。
+   *
+   * `dryRun` 为 false 才会真的把段移进 `trash/`——这是**不可恢复**的动作，
+   * 所以由用户显式确认后才执行。
+   */
+  collect(dryRun: boolean): Promise<{ candidates: string[]; moved: string[]; reasons: string[] }>;
+}
+
+export interface SyncDevice {
+  deviceId: string;
+  /** 显示名（本机 = "本机"）。 */
+  name: string;
+  /** 是否就是本机。 */
+  self: boolean;
+  /** 是否已被吊销。 */
+  revoked: boolean;
+  /** 加入时间（毫秒）。 */
+  addedAt: number;
 }
 
 export interface OpLogAdmin {

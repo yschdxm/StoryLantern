@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { decideCollection, DeviceRosterList, safeThroughSeq } from '../src/roster.ts';
+import { decideCollection, DeviceRosterList, parseRoster, safeThroughSeq, serializeRoster } from '../src/roster.ts';
 
 const DAY = 24 * 3600 * 1000;
 
@@ -65,4 +65,26 @@ test('GC 决策对每个候选都给出可读理由（UI 要能解释"为什么�
   });
   assert.equal(decision.collect, false);
   assert.match(decision.reason, /safeThrough=4/);
+});
+
+test('名单可落盘并恢复（含退役状态）；没有公钥的设备允许存在但不参与验签', () => {
+  // 共享口令（自动发现）模式下没有公钥可记。名单仍然必须落盘——
+  // 否则吊销状态一重启就丢，GC 的判据跟着错。
+  const roster = new DeviceRosterList([
+    { deviceId: 'a', publicKey: 'pem-a', addedAt: 0 },
+    { deviceId: 'b', publicKey: '', addedAt: 0, name: '手机' },
+  ]);
+  roster.revoke('b', 1000);
+
+  const restored = parseRoster(serializeRoster(roster));
+  assert.deepEqual(restored.activeIds(), ['a']);
+  assert.equal(restored.get('b')?.revokedAt, 1000);
+  assert.equal(restored.get('b')?.publicKey, '', '空公钥原样保留，不能因此拒绝整份名单');
+  assert.equal(restored.toVerifierMap().has('b'), false, '退役设备不进验签表');
+  assert.equal(restored.toVerifierMap().get('a'), 'pem-a');
+
+  // 公钥字段类型不对仍然整体拒绝（那是格式错误，不是"还没配对"）
+  assert.throws(() => parseRoster(JSON.stringify({ v: 1, devices: [{ deviceId: 'c', publicKey: 5, addedAt: 0 }] })));
+  // 缺 deviceId 也不行
+  assert.throws(() => parseRoster(JSON.stringify({ v: 1, devices: [{ publicKey: 'x', addedAt: 0 }] })));
 });

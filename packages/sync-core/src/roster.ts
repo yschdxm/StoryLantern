@@ -48,9 +48,13 @@ export class DeviceRosterList {
     return this.active().map((record) => record.deviceId);
   }
 
-  /** deviceId -> 公钥 PEM，直接喂给验签器。 */
+  /** deviceId -> 公钥 PEM，直接喂给验签器。没有公钥的设备（共享口令模式）不参与验签。 */
   toVerifierMap(): Map<string, string> {
-    return new Map(this.active().map((record) => [record.deviceId, record.publicKey]));
+    return new Map(
+      this.active()
+        .filter((record) => record.publicKey !== '')
+        .map((record) => [record.deviceId, record.publicKey]),
+    );
   }
 }
 
@@ -87,9 +91,10 @@ export function parseRoster(text: string): DeviceRosterList {
     if (item === null || typeof item !== 'object') throw new Error(`第 ${index + 1} 个设备记录不是对象`);
     const entry = item as Partial<DeviceRecord>;
     if (typeof entry.deviceId !== 'string' || entry.deviceId === '') throw new Error(`第 ${index + 1} 个设备缺少 deviceId`);
-    if (typeof entry.publicKey !== 'string' || entry.publicKey === '') {
-      throw new Error(`设备 ${entry.deviceId} 缺少公钥（没有公钥就无法验签，必须重新配对）`);
-    }
+    // 公钥允许为空：现在的同步模式是"共享口令自动发现"，此时没有公钥可记；
+    // 显式配对（公钥交换）之后才会有。空公钥的设备**不参与验签**（见 `toVerifierMap`），
+    // 但必须在名单里——否则吊销状态一重启就丢，GC 的判据也就跟着错。
+    if (typeof entry.publicKey !== 'string') throw new Error(`设备 ${entry.deviceId} 的 publicKey 不是字符串`);
     if (typeof entry.addedAt !== 'number') throw new Error(`设备 ${entry.deviceId} 缺少 addedAt`);
     const result: DeviceRecord = { deviceId: entry.deviceId, publicKey: entry.publicKey, addedAt: entry.addedAt };
     if (entry.name !== undefined) result.name = entry.name;

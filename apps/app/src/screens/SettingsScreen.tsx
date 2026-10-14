@@ -6,6 +6,7 @@ import { SETTING_KEYS } from '../data/types.ts';
 import { formatTime } from '../data/repository.ts';
 import { HostPanel } from '../HostPanel.tsx';
 import { ModelProfilesPanel } from './ModelProfilesPanel.tsx';
+import { SyncDevices } from './SyncDevices.tsx';
 import { Button, Field, TextInput } from '../ui/components.tsx';
 
 export interface SettingsScreenProps extends ScreenProps {
@@ -266,6 +267,8 @@ export function SettingsScreen({ store, router, host, chat, ops, sync, plugins, 
               />
             </Field>
             {folderRoot !== '' && <p className="muted">{t('settings.sync.folder.root', { path: folderRoot })}</p>}
+            {/* 设备名单与回收：都只在配了同步之后有意义 */}
+            {sync !== undefined && <SyncDevices sync={sync} />}
           </>
         )}
         {(value(SETTING_KEYS.syncKind) || 'off') !== 'off' && (

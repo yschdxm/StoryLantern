@@ -11,7 +11,7 @@ import { SETTING_KEYS } from './data/types.ts';
 import type { Repository } from './data/repository.ts';
 import type { OpLogRepository } from './data/op-repository.ts';
 import type { OpLogAdmin, SyncAdmin } from './screens/screen-props.ts';
-import { describeSyncProblem, readSyncConfig, runSync, SYNC_SECRET_KEY, type FolderBackendProvider, type SyncBackendFactory } from './data/sync/app-sync.ts';
+import { buildSyncService, describeSyncProblem, readSyncConfig, runSync, SYNC_SECRET_KEY, type FolderBackendProvider, type RunSyncInput, type SyncBackendFactory, type SyncConfig } from './data/sync/app-sync.ts';
 import { syncAvailable } from './data/sync/service.ts';
 import { createHostFetch } from './data/sync/host-fetch.ts';
 import { createHostFolderBackend } from './data/sync/folder-backend.ts';
@@ -133,6 +133,17 @@ function Root(): ReturnType<typeof AppShell> {
           },
         };
   const [hasSyncSecret, setHasSyncSecret] = useState(false);
+  /** 组装一次同步所需的输入：run / devices / revoke / collect 共用，避免四处各写一份。 */
+  const syncInput = (config: SyncConfig): RunSyncInput => ({
+    repository: opRepositoryForSync,
+    settings: ports.settings,
+    device: ports.device,
+    config,
+    backendFactory,
+    ...(folderProvider === undefined ? {} : { folderBackend: folderProvider }),
+    // 同步请求由宿主发出：WebView 里对 NAS 的跨源请求会被 CORS 拦
+    ...(transport === undefined ? {} : { hostFetch: createHostFetch(transport) }),
+  });
   const syncAdmin: SyncAdmin | undefined =
     opAdmin === undefined
       ? undefined
@@ -152,21 +163,26 @@ function Root(): ReturnType<typeof AppShell> {
             // 放设置里会出现"写回掩码覆盖真口令"的事故——真机踩过）
             if (secret !== undefined && secret !== '') await ports.device.set(SYNC_SECRET_KEY, secret);
             const config = await readSyncConfig(store.getState().settings, ports.device);
-            const summary = await runSync({
-              repository: opRepositoryForSync,
-              settings: ports.settings,
-              device: ports.device,
-              config,
-              backendFactory,
-              folderBackend: folderProvider,
-              // 同步请求由宿主发出：WebView 里对 NAS 的跨源请求会被 CORS 拦
-              ...(transport === undefined ? {} : { hostFetch: createHostFetch(transport) }),
-            });
+            const summary = await runSync(syncInput(config));
             // 拉到的 op 已经进了本地日志与物化状态；界面的列表要刷新一次才看得到
             await store.actions.refresh();
             await store.actions.setSetting(SETTING_KEYS.syncLastAt, String(Date.now()));
             setHasSyncSecret(((await ports.device.get(SYNC_SECRET_KEY)) ?? '') !== '');
             return summary;
+          },
+          // 设备名单 / 吊销 / 回收：都走同一个 buildSyncService，
+          // 保证回收判定依据的 ack 与实际同步状态一致
+          devices: async () => {
+            const built = await buildSyncService(syncInput(await readSyncConfig(store.getState().settings, ports.device)));
+            return built.service.devices();
+          },
+          revoke: async (deviceId: string) => {
+            const built = await buildSyncService(syncInput(await readSyncConfig(store.getState().settings, ports.device)));
+            return built.service.revoke(deviceId);
+          },
+          collect: async (dryRun: boolean) => {
+            const built = await buildSyncService(syncInput(await readSyncConfig(store.getState().settings, ports.device)));
+            return built.service.collect(dryRun);
           },
         };
   useEffect(() => {

@@ -71,7 +71,7 @@ async function createDevice(name: string, backend: SyncBackend, secret: string):
   const repository = createOpLogRepository({ ops: ports.ops, settings: ports.settings, deviceId: name });
   await repository.ready;
   const store = createMemorySyncStore();
-  const service = await createSyncService({ repository, backend, deviceId: name, secret, store });
+  const service = await createSyncService({ repository, backend, deviceId: name, secret, store, device: ports.device });
   return {
     name,
     repository,

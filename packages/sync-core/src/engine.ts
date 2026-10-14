@@ -213,6 +213,8 @@ export class SyncEngine {
         hosted.segments[String(seq)] = packed.blobHash.slice(0, 8);
         hosted.bytes += packed.bytes.length;
         hosted.segmentsSinceSnapshot += 1;
+        // 记下发布时间：GC 的宽限期判定靠它（别忘了跟 `collectTrash` 的用法对上）
+        hosted.publishedAt = { ...(hosted.publishedAt ?? {}), [String(seq)]: this.#options.now?.() ?? Date.now() };
         this.#state.ack[deviceId] = Math.max(this.#state.ack[deviceId] ?? 0, seq);
         this.#state.cursors[`${deviceId}|${group.blind}`] = seq;
         this.#state.hosted[group.blind] = hosted;
@@ -301,8 +303,8 @@ export class SyncEngine {
 
   // ---- 保守 GC ----
 
-  /** 回收判定见 `gc.ts`：名单内全部活跃设备确认 + 宽限期 + 先进 trash。 */
-  async collect(): Promise<CollectResult> {
+  /** 回收判定见 `gc.ts`：名单内全部活跃设备确认 + 宽限期 + 先进 trash。默认只分析。 */
+  async collect(dryRun = true): Promise<CollectResult> {
     return collectTrash({
       backend: this.#instrumented.backend,
       deviceId: this.#options.deviceId,
@@ -313,6 +315,7 @@ export class SyncEngine {
       peerHosted: this.#state.peerHosted,
       now: this.#options.now ?? Date.now,
       graceMs: this.#options.graceMs ?? DEFAULT_GRACE_MS,
+      dryRun,
     });
   }
 

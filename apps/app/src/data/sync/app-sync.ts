@@ -5,7 +5,7 @@ import type { OpLogRepository } from '../op-repository.ts';
 import type { SettingsStore } from '../repository.ts';
 import type { SettingsMap } from '../types.ts';
 import { SETTING_KEYS } from '../types.ts';
-import { createSyncService, syncAvailable, type SyncStorePort, type SyncSummary } from './service.ts';
+import { createSyncService, syncAvailable, type SyncService, type SyncStorePort, type SyncSummary } from './service.ts';
 
 /**
  * 把同步接到应用上：**非机密配置**从设置读，**同步口令与进度**放设备本地 kv。
@@ -152,6 +152,24 @@ export interface RunSyncOutcome extends SyncSummary {
 }
 
 export async function runSync(input: RunSyncInput): Promise<RunSyncOutcome> {
+  const built = await buildSyncService(input);
+  const summary = await built.service.sync();
+  return built.root === undefined ? summary : { ...summary, root: built.root };
+}
+
+export interface BuiltSyncService {
+  service: SyncService;
+  /** 本地文件夹同步时，宿主解析出来的根目录（给界面显示）。 */
+  root?: string;
+}
+
+/**
+ * 组好一次同步所需的全部东西（后端 + 服务），但**不跑同步**。
+ *
+ * 抽出来的理由：设备名单、吊销、回收都要用**和同步同一个**服务实例——
+ * 如果它们各自造一套，回收判定依据的 `ack/peerAck` 就会与实际同步状态不一致。
+ */
+export async function buildSyncService(input: RunSyncInput): Promise<BuiltSyncService> {
   const problem = describeSyncProblem(input.config, syncAvailable());
   if (problem !== undefined) throw new Error(problem);
 
@@ -178,10 +196,12 @@ export async function runSync(input: RunSyncInput): Promise<RunSyncOutcome> {
     deviceId: await deviceIdOf(input.settings),
     secret: input.config.secret,
     store: deviceSyncStore(input.device, remoteIdOf(input.config, root)),
+    // 设备名单也放在设备本地：吊销必须跨重启保持
+    device: input.device,
     ...(input.now === undefined ? {} : { now: input.now }),
   });
-  const summary = await service.sync();
-  return root === undefined ? summary : { ...summary, root };
+
+  return root === undefined ? { service } : { service, root };
 }
 
 /** 同步用的设备 id 与 op 里的 deviceId 是同一个：先由 op-ports 的解析器生成过。 */
