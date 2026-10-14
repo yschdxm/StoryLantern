@@ -29,6 +29,8 @@ export function SyncDevices({
   const [error, setError] = useState<string | undefined>(undefined);
   const [menuFor, setMenuFor] = useState<string | undefined>(undefined);
   const [confirmRevoke, setConfirmRevoke] = useState<string | undefined>(undefined);
+  /** 永久禁用（黑名单）：与临时吊销分开，确认文案里写清代价。 */
+  const [confirmBan, setConfirmBan] = useState<string | undefined>(undefined);
   const [analysis, setAnalysis] = useState<{ candidates: string[]; moved: string[]; reasons: string[] } | undefined>(undefined);
   const [confirmCollect, setConfirmCollect] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -55,6 +57,7 @@ export function SyncDevices({
 
   const menu = devices?.find((device) => device.deviceId === menuFor);
   const revoking = devices?.find((device) => device.deviceId === confirmRevoke);
+  const banning = devices?.find((device) => device.deviceId === confirmBan);
 
   return (
     <>
@@ -127,10 +130,11 @@ export function SyncDevices({
               meta={[
                 device.self ? t('sync.devices.self') : '',
                 device.revoked ? t('sync.devices.revoked') : '',
+                device.banned ? t('sync.devices.banned') : '',
               ]
                 .filter((part) => part !== '')
                 .join(' · ')}
-              {...(device.self || device.revoked ? {} : { onClick: () => setMenuFor(device.deviceId) })}
+              {...(device.self || device.revoked || device.banned ? {} : { onClick: () => setMenuFor(device.deviceId) })}
             />
           ))}
         </ul>
@@ -192,6 +196,16 @@ export function SyncDevices({
             setConfirmRevoke(id);
           }}
         />
+        <SheetItem
+          icon="trash"
+          label={t('sync.devices.ban')}
+          danger
+          onClick={() => {
+            const id = menu?.deviceId;
+            setMenuFor(undefined);
+            setConfirmBan(id);
+          }}
+        />
       </Sheet>
 
       <ConfirmDialog
@@ -208,6 +222,26 @@ export function SyncDevices({
             .revoke(id)
             .then((changed) => {
               setNote(changed ? t('sync.devices.revokedNote') : t('sync.devices.revokeFailed'));
+              return reload();
+            })
+            .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)));
+        }}
+      />
+
+      <ConfirmDialog
+        open={banning !== undefined}
+        title={t('sync.devices.ban.title')}
+        message={t('sync.devices.ban.message', { name: banning?.name ?? '' })}
+        confirmLabel={t('sync.devices.ban')}
+        onCancel={() => setConfirmBan(undefined)}
+        onConfirm={() => {
+          const id = confirmBan;
+          setConfirmBan(undefined);
+          if (id === undefined) return;
+          void sync
+            .ban(id)
+            .then((changed) => {
+              setNote(changed ? t('sync.devices.bannedNote') : t('sync.devices.banFailed'));
               return reload();
             })
             .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)));
