@@ -73,4 +73,11 @@ export const zhSync: AppMessages = {
   'sync.devices.banned': '已永久禁用',
   'sync.devices.bannedNote': '已永久禁用并已换代：它拿不到新的数据钥匙，读不到以后的新内容；已经在它手里的旧内容收不回。',
   'sync.devices.banFailed': '没有写入禁用状态（可能本机或该设备不在名单里）。',
+  'sync.recovery.action': '生成恢复密钥',
+  'sync.recovery.hint': '恢复密钥用来在忘记同步口令时把新设备接回来（它不能替设备读旧内容）。公钥会公布到共享目录，私钥只显示一次，请离线保存。',
+  'sync.recovery.title': '恢复密钥（只显示这一次）',
+  'sync.recovery.warning': '请立刻抄下来离线保存。我们**不保存私钥**，关掉这个窗口就再也看不到它；丢了只能重新生成，并重新公布新公钥。',
+  'sync.recovery.publicKey': '公钥（已公布到共享目录）：',
+  'sync.recovery.privateKey': '私钥（离线保存，不要截图给任何人）：',
+  'sync.recovery.close': '确认已抄好后再关闭。',
 };

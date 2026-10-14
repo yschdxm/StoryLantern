@@ -39,6 +39,8 @@ export function SyncDevices({
   const [signing, setSigning] = useState<'ed25519' | 'hmac-sha256' | undefined>(undefined);
   /** SAF 选择器结果：现在只做到"选中并记住"，界面必须说清。 */
   const [safNote, setSafNote] = useState<string | undefined>(undefined);
+  /** 刚生成的恢复密钥：只在这一次显示，关掉就没了（我们刻意不保存私钥）。 */
+  const [recovery, setRecovery] = useState<{ publicKey: string; privateKey: string } | undefined>(undefined);
 
   const reload = async (): Promise<void> => {
     try {
@@ -104,6 +106,21 @@ export function SyncDevices({
           </p>
         </>
       )}
+
+      <div className="row">
+        <Button
+          variant="ghost"
+          onClick={() => {
+            void sync
+              .createRecovery()
+              .then((pair) => setRecovery(pair))
+              .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)));
+          }}
+        >
+          {t('sync.recovery.action')}
+        </Button>
+      </div>
+      <p className="muted">{t('sync.recovery.hint')}</p>
 
       {signing !== undefined && (
         <p className={signing === 'ed25519' ? 'muted' : 'notice notice--warn'}>
@@ -227,6 +244,15 @@ export function SyncDevices({
             .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)));
         }}
       />
+
+      <Sheet open={recovery !== undefined} title={t('sync.recovery.title')} onClose={() => setRecovery(undefined)}>
+        <p className="muted">{t('sync.recovery.warning')}</p>
+        <p className="muted">{t('sync.recovery.publicKey')}</p>
+        <p>{recovery?.publicKey ?? ''}</p>
+        <p className="muted">{t('sync.recovery.privateKey')}</p>
+        <p>{recovery?.privateKey ?? ''}</p>
+        <p className="muted">{t('sync.recovery.close')}</p>
+      </Sheet>
 
       <ConfirmDialog
         open={banning !== undefined}

@@ -17,6 +17,7 @@ import { ensureKeyring } from '../../../../../packages/sync-core/src/keyring-sto
 import type { CryptoPorts } from '../../../../../packages/oplog/src/index.ts';
 import { createPasswordProofPort, createPortsFromContentKey } from './crypto.ts';
 import { rotateKeyring } from '../../../../../packages/sync-core/src/keyring-store.ts';
+import { publishRecoveryKey } from './recovery-publish.ts';
 import { acceptJoinRequests, publishJoinRequest } from './join-flow.ts';
 import { describeDevice, loadRoster, mergeRoster, saveRoster } from './roster-store.ts';
 
@@ -66,6 +67,8 @@ export interface SyncService {
    * 已经在它手里的旧内容收不回。这两条都写在界面上。
    */
   ban(deviceId: string): Promise<boolean>;
+  /** 生成恢复密钥：公钥发布到共享目录；私钥只返回这一次（离线保存，不落地）。 */
+  createRecovery(): Promise<{ publicKey: string; privateKey: string }>;
   /** 回收分析/执行；默认只分析（`dryRun = true`）。 */
   collect(dryRun?: boolean): Promise<{ candidates: string[]; moved: string[]; reasons: string[] }>;
 }
@@ -351,13 +354,7 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
       if (changed) await saveRoster(options.device, roster);
       return changed;
     },
-    /**
-     * 永久禁用：写进黑名单 + **换代**（新数据钥匙只包给留下的人）。
-     *
-     * 两步缺一不可：只拉黑能挡住它"再连进来"，但挡不住它用旧钥匙读新内容；
-     * 只换代能挡住读，但它输密码又能拿回新钥匙。
-     * 拉黑成功但换代失败时不回滚（黑名单已经生效），下次同步会再试换代。
-     */
+    /** 永久禁用：写黑名单 + 换代（只包给留下的人）。两步缺一不可：只拉黑挡不住读，只换代它又能输密码拿回钥匙。 */
     async ban(deviceId: string): Promise<boolean> {
       const { roster, restored } = await prepare();
       if (deviceId === options.deviceId) return false;
@@ -388,6 +385,9 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
       return true;
     },
 
+    async createRecovery(): Promise<{ publicKey: string; privateKey: string }> {
+      return publishRecoveryKey(options.backend, now());
+    },
     async collect(dryRun = true) {
       const { engine } = await prepare();
       return engine.collect(dryRun);

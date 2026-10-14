@@ -227,6 +227,10 @@ function Root(): ReturnType<typeof AppShell> {
             const built = await buildSyncService(syncInput(await readSyncConfig(store.getState().settings, ports.device)));
             return built.service.ban(deviceId);
           },
+          createRecovery: async () => {
+            const built = await buildSyncService(syncInput(await readSyncConfig(store.getState().settings, ports.device)));
+            return built.service.createRecovery();
+          },
           collect: async (dryRun: boolean) => {
             const built = await buildSyncService(syncInput(await readSyncConfig(store.getState().settings, ports.device)));
             return built.service.collect(dryRun);

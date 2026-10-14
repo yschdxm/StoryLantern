@@ -73,4 +73,11 @@ export const enSync: AppMessages = {
   'sync.devices.banned': 'banned',
   'sync.devices.bannedNote': 'Banned and the data key was rotated: it cannot get the new key, so it cannot read new content. Content it already holds cannot be recalled.',
   'sync.devices.banFailed': 'Nothing was written (maybe this device or the target is not in the roster).',
+  'sync.recovery.action': 'Create recovery key',
+  'sync.recovery.hint': 'The recovery key lets you bring a new device back if you forget the sync password (it cannot read old content for you). The public key is published to the shared folder; the private key is shown once — keep it offline.',
+  'sync.recovery.title': 'Recovery key (shown once)',
+  'sync.recovery.warning': 'Copy it down now and keep it offline. We do **not** store the private key: close this window and it is gone. If you lose it, create a new one and publish the new public key.',
+  'sync.recovery.publicKey': 'Public key (already published to the shared folder):',
+  'sync.recovery.privateKey': 'Private key (keep offline; do not share or screenshot):',
+  'sync.recovery.close': 'Close only after you have copied it down.',
 };

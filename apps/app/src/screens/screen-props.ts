@@ -52,6 +52,8 @@ export interface SyncAdmin {
   revoke(deviceId: string): Promise<boolean>;
   /** 永久禁用（黑名单）：拒绝它的签名；要连读也断还得换代。 */
   ban(deviceId: string): Promise<boolean>;
+  /** 生成恢复密钥（公钥发布到共享目录；私钥只返回这一次，请离线保存）。 */
+  createRecovery(): Promise<{ publicKey: string; privateKey: string }>;
   /**
    * 回收分析（默认只分析、不动手）。
    *
