@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { AssembleFn } from '../../../../plugins/writing-pipeline/src/index.ts';
 import type { Router } from '../app/router.ts';
 import type { AppState, AppStore } from '../app/state.ts';
 import type { ChatClient } from '../data/chat-client.ts';
@@ -14,6 +15,8 @@ export interface ScreenProps {
   ops?: OpLogAdmin;
   /** 同步：只有 op-log 仓储 + 配置齐全时才有。 */
   sync?: SyncAdmin;
+  /** 组装管线（来自组合出来的插件）。缺省时 prompt.ts 走兜底拼接，并在面板里说明。 */
+  assemble?: AssembleFn;
 }
 
 export interface SyncAdmin {

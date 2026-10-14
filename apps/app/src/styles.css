@@ -1043,3 +1043,72 @@ button.chip {
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+
+/* ------------------------------------------------------------------ 本次请求（可解释性面板） */
+
+.chat__trace-link {
+  align-self: flex-start;
+  margin: 0 0 6px;
+  padding: 2px 0;
+  background: none;
+  border: 0;
+  color: var(--accent);
+  font-size: 0.75rem;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.trace {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.trace__line {
+  margin: 0;
+  color: var(--dim);
+  font-size: 0.8125rem;
+}
+
+.trace__heading {
+  margin: 10px 0 2px;
+  font-size: 0.8125rem;
+  color: var(--text);
+}
+
+.trace__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.trace__list li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.trace__item--omitted {
+  opacity: 0.6;
+}
+
+.trace__name {
+  font-size: 0.875rem;
+}
+
+.trace__meta {
+  font-size: 0.75rem;
+  color: var(--dim);
+}
+
+.trace__reason {
+  font-size: 0.75rem;
+  color: var(--accent);
+}

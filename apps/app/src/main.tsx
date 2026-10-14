@@ -15,6 +15,8 @@ import { describeSyncProblem, readSyncConfig, runSync, SYNC_SECRET_KEY, type Fol
 import { syncAvailable } from './data/sync/service.ts';
 import { createHostFetch } from './data/sync/host-fetch.ts';
 import { createHostFolderBackend } from './data/sync/folder-backend.ts';
+import { registerPromptBlocks } from './data/prompt-blocks.ts';
+import type { BlockRegistry } from '../../../plugins/context-blocks/src/index.ts';
 import { createHostClient, type HostClient } from './host-panel.ts';
 import { I18nProvider } from './i18n/context.tsx';
 import { createAppLocaleService, registerAppMessages, translatorOf } from './i18n/locale.ts';
@@ -80,6 +82,12 @@ function Root(): ReturnType<typeof AppShell> {
     void createAppRuntime()
       .then((runtime) => {
         registerAppMessages(runtime.locale);
+        // 把应用侧的上下文块注册进组合出来的注册表：块的优先级/预算/理由由 pipeline 统一执行
+        try {
+          registerPromptBlocks(runtime.ctx.require<BlockRegistry>('context.blocks'));
+        } catch {
+          // 没有 context.blocks（那一行被关掉了）：prompt.ts 会走兜底拼接，并在面板里说明
+        }
         setBoot({ runtime, locale: runtime.locale });
       })
       .catch(() => setBoot((current) => ({ ...current })));
@@ -214,6 +222,7 @@ function Root(): ReturnType<typeof AppShell> {
             router={router}
             host={host}
             chat={chat}
+            {...(boot.runtime === undefined ? {} : { assemble: boot.runtime.assemble })}
             sessionId={route.sessionId}
             onOpenSettings={() => router.navigate({ name: 'settings' })}
           />

@@ -126,6 +126,8 @@ export const SETTING_KEYS = {
   temperature: 'model.temperature',
   maxTokens: 'model.max_tokens',
   systemPrompt: 'chat.system_prompt',
+  /** 进入上下文的最近消息条数（0/未设 = 默认 40）。 */
+  historyLimit: 'chat.history_limit',
   locale: 'app.locale',
   theme: 'app.theme',
   fontScale: 'app.font_scale',

@@ -1,11 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildChatRequest, characterPrompt } from '../src/data/prompt.ts';
+import { buildChatRequest, characterPrompt, estimateTokens, type PromptCharacter } from '../src/data/prompt.ts';
+import { registerPromptBlocks } from '../src/data/prompt-blocks.ts';
+import { assembleBlocks, estimateTokens as pipelineEstimateTokens } from '../../../plugins/writing-pipeline/src/index.ts';
+import { Registry } from '../../../packages/plugin-api/src/index.ts';
+import type { BlockDefinition } from '../../../plugins/context-blocks/src/index.ts';
 import { SETTING_KEYS, type Lorebook } from '../src/data/types.ts';
 
 /**
  * 上下文组装：M1 之后宿主不再组装 prompt，所以这里的规则就是"模型看到什么"的唯一实现。
- * 因此要测的是**取舍**：哪些内容进上下文、哪些被排除。
+ * 因此要测的是**取舍**：哪些内容进上下文、哪些被排除、以及排除的理由能不能说清楚。
  */
 
 test('prompt：角色卡字段进系统提示，空字段不写空标题', () => {
@@ -138,4 +142,118 @@ test('prompt：失败消息不参与世界书匹配（错误文本不该触发�
     lorebooks: [lorebook([{ id: 'e1', keys: ['铜铃'], content: '铜铃的设定。' }])],
   });
   assert.deepEqual(request.lore, [], '错误信息里的关键词不该触发注入');
+});
+
+// ---------------------------------------------------------------- 历史条数上限与可解释性
+
+test('prompt：历史上限生效，被裁掉的消息带原因进 trace（不是悄悄丢掉）', () => {
+  const history = Array.from({ length: 6 }, (_, index) => ({ role: 'user' as const, content: `第 ${index + 1} 句` }));
+  const request = buildChatRequest({ settings: { [SETTING_KEYS.historyLimit]: '3' }, history });
+
+  assert.deepEqual(request.messages.map((message) => message.content), ['第 4 句', '第 5 句', '第 6 句']);
+  assert.equal(request.trace.historyIncluded, 3);
+  assert.equal(request.trace.historyLimit, 3);
+  assert.deepEqual(
+    request.trace.excluded.map((item) => item.reason),
+    ['limit', 'limit', 'limit'],
+  );
+  assert.deepEqual(
+    request.trace.excluded.map((item) => item.preview),
+    ['第 1 句', '第 2 句', '第 3 句'],
+  );
+});
+
+test('prompt：trace 说明系统提示由哪些块构成、各占多少', () => {
+  const request = buildChatRequest({
+    settings: { [SETTING_KEYS.systemPrompt]: '短句。' },
+    character: { name: '星野', description: '守望者', personality: '', scenario: '', exampleDialogue: '' },
+    history: [{ role: 'user', content: '在吗' }],
+  });
+
+  assert.equal(request.trace.pipeline, false, '测试里没注入管线，应当如实标记');
+  assert.deepEqual(
+    request.trace.blocks.map((block) => block.kind),
+    ['custom', 'character'],
+  );
+  for (const block of request.trace.blocks) {
+    assert.ok(block.chars > 0);
+    assert.ok(block.estimatedTokens > 0);
+    assert.equal(block.included, true);
+  }
+  assert.equal(request.trace.systemChars, request.systemPrompt.length);
+  assert.equal(request.trace.messageChars, '在吗'.length);
+});
+
+test('prompt：token 估算与管线里的实现必须一致（两份实现漂移会让面板上的数字骗人）', () => {
+  for (const sample of ['', 'hello world', '短句。', '这是一段中文和 English 混排的文本。', 'a'.repeat(100)]) {
+    assert.equal(estimateTokens(sample), pipelineEstimateTokens(sample), sample);
+  }
+});
+
+// ---------------------------------------------------------------- 走管线（真正的组装路径）
+
+/** 用真实的 Registry + 插件的 assembleBlocks 搭一条最小管线（不启内核也能测）。 */
+function pipeline(blocks: BlockDefinition[], budgetTokens: number) {
+  return (context: Parameters<typeof assembleBlocks>[1], budget = budgetTokens) =>
+    assembleBlocks(blocks, context, budget);
+}
+
+test('prompt：走管线时块按预算裁剪，trace 里带上裁掉的理由', () => {
+  const registry = new Registry<BlockDefinition>({ onDuplicate: 'replace' });
+  registerPromptBlocks(registry);
+  const blocks = registry.list().map((entry) => entry.value);
+
+  const character: PromptCharacter = {
+    name: '星野',
+    description: '夜巡的守望者',
+    personality: '',
+    scenario: '',
+    exampleDialogue: '',
+  };
+  const request = buildChatRequest({
+    settings: { [SETTING_KEYS.systemPrompt]: '始终保持短句。' },
+    character,
+    history: [{ role: 'user', content: '在吗' }],
+    assemble: pipeline(blocks, 4000),
+    budgetTokens: 4000,
+  });
+
+  assert.equal(request.trace.pipeline, true);
+  assert.match(request.systemPrompt, /始终保持短句。/);
+  assert.match(request.systemPrompt, /你要扮演「星野」/);
+  assert.equal(request.trace.blocks.length, 2);
+  assert.equal(request.trace.blocks.every((block) => block.included), true);
+  assert.ok(request.trace.blocks.every((block) => block.reason !== ''), '管线必须给出纳入/裁掉的理由');
+  assert.equal(request.trace.budgetTokens, 4000);
+
+  // 预算压到极小：高优先级块进、低的被裁，且理由说明是超预算
+  const tight = buildChatRequest({
+    settings: { [SETTING_KEYS.systemPrompt]: '始终保持短句。' },
+    character,
+    history: [{ role: 'user', content: '在吗' }],
+    assemble: pipeline(blocks, 40),
+    budgetTokens: 40,
+  });
+  assert.equal(tight.trace.omitted > 0, true, '预算不足时应当有块被裁');
+  assert.equal(tight.systemPrompt.includes('直接以角色身份说话'), false, '被裁的块不该出现在系统提示里');
+});
+
+test('prompt：走管线时世界书命中仍然被记录下来（块渲染时写回）', () => {
+  const registry = new Registry<BlockDefinition>({ onDuplicate: 'replace' });
+  registerPromptBlocks(registry);
+  const blocks = registry.list().map((entry) => entry.value);
+
+  const request = buildChatRequest({
+    settings: {},
+    history: [{ role: 'user', content: '听见铜铃' }],
+    lorebooks: [lorebook([{ id: 'e1', keys: ['铜铃'], content: '铜铃是报信之物。' }])],
+    assemble: pipeline(blocks, 4000),
+    budgetTokens: 4000,
+  });
+
+  assert.match(request.systemPrompt, /【相关设定】/);
+  assert.deepEqual(request.lore.map((entry) => entry.entryId), ['e1']);
+  const loreBlock = request.trace.blocks.find((block) => block.kind === 'lore');
+  assert.ok(loreBlock !== undefined);
+  assert.equal(loreBlock.included, true);
 });
