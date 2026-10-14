@@ -39,7 +39,7 @@ export const enSync: AppMessages = {
   'sync.devices.revoked': 'revoked',
   'sync.devices.revoke': 'Revoke this device',
   'sync.devices.revoke.title': 'Revoke device',
-  'sync.devices.revoke.message': 'Revoke "{{name}}"? Data it creates while offline will not be kept; it will show up again on its next sync but will no longer count towards "everyone has caught up".',
+  'sync.devices.revoke.message': 'Revoking only removes it from the active roster: it **keeps its key and can still read**. To cut reading as well, use "Ban permanently" (which rotates the data key). Content it already holds cannot be recalled.',
   'sync.devices.revokedNote': 'Revoked.',
   'sync.devices.revokeFailed': 'Revoke failed: maybe it was already revoked, or this is the current device.',
   'sync.gc': 'Reclaim old segments',

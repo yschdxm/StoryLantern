@@ -379,8 +379,11 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
       ];
       try {
         await rotateKeyring({ backend: options.backend, keyWrap: createWebCryptoKeyWrap(), recipients });
-      } catch {
-        // 换代失败（例如被别的设备抢先写了另一个 epoch）：黑名单已经生效，下次同步再来
+      } catch (cause) {
+        // 黑名单已经生效（上面已落盘），但**换代失败**——必须让用户看见，
+        // 否则他会以为"已经踢干净了"，而对方其实还能用旧钥匙读新内容。
+        const reason = cause instanceof Error ? cause.message : String(cause);
+        throw new Error(`已写入黑名单，但换代失败：${reason}。它暂时还能读到新内容；下次同步会自动重试换代。`);
       }
       return true;
     },

@@ -39,7 +39,7 @@ export const zhSync: AppMessages = {
   'sync.devices.revoked': '已吊销',
   'sync.devices.revoke': '吊销这台设备',
   'sync.devices.revoke.title': '吊销设备',
-  'sync.devices.revoke.message': '吊销「{{name}}」？它离线期间的新数据将不再被保留，而它下次同步时会重新出现（但不再参与"所有人都已同步"的判定）。',
+  'sync.devices.revoke.message': '吊销后它**仍然在钥匙包里，仍然能读到内容**（吊销只是把它从活跃名单里划掉）；要连读取也断掉，必须用「永久禁用（拉黑）」换代。已经在它手里的旧内容收不回。',
   'sync.devices.revokedNote': '已吊销。',
   'sync.devices.revokeFailed': '吊销失败：可能已经吊销过，或这是本机。',
   'sync.gc': '回收旧段',
