@@ -63,6 +63,10 @@ export interface CharacterRecord {
   scenario: string;
   firstMessage: string;
   exampleDialogue: string;
+  /** 角色自带的系统提示（导入卡片时不再丢掉）。 */
+  systemPrompt?: string;
+  /** 备选开场白（第一条在 firstMessage 里）。 */
+  alternateGreetings?: string[];
   /** 第一次写入的时间：列表里"创建于"用，更新时不变。 */
   createdHlc: Hlc;
   updatedHlc: Hlc;

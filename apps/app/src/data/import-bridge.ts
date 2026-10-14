@@ -17,6 +17,8 @@ export function characterDraftFrom(card: ImportedCharacter): CharacterDraft {
     scenario: card.scenario,
     firstMessage: card.firstMessage,
     exampleDialogue: card.exampleDialogue,
+    systemPrompt: card.systemPrompt,
+    alternateGreetings: card.alternateGreetings,
   };
 }
 

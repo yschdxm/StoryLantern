@@ -33,6 +33,13 @@ export interface CharacterUpsertPayload {
   scenario: string;
   firstMessage: string;
   exampleDialogue: string;
+  /**
+   * 角色自带的系统提示（卡片里的 `system_prompt`）。
+   * 留空就用设置里的全局提示——导入时不再把它丢掉。
+   */
+  systemPrompt?: string;
+  /** 备选开场白（卡片里的 `alternate_greetings`）；第一条仍在 `firstMessage`。 */
+  alternateGreetings?: string[];
 }
 
 export interface CharacterDeletePayload {

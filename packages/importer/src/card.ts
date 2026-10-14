@@ -78,9 +78,13 @@ export function parseCharacterJson(value: unknown, source: string): ImportedChar
     notes.push(`内嵌世界书 ${lorebook.entries.length} 条已一并导入`);
   }
 
-  const alternates = asStringArray(data['alternate_greetings']);
-  if (alternates.length > 0) notes.push(`另有 ${alternates.length} 条备选开场白，v0.1 只保留第一条`);
-  if (asString(data['system_prompt']) !== '') notes.push('卡片自带 system prompt，v0.1 未启用');
+  // 备选开场白与卡片自带的 system prompt 都带进角色：不再"只留第一条/未启用"
+  const alternates = asStringArray(data['alternate_greetings'])
+    .map((item) => item.trim())
+    .filter((item) => item !== '');
+  if (alternates.length > 0) notes.push(`另带入 ${alternates.length} 条备选开场白（可在角色里切换）`);
+  const cardPrompt = asString(data['system_prompt']).trim();
+  if (cardPrompt !== '') notes.push('卡片自带 system prompt 已带入角色（优先于全局提示）');
   if (asString(data['creator_notes']) !== '') notes.push('跳过 creator notes');
 
   return {
@@ -92,6 +96,8 @@ export function parseCharacterJson(value: unknown, source: string): ImportedChar
     scenario: asString(data['scenario']),
     firstMessage: asString(data['first_mes']),
     exampleDialogue: asString(data['mes_example']),
+    systemPrompt: cardPrompt,
+    alternateGreetings: alternates,
     spec: spec === '' ? 'legacy' : spec,
     ...(lorebook === undefined ? {} : { lorebook }),
     notes,

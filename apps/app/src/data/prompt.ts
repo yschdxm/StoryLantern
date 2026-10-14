@@ -80,6 +80,8 @@ export interface PromptCharacter {
   personality: string;
   scenario: string;
   exampleDialogue: string;
+  /** 角色自带的系统提示；非空时优先于设置里的全局提示（导入卡片时不再丢掉）。 */
+  systemPrompt?: string | undefined;
 }
 
 export interface PromptHistoryItem {
@@ -124,7 +126,11 @@ function historyLimitOf(settings: Record<string, string>): number {
 export function buildChatRequest(options: BuildPromptOptions): ChatRequest {
   const limit = historyLimitOf(options.settings);
   const character = options.character;
-  const custom = (options.settings[SETTING_KEYS.systemPrompt] ?? '').trim();
+  // 系统提示的优先顺序：**角色自带的**（导入卡片时带过来的）> 设置里的全局提示。
+  // 角色卡作者写的那段话通常比全局模板更懂这个角色，所以让角色优先。
+  const globalPrompt = (options.settings[SETTING_KEYS.systemPrompt] ?? '').trim();
+  const characterPrompt = (options.character?.systemPrompt ?? '').trim();
+  const custom = characterPrompt !== '' ? characterPrompt : globalPrompt;
 
   // 只把"能进上下文"的消息拿去扫描世界书：失败消息里的关键词不该触发设定
   const usable: Array<{ role: MessageRole; content: string }> = [];

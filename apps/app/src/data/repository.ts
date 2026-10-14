@@ -146,6 +146,8 @@ export function validateCharacterDraft(draft: CharacterDraft): Required<Omit<Cha
     scenario: (draft.scenario ?? '').trim(),
     firstMessage: (draft.firstMessage ?? '').trim(),
     exampleDialogue: (draft.exampleDialogue ?? '').trim(),
+    systemPrompt: (draft.systemPrompt ?? '').trim(),
+    alternateGreetings: (draft.alternateGreetings ?? []).map((item) => item.trim()).filter((item) => item !== ''),
   };
 }
 

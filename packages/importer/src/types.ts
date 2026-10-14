@@ -31,6 +31,10 @@ export interface ImportedCharacter {
   scenario: string;
   firstMessage: string;
   exampleDialogue: string;
+  /** 卡片自带的 system prompt（空 = 用应用里的全局提示）。 */
+  systemPrompt: string;
+  /** 备选开场白（第一条仍在 `firstMessage`）。 */
+  alternateGreetings: string[];
   /** 卡片规范版本：`chara_card_v2` / `chara_card_v3` / `legacy`。 */
   spec: string;
   lorebook?: ImportedLorebook;
@@ -40,7 +44,10 @@ export interface ImportedCharacter {
 
 export interface ImportedChatMessage {
   role: 'user' | 'assistant' | 'system';
+  /** 当前选中的那条（SillyTavern 里的 swipe id 指向它）。 */
   content: string;
+  /** 同一位置的其它候选回复（SillyTavern 的 swipes）；不再被丢掉。 */
+  candidates?: string[];
   createdAt: number;
 }
 

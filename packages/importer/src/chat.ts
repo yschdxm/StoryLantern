@@ -37,10 +37,14 @@ export function parseChatText(text: string, source: string): ImportedChat {
     const isUser = parsed['is_user'] === true || asString(parsed['role']) === 'user';
     const isSystem = parsed['is_system'] === true || asString(parsed['role']) === 'system';
     const sendDate = Number(parsed['send_date'] ?? parsed['createdAt'] ?? 0);
-    if (asStringArray(parsed['swipes']).length > 1) swipes += 1;
+    // swipes = 同一位置的多次生成；当前选中的那条是正文，其余作为候选一并带过来
+    const allSwipes = asStringArray(parsed['swipes']).map((item) => item.trim()).filter((item) => item !== '');
+    const others = allSwipes.filter((item) => item !== content.trim());
+    if (allSwipes.length > 1) swipes += 1;
     messages.push({
       role: isSystem ? 'system' : isUser ? 'user' : 'assistant',
       content,
+      ...(others.length === 0 ? {} : { candidates: others.slice(0, 12) }),
       createdAt: Number.isFinite(sendDate) && sendDate > 0 ? sendDate : 0,
     });
   }
@@ -48,7 +52,11 @@ export function parseChatText(text: string, source: string): ImportedChat {
   if (messages.length === 0) throw new ImportError('empty-chat', '聊天记录里没有可导入的消息');
 
   const notes: string[] = [];
-  if (swipes > 0) notes.push(`${swipes} 条消息有多个候选回复，只导入选中的那一条`);
+  const withCandidates = messages.filter((message) => (message.candidates ?? []).length > 0).length;
+  if (swipes > 0)
+    notes.push(
+      `${withCandidates} 条消息有多次生成：解析出了候选回复，但应用侧暂未保存它们（只保留当前选中的那条）`,
+    );
   if (broken > 0) notes.push(`${broken} 行无法解析，已跳过`);
 
   const characterName = asString(header['character_name']) || dominantAssistantName(text) || '导入的角色';

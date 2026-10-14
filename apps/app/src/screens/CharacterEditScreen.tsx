@@ -28,6 +28,9 @@ export function CharacterEditScreen({ store, characterId, onDone }: CharacterEdi
   const [scenario, setScenario] = useState('');
   const [firstMessage, setFirstMessage] = useState('');
   const [exampleDialogue, setExampleDialogue] = useState('');
+  const [systemPrompt, setSystemPrompt] = useState('');
+  /** 备选开场白在界面上是一行一条，保存时过滤空行。 */
+  const [greetings, setGreetings] = useState('');
   const [error, setError] = useState<string | undefined>(undefined);
   const [loadedId, setLoadedId] = useState<string | undefined>(undefined);
   const [pendingDelete, setPendingDelete] = useState(false);
@@ -41,6 +44,8 @@ export function CharacterEditScreen({ store, characterId, onDone }: CharacterEdi
     setScenario(existing.scenario);
     setFirstMessage(existing.firstMessage);
     setExampleDialogue(existing.exampleDialogue);
+    setSystemPrompt(existing.systemPrompt);
+    setGreetings(existing.alternateGreetings.join('\n'));
     setLoadedId(existing.id);
   }, [existing, loadedId]);
 
@@ -58,6 +63,8 @@ export function CharacterEditScreen({ store, characterId, onDone }: CharacterEdi
         scenario,
         firstMessage,
         exampleDialogue,
+        systemPrompt,
+        alternateGreetings: greetings.split('\n').map((line) => line.trim()).filter((line) => line !== ''),
       });
       onDone(saved.id);
     } catch (cause) {
@@ -105,6 +112,24 @@ export function CharacterEditScreen({ store, characterId, onDone }: CharacterEdi
             onChange={setExampleDialogue}
             rows={4}
             placeholder={t('character.example.placeholder')}
+          />
+        </Field>
+        <Field label={t('character.systemPrompt')} hint={t('character.systemPrompt.hint')}>
+          <textarea
+            className="input"
+            rows={3}
+            value={systemPrompt}
+            placeholder={t('character.systemPrompt.placeholder')}
+            onChange={(event) => setSystemPrompt(event.target.value)}
+          />
+        </Field>
+        <Field label={t('character.greetings')} hint={t('character.greetings.hint')}>
+          <textarea
+            className="input"
+            rows={3}
+            value={greetings}
+            placeholder={t('character.greetings.placeholder')}
+            onChange={(event) => setGreetings(event.target.value)}
           />
         </Field>
 

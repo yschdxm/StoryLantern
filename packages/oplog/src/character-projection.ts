@@ -10,6 +10,8 @@ import type { CharacterRecord, MaterializedState } from './state-types.ts';
  */
 
 interface UpsertPayload {
+  systemPrompt?: string;
+  alternateGreetings?: string[];
   name: string;
   description: string;
   personality: string;
@@ -26,6 +28,9 @@ export function applyCharacterUpsert(state: MaterializedState, op: Op): void {
   // 乱序到达的旧写入必须被忽略，否则两台设备的最终状态会不同
   if (existing !== undefined && !isNewerThanRecord(op, existing)) return;
 
+  const prompt = (payload.systemPrompt ?? '').trim();
+  const greetings = (payload.alternateGreetings ?? []).map((item) => item.trim()).filter((item) => item !== '');
+
   state.characters[id] = {
     id,
     name: payload.name,
@@ -34,6 +39,8 @@ export function applyCharacterUpsert(state: MaterializedState, op: Op): void {
     scenario: payload.scenario,
     firstMessage: payload.firstMessage,
     exampleDialogue: payload.exampleDialogue,
+    ...(prompt === '' ? {} : { systemPrompt: prompt }),
+    ...(greetings.length === 0 ? {} : { alternateGreetings: greetings }),
     // 复活墓碑时保留最初的创建时间；新角色则用这次写入的时间
     createdHlc: existing === undefined ? cloneHlc(op.hlc) : cloneHlc(existing.createdHlc),
     updatedHlc: cloneHlc(op.hlc),

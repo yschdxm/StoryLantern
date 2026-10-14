@@ -360,4 +360,10 @@ export const en: AppMessages = {
   'sync.gc.confirm.message': 'Move {{count}} segment(s) to trash and delete them? Their ops are in the local log, but **any device that has not synced them yet will never get them**.',
   'sync.gc.confirm.ok': 'Reclaim',
   'sync.gc.moved': 'Reclaimed {{count}} segment(s) (moved to trash first).',
+  'character.systemPrompt': 'Character system prompt',
+  'character.systemPrompt.hint': 'Carried over from the card; takes precedence over the global prompt in Settings.',
+  'character.systemPrompt.placeholder': 'Leave empty to use the global prompt',
+  'character.greetings': 'Alternate greetings',
+  'character.greetings.hint': 'One per line. The first greeting is the field above; these are the others.',
+  'character.greetings.placeholder': 'one per line',
 };

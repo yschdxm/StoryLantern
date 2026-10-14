@@ -20,6 +20,10 @@ export interface Character {
   scenario: string;
   firstMessage: string;
   exampleDialogue: string;
+  /** 角色自带的系统提示；空 = 用设置里的全局提示。 */
+  systemPrompt: string;
+  /** 备选开场白（第一条在 `firstMessage`）。 */
+  alternateGreetings: string[];
   createdAt: number;
   updatedAt: number;
 }
@@ -33,6 +37,8 @@ export interface CharacterDraft {
   scenario?: string;
   firstMessage?: string;
   exampleDialogue?: string;
+  systemPrompt?: string;
+  alternateGreetings?: string[];
 }
 
 export interface Session {

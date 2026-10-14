@@ -257,3 +257,28 @@ test('prompt：走管线时世界书命中仍然被记录下来（块渲染时�
   assert.ok(loreBlock !== undefined);
   assert.equal(loreBlock.included, true);
 });
+
+test('prompt：角色自带的系统提示优先于全局提示（导入卡片后不该被全局模板盖掉）', () => {
+  const character: PromptCharacter = {
+    name: '星野',
+    description: '',
+    personality: '',
+    scenario: '',
+    exampleDialogue: '',
+    systemPrompt: '你只写短句，不加解释。',
+  };
+  const withBoth = buildChatRequest({
+    settings: { [SETTING_KEYS.systemPrompt]: '全局模板：始终礼貌。' },
+    character,
+    history: [{ role: 'user', content: '在吗' }],
+  });
+  assert.ok(withBoth.systemPrompt.startsWith('你只写短句，不加解释。'), '角色自己的提示要排在前面');
+  assert.ok(!withBoth.systemPrompt.includes('全局模板'), '两者都有时用角色的');
+
+  const onlyGlobal = buildChatRequest({
+    settings: { [SETTING_KEYS.systemPrompt]: '全局模板：始终礼貌。' },
+    character: { name: '星野', description: '', personality: '', scenario: '', exampleDialogue: '' },
+    history: [{ role: 'user', content: '在吗' }],
+  });
+  assert.ok(onlyGlobal.systemPrompt.startsWith('全局模板'), '角色没写就退回全局');
+});

@@ -45,7 +45,12 @@ export function loadState(store: KeyValueStore): RepositoryState {
       return emptyState();
     }
     return {
-      characters: parsed.characters,
+      // 旧版本没有 systemPrompt / alternateGreetings：按空值补齐，别让界面拿到 undefined
+      characters: parsed.characters.map((character) => ({
+        ...character,
+        systemPrompt: character.systemPrompt ?? '',
+        alternateGreetings: character.alternateGreetings ?? [],
+      })),
       sessions: parsed.sessions,
       messages: parsed.messages,
       // 旧版本没有世界书/记忆：缺字段时按空数组读，不给用户报错

@@ -101,7 +101,14 @@ test('导入：单人聊天 JSONL（角色名、角色归属、候选回复有�
   assert.equal(chat.messages[0]?.role, 'user');
   assert.equal(chat.messages[1]?.role, 'assistant');
   assert.ok(chat.messages.every((message) => message.content.trim() !== ''), '空消息不该进来');
-  assert.ok(chat.notes.some((note) => note.includes('候选回复')));
+  // swipes（多次生成）不再被丢掉：当前那条是正文，其余作为候选带进来
+  const withCandidates = chat.messages.filter((message) => (message.candidates ?? []).length > 0);
+  assert.ok(withCandidates.length > 0, '备选回复应当作为候选带进来，而不是只留一条');
+  assert.ok(
+    withCandidates.every((message) => (message.candidates ?? []).every((candidate) => candidate.trim() !== '')),
+    '候选不该是空串',
+  );
+  assert.ok(chat.notes.some((note) => note.includes('候选')));
 });
 
 test('导入：群聊 JSONL 也能读出消息与角色名', async () => {

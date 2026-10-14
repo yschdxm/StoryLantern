@@ -371,4 +371,10 @@ export const zhCN: AppMessages = {
   'sync.gc.confirm.message': '把 {{count}} 个段移进 trash 并删除？这些段承载的 op 已经在本地日志里，但**别的设备如果还没同步过它们，就再也拿不到了**。',
   'sync.gc.confirm.ok': '确认回收',
   'sync.gc.moved': '已回收 {{count}} 个段（先前它们被移进 trash）。',
+  'character.systemPrompt': '角色自带的系统提示',
+  'character.systemPrompt.hint': '导入卡片时带过来的那段，优先于设置里的全局提示；留空就用全局的。',
+  'character.systemPrompt.placeholder': '留空 = 用设置 → 提示词里的全局提示',
+  'character.greetings': '备选开场白',
+  'character.greetings.hint': '一行一条。第一条开场白在上面单独填，这里放卡片里的其它开场白。',
+  'character.greetings.placeholder': '一行一条',
 };

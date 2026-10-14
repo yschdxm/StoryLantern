@@ -18,6 +18,9 @@ function card(overrides: Partial<ImportedCharacter> = {}): ImportedCharacter {
     spec: 'chara_card_v2',
     notes: [],
     ...overrides,
+    // `Partial<T>` 会把可选字段带上 `| undefined`，这里在展开之后重新收回必填语义
+    systemPrompt: overrides.systemPrompt ?? '',
+    alternateGreetings: overrides.alternateGreetings ?? [],
   };
 }
 
@@ -101,6 +104,8 @@ test('导入映射：聊天记录优先挂到同名角色，没有同名才新�
     scenario: '',
     firstMessage: '',
     exampleDialogue: '',
+    systemPrompt: '',
+    alternateGreetings: [],
     createdAt: 0,
     updatedAt: 0,
   };

@@ -32,6 +32,8 @@ export function characterView(record: CharacterRecord): Character {
     scenario: record.scenario,
     firstMessage: record.firstMessage,
     exampleDialogue: record.exampleDialogue,
+    systemPrompt: record.systemPrompt ?? '',
+    alternateGreetings: [...(record.alternateGreetings ?? [])],
     createdAt: record.createdHlc.t,
     updatedAt: record.updatedHlc.t,
   };
