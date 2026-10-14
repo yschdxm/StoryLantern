@@ -23,6 +23,8 @@ export { compareHlc, compareOpOrder, hlcSortKey, HlcClock, type Hlc, type HlcClo
 export {
   candidateAppend,
   candidateSelect,
+  characterDelete,
+  characterUpsert,
   createOp,
   decodeOp,
   decodeOps,
@@ -39,6 +41,8 @@ export {
   settingSet,
   type CandidateAppendPayload,
   type CandidateSelectPayload,
+  type CharacterDeletePayload,
+  type CharacterUpsertPayload,
   type CreateOpOptions,
   type MessageAppendPayload,
   type MessageAuthor,
@@ -53,6 +57,7 @@ export {
 export {
   Materializer,
   type CandidateRecord,
+  type CharacterRecord,
   type ForkGroup,
   type MaterializedState,
   type MessageRecord,

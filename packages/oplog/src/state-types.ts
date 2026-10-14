@@ -42,7 +42,29 @@ export interface SessionRecord {
   forkedFrom?: string;
 }
 
+/**
+ * 角色卡。字段用整体 LWW（`updatedHlc`）：这样"先收到更新、后收到创建"也能收敛，
+ * 不需要把更新当成孤儿去等创建——角色卡本来就没有"必须先创建"的不变量。
+ */
+export interface CharacterRecord {
+  id: string;
+  name: string;
+  description: string;
+  personality: string;
+  scenario: string;
+  firstMessage: string;
+  exampleDialogue: string;
+  updatedHlc: Hlc;
+  opId: string;
+  /**
+   * 墓碑：删除也是一次带 HLC 的写入。
+   * 删除与 upsert **共用同一条时间线**——否则乱序时"更旧的删除"会盖掉"更新的编辑"。
+   */
+  deleted?: { hlc: Hlc; opId: string };
+}
+
 export interface MaterializedState {
+  characters: Record<string, CharacterRecord>;
   sessions: Record<string, SessionRecord>;
   messages: Record<string, MessageRecord>;
   settings: Record<string, { value: unknown; hlc: Hlc; opId: string }>;

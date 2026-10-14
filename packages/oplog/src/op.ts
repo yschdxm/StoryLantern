@@ -6,6 +6,8 @@ export const OP_SCHEMA_VERSION = 1;
 export type MessageAuthor = 'user' | 'character' | 'system' | 'narrator';
 
 export type OpType =
+  | 'character.upsert'
+  | 'character.delete'
   | 'session.create'
   | 'message.append'
   | 'message.edit'
@@ -14,6 +16,20 @@ export type OpType =
   | 'message.candidate.select'
   | 'message.delete'
   | 'setting.set';
+
+/** 角色卡字段：整体覆盖写入（LWW 由 op 的 HLC 决定）。id 放在 entity 里，不重复进 payload。 */
+export interface CharacterUpsertPayload {
+  name: string;
+  description: string;
+  personality: string;
+  scenario: string;
+  firstMessage: string;
+  exampleDialogue: string;
+}
+
+export interface CharacterDeletePayload {
+  characterId: string;
+}
 
 export interface SessionCreatePayload {
   title: string;
@@ -158,6 +174,31 @@ export function createOp<TPayload>(options: CreateOpOptions<TPayload>): Op<TPayl
 }
 
 // ---- 语义化构造器：让调用方不必手写 entity/type 组合 ----
+
+export function characterUpsert(
+  base: { deviceId: string; clock: HlcClock },
+  payload: CharacterUpsertPayload & { characterId: string },
+): Op<CharacterUpsertPayload> {
+  const { characterId, ...rest } = payload;
+  return createOp({
+    ...base,
+    type: 'character.upsert',
+    entity: { type: 'character', id: characterId },
+    payload: rest,
+  });
+}
+
+export function characterDelete(
+  base: { deviceId: string; clock: HlcClock },
+  payload: CharacterDeletePayload,
+): Op<CharacterDeletePayload> {
+  return createOp({
+    ...base,
+    type: 'character.delete',
+    entity: { type: 'character', id: payload.characterId },
+    payload,
+  });
+}
 
 export function sessionCreate(
   base: { deviceId: string; clock: HlcClock },

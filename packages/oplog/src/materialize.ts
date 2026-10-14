@@ -1,9 +1,12 @@
-import { compareHlc, compareOpOrder, type Hlc } from './hlc.ts';
+import { compareOpOrder, type Hlc } from './hlc.ts';
 import { freezeSnapshot } from './freeze.ts';
+import { applyCharacterDelete, applyCharacterUpsert, listCharacters } from './character-projection.ts';
+import { cloneHlc, emptyState, laterThan } from './materialize-support.ts';
 import type { MessageAuthor, Op } from './op.ts';
 import type { SessionSnapshot } from './snapshot.ts';
 import type {
   CandidateRecord,
+  CharacterRecord,
   ForkGroup,
   MaterializedState,
   MessageRecord,
@@ -14,6 +17,7 @@ import type {
 
 export type {
   CandidateRecord,
+  CharacterRecord,
   ForkGroup,
   MaterializedState,
   MessageRecord,
@@ -21,21 +25,6 @@ export type {
   SessionRecord,
   Snapshot,
 } from './state-types.ts';
-
-function emptyState(): MaterializedState {
-  return { sessions: {}, messages: {}, settings: {} };
-}
-
-function cloneHlc(hlc: Hlc): Hlc {
-  return { t: hlc.t, c: hlc.c };
-}
-
-function laterThan(a: Hlc, b: Hlc | undefined, tieA: string, tieB: string | undefined): boolean {
-  if (!b || !tieB) return true;
-  const byHlc = compareHlc(a, b);
-  if (byHlc !== 0) return byHlc > 0;
-  return tieA > tieB;
-}
 
 type ApplyResult = 'applied' | 'duplicate' | 'orphan';
 
@@ -114,8 +103,12 @@ export class Materializer {
     return { applied, duplicates, orphans: this.#orphans.length };
   }
 
-  /** 会话内的消息顺序：按 append 的 HLC 排序派生，因此与到达顺序无关。 */
-  orderOf(sessionId: string): MessageRecord[] {
+  /** 角色列表：按最后更新时间倒序（界面列表的顺序），墓碑不出现在结果里。 */
+  characters(): CharacterRecord[] {
+    return listCharacters(this.#state);
+  }
+
+  /** 会话内的消息顺序：按 append 的 HLC 排序派生，因此与到达顺序无关。 */  orderOf(sessionId: string): MessageRecord[] {
     return Object.values(this.#state.messages)
       .filter((message) => message.sessionId === sessionId && message.deleted === undefined)
       .sort((a, b) => compareOpOrder(
@@ -229,6 +222,10 @@ export class Materializer {
 
   #dispatch(op: Op): ApplyResult {
     switch (op.type) {
+      case 'character.upsert':
+        return this.#characterUpsert(op);
+      case 'character.delete':
+        return this.#characterDelete(op);
       case 'session.create':
         return this.#sessionCreate(op);
       case 'message.append':
@@ -249,6 +246,19 @@ export class Materializer {
         // 未知 op 类型：向前兼容地忽略（未来版本写入的新 op 不应让旧客户端崩溃）。
         return 'applied';
     }
+  }
+
+  /**
+   * 角色卡：整体覆盖 + LWW，删除是共用时间线的墓碑。语义在 `character-projection.ts` 里，这里只转发。
+   */
+  #characterUpsert(op: Op): ApplyResult {
+    applyCharacterUpsert(this.#state, op);
+    return 'applied';
+  }
+
+  #characterDelete(op: Op): ApplyResult {
+    applyCharacterDelete(this.#state, op);
+    return 'applied';
   }
 
   #sessionCreate(op: Op): ApplyResult {
