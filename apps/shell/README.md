@@ -131,12 +131,12 @@ adb -s 127.0.0.1:6555 shell screencap -p /sdcard/s.png; adb -s 127.0.0.1:6555 pu
 ## 已验证 / 未验证
 
 - **已验证（可复现）**：
-  - Rust 侧 aarch64 与 x86_64 交叉编译；
-  - 双 ABI debug APK 打包（arm64 16.10 MB / x86_64 16.57 MB），`aapt2 dump badging`
-    显示 `package=app.storylantern`、`versionName=0.0.1`、`label='Story Lantern'`、
+  - Rust 侧 aarch64 与 x86_64 交叉编译（strip 后 `.so` 分别 6.24 / 6.77 MB，`LOAD` 对齐 `0x4000`）；
+  - 双 ABI debug APK 打包（arm64 16.10 MB / x86_64 16.57 MB；内含对应 ABI 的 `.so`），
+    `aapt2 dump badging` 显示 `package=app.storylantern`、`versionName=0.0.1`、`label='Story Lantern'`、
     `launchable-activity=app.storylantern.MainActivity`、`native-code=arm64-v8a`；
   - **在 Android 17 模拟器上安装、启动、渲染出界面**（`7 PLUGINS ACTIVE` 由 bundle patch 组合而来，
     `CONTEXT GRAPH` 显示每块的纳入/裁掉与理由）；
-  - `zipalign -c -P 16` 通过。
+  - `zipalign -c -P 16` 两个 APK 都通过。
 - **未验证**：SSE 流式与 SQLite 在设备上的专项验证；release 签名 APK（当前 debug 依赖
   `adb reverse` 连 dev server；release 会把 `frontendDist` 打进包里，但需要签名配置）。

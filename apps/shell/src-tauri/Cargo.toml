@@ -21,3 +21,10 @@ serde_json = "1"
 [features]
 # 由 tauri 官方模板约定：custom-protocol 用于生产构建
 custom-protocol = ["tauri/custom-protocol"]
+
+[profile.release]
+# 移动端包体直接受这个影响：不 strip 的话 .so 会从 ~9MB 涨到 ~19MB（APK 16MB → 26MB）。
+# `tauri android build` 自己会 strip，我们手动调 cargo 时得显式写上。
+strip = "symbols"
+# 待评估（需要设备上重新验证后才引入）：panic = "abort" 与 lto = true 能再省体积，
+# 但前者改动 panic 语义，不测过不上。
