@@ -56,9 +56,9 @@ export interface HostClient {
 
 interface RawProbe {
   path: string;
-  journal_mode: string;
-  page_size: number;
-  sqlite_version: string;
+  journalMode: string;
+  pageSize: number;
+  sqliteVersion: string;
   writable: boolean;
   characters: number;
   sessions: number;
@@ -118,16 +118,8 @@ export function createHostClient(bridge: TauriBridge | undefined = createTauriBr
           transport: transport.kind,
           methods,
           info,
-          sqlite: {
-            path: probe.path,
-            journalMode: probe.journal_mode,
-            pageSize: probe.page_size,
-            sqliteVersion: probe.sqlite_version,
-            writable: probe.writable,
-            characters: probe.characters,
-            sessions: probe.sessions,
-            messages: probe.messages,
-          },
+          // 宿主已经按 camelCase 出参（Rust 侧 serde(rename_all)），这里不再做字段翻译
+          sqlite: probe,
           ...(streamStats === undefined ? {} : { streamStats }),
         };
       } catch (cause) {

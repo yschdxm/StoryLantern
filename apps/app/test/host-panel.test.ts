@@ -67,9 +67,9 @@ function createFakeHost(options: { withChannel?: boolean } = {}) {
       if (service === 'store' && method === 'probe') {
         return {
           path: '/data/user/0/app.storylantern/files/storylantern.db',
-          journal_mode: 'wal',
-          page_size: 4096,
-          sqlite_version: '3.50.2',
+          journalMode: 'wal',
+          pageSize: 4096,
+          sqliteVersion: '3.50.2',
           writable: true,
           characters: 2,
           sessions: 3,

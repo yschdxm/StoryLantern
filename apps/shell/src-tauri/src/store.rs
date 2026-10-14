@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 #[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct Character {
     pub id: i64,
     pub name: String,
@@ -24,6 +25,7 @@ pub struct Character {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct Session {
     pub id: i64,
     pub title: String,
@@ -36,6 +38,7 @@ pub struct Session {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct Message {
     pub id: i64,
     pub session_id: i64,
@@ -46,6 +49,7 @@ pub struct Message {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Probe {
     pub path: String,
     pub journal_mode: String,
@@ -59,6 +63,7 @@ pub struct Probe {
 
 /// 新建/更新角色时的入参（id 为空即新建）。
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CharacterInput {
     #[serde(default)]
     pub id: Option<i64>,
