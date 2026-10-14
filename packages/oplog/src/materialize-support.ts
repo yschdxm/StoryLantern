@@ -24,11 +24,18 @@ export function laterThan(a: Hlc, b: Hlc | undefined, tieA: string, tieB: string
   return tieA > tieB;
 }
 
+/** 通用"最近一次写入"的形状：角色与会话都用它，规则只写一份。 */
+export interface StampedRecord {
+  updatedHlc: Hlc;
+  opId: string;
+  deleted?: { hlc: Hlc; opId: string };
+}
+
 /**
  * 这次 op 是否比记录里的"最近一次写入"更新。
- * 角色的 upsert 与 delete **共用同一条时间线**，因此墓碑和字段不会互相盖错。
+ * upsert 与 delete **共用同一条时间线**，因此墓碑和字段不会互相盖错。
  */
-export function isNewerThanRecord(op: Op, record: CharacterRecord): boolean {
+export function isNewerThanRecord(op: Op, record: StampedRecord): boolean {
   const newest =
     record.deleted !== undefined && laterThan(record.deleted.hlc, record.updatedHlc, record.deleted.opId, record.opId)
       ? { hlc: record.deleted.hlc, opId: record.deleted.opId }

@@ -9,6 +9,7 @@ export type OpType =
   | 'character.upsert'
   | 'character.delete'
   | 'session.create'
+  | 'session.delete'
   | 'message.append'
   | 'message.edit'
   | 'message.revision.select'
@@ -35,6 +36,10 @@ export interface SessionCreatePayload {
   title: string;
   characterId?: string;
   forkedFrom?: string;
+}
+
+export interface SessionDeletePayload {
+  sessionId: string;
 }
 
 export interface MessageAppendPayload {
@@ -159,13 +164,15 @@ export interface CreateOpOptions<TPayload> {
   entity: { type: string; id: string };
   payload: TPayload;
   opId?: string;
+  /** 显式时间戳：导入历史记录时要保留原始时间（此时不动本地时钟）。 */
+  hlc?: Hlc;
 }
 
 export function createOp<TPayload>(options: CreateOpOptions<TPayload>): Op<TPayload> {
   return {
     opId: options.opId ?? ulid(),
     deviceId: options.deviceId,
-    hlc: options.clock.tick(),
+    hlc: options.hlc ?? options.clock.tick(),
     entity: options.entity,
     type: options.type,
     payload: options.payload,
@@ -173,15 +180,23 @@ export function createOp<TPayload>(options: CreateOpOptions<TPayload>): Op<TPayl
   };
 }
 
+/** 显式时间戳/opId：迁移与导入时用来"补写"过去发生的事。 */
+export interface StampOptions {
+  hlc?: Hlc;
+  opId?: string;
+}
+
 // ---- 语义化构造器：让调用方不必手写 entity/type 组合 ----
 
 export function characterUpsert(
   base: { deviceId: string; clock: HlcClock },
   payload: CharacterUpsertPayload & { characterId: string },
+  stamp: StampOptions = {},
 ): Op<CharacterUpsertPayload> {
   const { characterId, ...rest } = payload;
   return createOp({
     ...base,
+    ...stamp,
     type: 'character.upsert',
     entity: { type: 'character', id: characterId },
     payload: rest,
@@ -191,9 +206,11 @@ export function characterUpsert(
 export function characterDelete(
   base: { deviceId: string; clock: HlcClock },
   payload: CharacterDeletePayload,
+  stamp: StampOptions = {},
 ): Op<CharacterDeletePayload> {
   return createOp({
     ...base,
+    ...stamp,
     type: 'character.delete',
     entity: { type: 'character', id: payload.characterId },
     payload,
@@ -203,17 +220,40 @@ export function characterDelete(
 export function sessionCreate(
   base: { deviceId: string; clock: HlcClock },
   payload: SessionCreatePayload & { sessionId: string },
+  stamp: StampOptions = {},
 ): Op<SessionCreatePayload> {
   const { sessionId, ...rest } = payload;
-  return createOp({ ...base, type: 'session.create', entity: { type: 'session', id: sessionId }, payload: rest });
+  return createOp({
+    ...base,
+    ...stamp,
+    type: 'session.create',
+    entity: { type: 'session', id: sessionId },
+    payload: rest,
+  });
+}
+
+export function sessionDelete(
+  base: { deviceId: string; clock: HlcClock },
+  payload: SessionDeletePayload,
+  stamp: StampOptions = {},
+): Op<SessionDeletePayload> {
+  return createOp({
+    ...base,
+    ...stamp,
+    type: 'session.delete',
+    entity: { type: 'session', id: payload.sessionId },
+    payload,
+  });
 }
 
 export function messageAppend(
   base: { deviceId: string; clock: HlcClock },
   payload: MessageAppendPayload,
+  stamp: StampOptions = {},
 ): Op<MessageAppendPayload> {
   return createOp({
     ...base,
+    ...stamp,
     type: 'message.append',
     entity: { type: 'message', id: payload.messageId },
     payload,

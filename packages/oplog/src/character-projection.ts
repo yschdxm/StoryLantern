@@ -34,6 +34,8 @@ export function applyCharacterUpsert(state: MaterializedState, op: Op): void {
     scenario: payload.scenario,
     firstMessage: payload.firstMessage,
     exampleDialogue: payload.exampleDialogue,
+    // 复活墓碑时保留最初的创建时间；新角色则用这次写入的时间
+    createdHlc: existing === undefined ? cloneHlc(op.hlc) : cloneHlc(existing.createdHlc),
     updatedHlc: cloneHlc(op.hlc),
     opId: op.opId,
   };
@@ -53,6 +55,7 @@ export function applyCharacterDelete(state: MaterializedState, op: Op): void {
       scenario: '',
       firstMessage: '',
       exampleDialogue: '',
+      createdHlc: cloneHlc(op.hlc),
       updatedHlc: cloneHlc(op.hlc),
       opId: op.opId,
       deleted: { hlc: cloneHlc(op.hlc), opId: op.opId },

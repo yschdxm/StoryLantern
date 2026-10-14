@@ -38,8 +38,14 @@ export interface SessionRecord {
   id: string;
   title: string;
   titleHlc: Hlc;
+  /** 标题写入的 opId：HLC 相同时用它决定谁赢（与角色卡同一套规则）。 */
+  titleOpId: string;
+  /** 会话创建时间（第一次 create 的 HLC），列表显示"创建于"用。 */
+  createdHlc: Hlc;
   characterId?: string;
   forkedFrom?: string;
+  /** 墓碑：与标题写入共用同一条时间线（见角色卡的同款说明）。 */
+  deleted?: { hlc: Hlc; opId: string };
 }
 
 /**
@@ -54,6 +60,8 @@ export interface CharacterRecord {
   scenario: string;
   firstMessage: string;
   exampleDialogue: string;
+  /** 第一次写入的时间：列表里"创建于"用，更新时不变。 */
+  createdHlc: Hlc;
   updatedHlc: Hlc;
   opId: string;
   /**

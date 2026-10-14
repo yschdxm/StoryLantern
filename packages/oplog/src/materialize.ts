@@ -1,6 +1,7 @@
 import { compareOpOrder, type Hlc } from './hlc.ts';
 import { freezeSnapshot } from './freeze.ts';
 import { applyCharacterDelete, applyCharacterUpsert, listCharacters } from './character-projection.ts';
+import { applySessionDelete, applySessionUpsert, liveSessions } from './session-projection.ts';
 import { cloneHlc, emptyState, laterThan } from './materialize-support.ts';
 import type { MessageAuthor, Op } from './op.ts';
 import type { SessionSnapshot } from './snapshot.ts';
@@ -106,6 +107,11 @@ export class Materializer {
   /** 角色列表：按最后更新时间倒序（界面列表的顺序），墓碑不出现在结果里。 */
   characters(): CharacterRecord[] {
     return listCharacters(this.#state);
+  }
+
+  /** 未被删除的会话（顺序由上层按"最近活跃"决定）。 */
+  sessions(): SessionRecord[] {
+    return liveSessions(this.#state);
   }
 
   /** 会话内的消息顺序：按 append 的 HLC 排序派生，因此与到达顺序无关。 */  orderOf(sessionId: string): MessageRecord[] {
@@ -228,6 +234,8 @@ export class Materializer {
         return this.#characterDelete(op);
       case 'session.create':
         return this.#sessionCreate(op);
+      case 'session.delete':
+        return this.#sessionDelete(op);
       case 'message.append':
         return this.#messageAppend(op);
       case 'message.edit':
@@ -262,20 +270,12 @@ export class Materializer {
   }
 
   #sessionCreate(op: Op): ApplyResult {
-    const payload = op.payload as { title: string; characterId?: string; forkedFrom?: string };
-    const existing = this.#state.sessions[op.entity.id];
-    if (!existing) {
-      const record: SessionRecord = { id: op.entity.id, title: payload.title, titleHlc: cloneHlc(op.hlc) };
-      if (payload.characterId !== undefined) record.characterId = payload.characterId;
-      if (payload.forkedFrom !== undefined) record.forkedFrom = payload.forkedFrom;
-      this.#state.sessions[op.entity.id] = record;
-      return 'applied';
-    }
-    if (laterThan(op.hlc, existing.titleHlc, op.opId, undefined)) {
-      existing.title = payload.title;
-      existing.titleHlc = cloneHlc(op.hlc);
-      if (payload.characterId !== undefined) existing.characterId = payload.characterId;
-    }
+    applySessionUpsert(this.#state, op);
+    return 'applied';
+  }
+
+  #sessionDelete(op: Op): ApplyResult {
+    applySessionDelete(this.#state, op);
     return 'applied';
   }
 

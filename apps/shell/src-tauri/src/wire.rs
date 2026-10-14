@@ -97,6 +97,8 @@ impl StreamOut {
 
 type CallHandler = fn(&Store, &[Value]) -> Result<Value, WireErrorPayload>;
 type StreamHandler = fn(&StreamOut, &Store, &[Value], &AtomicBool) -> Result<(), WireErrorPayload>;
+/** 需要整个宿主状态的方法（op 日志 / 投影缓存 / 旧表导出），见 `wire-ops.rs`。 */
+pub type StateCallHandler = fn(&WireState, &[Value]) -> Result<Value, WireErrorPayload>;
 
 pub struct MethodDef {
     pub name: &'static str,
@@ -112,7 +114,7 @@ pub struct ServiceDef {
     pub methods: &'static [MethodDef],
 }
 
-fn text_arg(args: &[Value], index: usize) -> String {
+pub(crate) fn text_arg(args: &[Value], index: usize) -> String {
     args.get(index).and_then(Value::as_str).unwrap_or_default().to_string()
 }
 
@@ -130,7 +132,7 @@ fn to_value<T: Serialize>(value: T, what: &str) -> Result<Value, WireErrorPayloa
     serde_json::to_value(value).map_err(|error| WireErrorPayload::new("encode-failed", format!("{what}序列化失败：{error}")))
 }
 
-fn store_error(message: String) -> WireErrorPayload {
+pub(crate) fn store_error(message: String) -> WireErrorPayload {
     WireErrorPayload::new("store-error", message)
 }
 
@@ -375,17 +377,36 @@ fn find_method(service: &'static ServiceDef, name: &str) -> Result<&'static Meth
 
 pub struct WireState {
     store: Store,
+    ops: Mutex<crate::oplog_store::OpStore>,
     streams: Mutex<HashMap<String, Arc<AtomicBool>>>,
     next_stream: AtomicU64,
 }
 
 impl WireState {
-    pub fn new(store: Store) -> Self {
+    pub fn new(store: Store, ops: crate::oplog_store::OpStore) -> Self {
         Self {
             store,
+            ops: Mutex::new(ops),
             streams: Mutex::new(HashMap::new()),
             next_stream: AtomicU64::new(1),
         }
+    }
+
+    /// op 日志与投影缓存：都是"哑存储"，语义在 TS 侧。
+    pub(crate) fn with_ops<T>(
+        &self,
+        action: impl FnOnce(&mut crate::oplog_store::OpStore) -> Result<T, String>,
+    ) -> Result<T, WireErrorPayload> {
+        let mut guard = self
+            .ops
+            .lock()
+            .map_err(|_| WireErrorPayload::new("lock-poisoned", "op 存储锁已损坏"))?;
+        action(&mut guard).map_err(store_error)
+    }
+
+    /// 旧表（M1 之前的直写表）——只给迁移用。
+    pub(crate) fn store(&self) -> &Store {
+        &self.store
     }
 
     fn allocate_stream(&self) -> (String, Arc<AtomicBool>) {
@@ -416,7 +437,9 @@ impl WireState {
 
 #[tauri::command]
 pub fn wire_manifest() -> Value {
-    let services: Vec<Value> = SERVICES
+    let describe = |name: &str, description: &str, methods: Vec<Value>| json!({ "name": name, "description": description, "methods": methods });
+
+    let mut services: Vec<Value> = SERVICES
         .iter()
         .map(|service| {
             let methods: Vec<Value> = service
@@ -424,9 +447,20 @@ pub fn wire_manifest() -> Value {
                 .iter()
                 .map(|method| json!({ "name": method.name, "kind": method.kind, "description": method.description }))
                 .collect();
-            json!({ "name": service.name, "description": service.description, "methods": methods })
+            describe(service.name, service.description, methods)
         })
         .collect();
+
+    // op 日志 / 投影缓存 / 旧表导出（需要整个宿主状态的那一类方法）
+    for service in crate::wire_ops::STATE_SERVICES {
+        let methods: Vec<Value> = service
+            .methods
+            .iter()
+            .map(|method| json!({ "name": method.name, "kind": "call", "description": method.description }))
+            .collect();
+        services.push(describe(service.name, service.description, methods));
+    }
+
     json!({ "services": services })
 }
 
@@ -437,6 +471,16 @@ pub fn wire_invoke(
     args: Vec<Value>,
     state: tauri::State<'_, WireState>,
 ) -> Result<Value, WireErrorPayload> {
+    // 先看"需要整个宿主状态"的那类方法（op 日志 / 投影缓存 / 迁移导出）
+    if let Some(service_def) = crate::wire_ops::STATE_SERVICES.iter().find(|item| item.name == service) {
+        let method_def = service_def
+            .methods
+            .iter()
+            .find(|item| item.name == method)
+            .ok_or_else(|| WireErrorPayload::new("unknown-method", format!("Service '{service}' 没有方法 '{method}'")))?;
+        return (method_def.call)(&state, &args);
+    }
+
     let service_def = find_service(&service)?;
     let method_def = find_method(service_def, &method)?;
     if method_def.kind != "call" {

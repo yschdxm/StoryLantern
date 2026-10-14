@@ -1,16 +1,18 @@
 //! Story Lantern 的原生壳（Tauri v2）。
 //!
-//! 职责边界（对应 ADR-0005"Rust 只做平台层"）：
-//!  - 这里**没有**产品逻辑、没有 op-log、没有提示词装配——那些都在 TS 的插件里；
-//!  - 这里只做"宿主能做什么"：把平台能力（私有数据目录、SQLite、事件通道）暴露成
-//!    `wire` 服务（`wire.rs`），界面通过 `packages/wire` 的 Tauri 承载调用它们。
-//!
-//! 移动端与桌面共用同一份代码：`run()` 被 main.rs 与 mobile_entry_point 共用。
+//! 职责边界（对应 ADR-0005"Rust 只做平台层"，M1 后进一步收窄）：
+//!  - 这里**没有**产品语义：角色/会话/消息的规则全在 TS 的 op-log 与插件里；
+//!  - 宿主只提供四件事：**op 追加日志**（唯一事实源）、**投影缓存（kv）**、
+//!    **设备配置（settings，含模型密钥）**、**模型调用**（Rust 侧发请求，密钥不出宿主）；
+//!  - 都通过 `wire` 服务暴露给界面。
 
 mod chat;
+mod oplog_store;
 mod store;
 mod wire;
+mod wire_ops;
 
+use oplog_store::OpStore;
 use store::Store;
 use tauri::Manager;
 use wire::WireState;
@@ -25,9 +27,13 @@ pub fn run() {
                 .path()
                 .app_data_dir()
                 .map_err(|error| format!("解析应用数据目录失败：{error}"))?;
+            // 保持原文件名：设备上已有数据就在这个库里，迁移要靠它验证。
+            // （将来删掉旧表时再改名，并显式搬一次文件。）
             let database = directory.join("storylantern-spike.db");
             let store = Store::open(&database).map_err(|error| format!("初始化 SQLite 失败：{error}"))?;
-            app.manage(WireState::new(store));
+            // op 日志与投影缓存共用同一个库文件（同一个连接池的两个句柄，WAL 下安全）
+            let ops = OpStore::open(&database).map_err(|error| format!("初始化 op 日志失败：{error}"))?;
+            app.manage(WireState::new(store, ops));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

@@ -38,6 +38,7 @@ export {
   OpCodecError,
   revisionSelect,
   sessionCreate,
+  sessionDelete,
   settingSet,
   type CandidateAppendPayload,
   type CandidateSelectPayload,
@@ -52,7 +53,9 @@ export {
   type OpType,
   type RevisionSelectPayload,
   type SessionCreatePayload,
+  type SessionDeletePayload,
   type SettingSetPayload,
+  type StampOptions,
 } from './op.ts';
 export {
   Materializer,
