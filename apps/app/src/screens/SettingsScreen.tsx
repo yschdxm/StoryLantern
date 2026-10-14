@@ -267,17 +267,6 @@ export function SettingsScreen({ store, router, host, chat, ops, sync, plugins, 
               />
             </Field>
             {folderRoot !== '' && <p className="muted">{t('settings.sync.folder.root', { path: folderRoot })}</p>}
-            {/* 设备名单与回收：都只在配了同步之后有意义 */}
-            {sync !== undefined && (
-  <SyncDevices
-    sync={sync}
-    safPick={sync.safPick}
-    safSync={{
-      value: value(SETTING_KEYS.syncFolderSaf) === 'on',
-      onChange: (next) => saveNow(SETTING_KEYS.syncFolderSaf, next ? 'on' : 'off'),
-    }}
-  />
-)}
           </>
         )}
         {(value(SETTING_KEYS.syncKind) || 'off') !== 'off' && (
@@ -292,6 +281,18 @@ export function SettingsScreen({ store, router, host, chat, ops, sync, plugins, 
               />
             </Field>
             <p className="muted">{t('settings.sync.note')}</p>
+            {/* 设备名单 / 吊销 / 永久禁用 / 回收 / 恢复密钥：**只要配了同步就该出现**。
+                以前它被放在"本地文件夹"分支里，于是用 WebDAV 的人根本看不到设备管理（真机踩到）。 */}
+            {sync !== undefined && (
+              <SyncDevices
+                sync={sync}
+                safPick={sync.safPick}
+                safSync={{
+                  value: value(SETTING_KEYS.syncFolderSaf) === 'on',
+                  onChange: (next) => saveNow(SETTING_KEYS.syncFolderSaf, next ? 'on' : 'off'),
+                }}
+              />
+            )}
             <div className="row">
               <Button
                 disabled={
