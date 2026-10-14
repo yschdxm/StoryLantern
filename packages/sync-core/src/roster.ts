@@ -12,6 +12,17 @@ export interface DeviceRecord {
   name?: string;
   addedAt: number;
   revokedAt?: number;
+  /**
+   * **永久禁用（黑名单）**的时间。
+   *
+   * 与 `revokedAt` 的区别（已定的设计）：
+   *  - `revokedAt`＝临时踢出：从活跃名单里划掉；它下次**输密码还能重新连进来**；
+   *  - `bannedAt`＝永久禁用：**拒绝它的签名**，加入请求也不认——它知道门码也没用。
+   *
+   * 要它"连新内容也读不到"，两者都要配合**换代**（新数据钥匙只包给留下的设备）；
+   * 已经在它手里的旧内容收不回，这条写进文档，不假装能做到。
+   */
+  bannedAt?: number;
 }
 
 export class DeviceRosterList {
@@ -41,7 +52,38 @@ export class DeviceRosterList {
   }
 
   active(): DeviceRecord[] {
-    return this.list().filter((record) => record.revokedAt === undefined);
+    // 被永久禁用的不算活跃：GC"所有活跃设备都已并入"的判定不能把它算进去
+    return this.list().filter((record) => record.revokedAt === undefined && record.bannedAt === undefined);
+  }
+
+  /**
+   * 永久禁用（黑名单）。**不能禁用本机自己**：否则下次同步会把自己排除在外。
+   *
+   * 返回是否真的写进去了（幂等：已经禁过就返回 false）。
+   */
+  ban(deviceId: string, at: number): boolean {
+    const record = this.#devices.get(deviceId);
+    if (!record || record.bannedAt !== undefined) return false;
+    record.bannedAt = at;
+    return true;
+  }
+
+  unban(deviceId: string): boolean {
+    const record = this.#devices.get(deviceId);
+    if (!record || record.bannedAt === undefined) return false;
+    delete record.bannedAt;
+    return true;
+  }
+
+  isBanned(deviceId: string): boolean {
+    return this.#devices.get(deviceId)?.bannedAt !== undefined;
+  }
+
+  /** 黑名单（永久禁用的设备 id）：加入请求校验要用它。 */
+  bannedIds(): string[] {
+    return this.list()
+      .filter((record) => record.bannedAt !== undefined)
+      .map((record) => record.deviceId);
   }
 
   activeIds(): string[] {

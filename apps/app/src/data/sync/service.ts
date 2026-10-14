@@ -54,6 +54,13 @@ export interface SyncService {
   devices(): Promise<SyncDevice[]>;
   /** 吊销设备：它离线期间的新数据将不再保留。本机不能被吊销。 */
   revoke(deviceId: string): Promise<boolean>;
+  /**
+   * **永久禁用（黑名单）**：拒绝它的签名、不认它的加入请求。
+   *
+   * 注意这条**单独做不到"读不到新内容"**——要配合换代（新数据钥匙只包给留下的设备）才成立；
+   * 已经在它手里的旧内容收不回。这两条都写在界面上。
+   */
+  ban(deviceId: string): Promise<boolean>;
   /** 回收分析/执行；默认只分析（`dryRun = true`）。 */
   collect(dryRun?: boolean): Promise<{ candidates: string[]; moved: string[]; reasons: string[] }>;
 }
@@ -328,6 +335,14 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
       const changed = roster.revoke(deviceId, now());
       if (changed) await saveRoster(options.device, roster);
       return changed;
+    },
+    /** 永久禁用：写进黑名单（本机不能被禁用，见 DeviceRosterList.ban）。 */
+    async ban(deviceId: string): Promise<boolean> {
+      const { roster } = await prepare();
+      if (deviceId === options.deviceId) return false;
+      if (!roster.ban(deviceId, now())) return false;
+      await saveRoster(options.device, roster);
+      return true;
     },
 
     async collect(dryRun = true) {

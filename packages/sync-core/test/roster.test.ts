@@ -88,3 +88,34 @@ test('名单可落盘并恢复（含退役状态）；没有公钥的设备允�
   // 缺 deviceId 也不行
   assert.throws(() => parseRoster(JSON.stringify({ v: 1, devices: [{ publicKey: 'x', addedAt: 0 }] })));
 });
+
+test('黑名单：永久禁用的设备不算活跃，可解除，且重复禁用是幂等的', () => {
+  const roster = new DeviceRosterList([
+    { deviceId: 'a', publicKey: 'pa', addedAt: 1 },
+    { deviceId: 'b', publicKey: 'pb', addedAt: 1 },
+  ]);
+
+  assert.deepEqual(roster.activeIds().sort(), ['a', 'b']);
+  assert.equal(roster.ban('b', 100), true);
+  assert.deepEqual(roster.activeIds(), ['a'], '被永久禁用的不再活跃（GC 判定也不能算它）');
+  assert.equal(roster.isBanned('b'), true);
+  assert.deepEqual(roster.bannedIds(), ['b']);
+  assert.equal(roster.ban('b', 200), false, '重复禁用了要返回 false（幂等）');
+  assert.equal(roster.ban('nobody', 200), false, '不在名单里的设备不能禁');
+
+  assert.equal(roster.unban('b'), true);
+  assert.equal(roster.isBanned('b'), false);
+  assert.deepEqual(roster.activeIds().sort(), ['a', 'b']);
+});
+
+test('黑名单：临时吊销（revokedAt）与永久禁用（bannedAt）是两件事，可以并存', () => {
+  const roster = new DeviceRosterList([
+    { deviceId: 'a', publicKey: 'pa', addedAt: 1 },
+    { deviceId: 'b', publicKey: 'pb', addedAt: 1 },
+  ]);
+  roster.revoke('b', 50);
+  roster.ban('b', 60);
+  const record = roster.get('b');
+  assert.equal(record?.revokedAt, 50);
+  assert.equal(record?.bannedAt, 60);
+});

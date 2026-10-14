@@ -76,12 +76,13 @@ export function mergeRoster(
 export function describeDevice(
   record: DeviceRecord,
   selfId: string,
-): { deviceId: string; name: string; self: boolean; revoked: boolean; addedAt: number; publicKey: string } {
+): { deviceId: string; name: string; self: boolean; revoked: boolean; banned: boolean; addedAt: number; publicKey: string } {
   return {
     deviceId: record.deviceId,
     name: record.name ?? (record.deviceId === selfId ? '本机' : `设备 ${record.deviceId.slice(-4)}`),
     self: record.deviceId === selfId,
     revoked: record.revokedAt !== undefined,
+    banned: record.bannedAt !== undefined,
     addedAt: record.addedAt,
     publicKey: record.publicKey,
   };

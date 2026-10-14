@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { describeDevice, loadRoster, mergeRoster, saveRoster } from '../src/data/sync/roster-store.ts';
 import { createMemoryKeyValue } from '../src/data/local-repository.ts';
+import { DeviceRosterList } from '../../../packages/sync-core/src/index.ts';
 import type { DeviceStore } from '../src/data/op-ports.ts';
 
 /**
@@ -80,4 +81,21 @@ test('名单：设备显示名能用 id 后缀兜底，不暴露完整长 id 之
   const described = describeDevice({ deviceId: '01JABCDEFGH', publicKey: '', addedAt: 1 }, 'me');
   assert.equal(described.name, '设备 EFGH');
   assert.equal(described.revoked, false);
+});
+
+test('黑名单：合并远端发现时保留，本机不会被自己禁掉', () => {
+  const local = new DeviceRosterList([
+    { deviceId: 'self', publicKey: 'ps', addedAt: 1 },
+    { deviceId: 'gone', publicKey: 'pg', addedAt: 2 },
+  ]);
+  local.ban('gone', 99);
+
+  const merged = mergeRoster(local, [{ deviceId: "gone" }], { selfId: "self", now: 1000 });
+  assert.equal(merged.roster.isBanned('gone'), true, '又在远端看到它也不能复活');
+  assert.equal(merged.roster.get('gone')?.bannedAt, 99);
+
+  // 本机即使被写进黑名单，合并时也会被恢复（否则下次同步会把自己排除在外）
+  local.ban('self', 100);
+  const again = mergeRoster(local, [], { selfId: 'self', now: 2000 });
+  assert.equal(again.roster.isBanned('self'), false, '本机不能被禁');
 });

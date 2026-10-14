@@ -50,6 +50,8 @@ export interface SyncAdmin {
   devices(): Promise<SyncDevice[]>;
   /** 吊销某台设备：它离线期间的新数据将不再被保留（界面必须先警告）。 */
   revoke(deviceId: string): Promise<boolean>;
+  /** 永久禁用（黑名单）：拒绝它的签名；要连读也断还得换代。 */
+  ban(deviceId: string): Promise<boolean>;
   /**
    * 回收分析（默认只分析、不动手）。
    *
@@ -67,6 +69,8 @@ export interface SyncDevice {
   self: boolean;
   /** 是否已被吊销。 */
   revoked: boolean;
+  /** 永久禁用（黑名单）：知道口令也不许再进来；配合换代才能连读也断掉。 */
+  banned: boolean;
   /** 加入时间（毫秒）。 */
   addedAt: number;
   /** 本机签名公钥（十六进制）；空串 = 还没公布（老版本或弱模式）。 */

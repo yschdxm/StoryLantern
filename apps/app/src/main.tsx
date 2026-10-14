@@ -223,6 +223,10 @@ function Root(): ReturnType<typeof AppShell> {
             const built = await buildSyncService(syncInput(await readSyncConfig(store.getState().settings, ports.device)));
             return built.service.revoke(deviceId);
           },
+          ban: async (deviceId: string) => {
+            const built = await buildSyncService(syncInput(await readSyncConfig(store.getState().settings, ports.device)));
+            return built.service.ban(deviceId);
+          },
           collect: async (dryRun: boolean) => {
             const built = await buildSyncService(syncInput(await readSyncConfig(store.getState().settings, ports.device)));
             return built.service.collect(dryRun);
