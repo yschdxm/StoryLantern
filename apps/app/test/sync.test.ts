@@ -6,6 +6,7 @@ import { createMemoryKeyValue } from '../src/data/local-repository.ts';
 import { createSyncService, type SyncService, syncAvailable, type SyncStorePort } from '../src/data/sync/service.ts';
 import { deviceSyncStore } from '../src/data/sync/app-sync.ts';
 import { emptyState } from '../../../packages/sync-core/src/state.ts';
+import { KEYRING_FILE, parseKeyring } from '../../../packages/sync-core/src/keyring.ts';
 import type { SyncBackend, BackendEntry, ListResult, PutResult } from '../../../packages/sync-core/src/backend.ts';
 import type { LocalSyncState } from '../../../packages/sync-core/src/state.ts';
 
@@ -319,3 +320,30 @@ test('同步：两台设备互换签名公钥（各自名单里都能看到对�
   assert.equal(aliceInBob.publicKey.length > 0, true, "bob 应当收到 alice 的公钥");
   assert.notEqual(bobInAlice.publicKey, aliceInBob.publicKey, "两台设备的公钥必须不同");
 });
+
+/**
+ * "一人一把锁"的准备阶段：共享目录里应当出现 keyring，而且**每台设备都能打开自己那份**、
+ * 拿到**同一把**内容密钥。
+ *
+ * 现在还没有用它替换段加密（那一步要和读旧数据回退一起做），所以这条只钉钥匙的发布与打开。
+ */
+test('同步：发布 keyring，且每台设备都能打开同一把内容密钥', async () => {
+  const backend = createMemoryBackend();
+  const alice = await createDevice('alice', backend, 'shared-secret');
+  const bob = await createDevice('bob', backend, 'shared-secret');
+
+  await alice.repository.characters.save({ name: '星野' });
+  // 多跑几轮：双方要先互相看到对方的协商公钥，keyring 才会覆盖两台设备
+  await alice.sync();
+  await bob.sync();
+  await alice.sync();
+  await bob.sync();
+  await alice.sync();
+
+  const text = new TextDecoder().decode(await backend.get(KEYRING_FILE));
+  const keyring = parseKeyring(text);
+  assert.equal(keyring.entries.length >= 2, true, "keyring 应当覆盖两台设备");
+  const ids = keyring.entries.map((entry: { deviceId: string }) => entry.deviceId).sort();
+  assert.deepEqual(ids, ['alice', 'bob']);
+});
+

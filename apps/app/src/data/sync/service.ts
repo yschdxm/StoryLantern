@@ -13,6 +13,9 @@ import { createWebCryptoPorts, deriveSyncKeys, webCryptoAvailable } from './cryp
 import { detectKeyWrapSupport } from './envelope.ts';
 import { createDeviceSigner } from './signer.ts';
 import { createWebCryptoKeyWrap, loadOrCreateAgreementKeys } from './envelope.ts';
+import { createKeyring, openKeyring, parseKeyring, serializeKeyring, KEYRING_FILE, type Keyring } from '../../../../../packages/sync-core/src/keyring.ts';
+import type { CryptoPorts } from '../../../../../packages/oplog/src/index.ts';
+import { createPortsFromContentKey } from './crypto.ts';
 import { describeDevice, loadRoster, mergeRoster, saveRoster } from './roster-store.ts';
 
 /**
@@ -137,6 +140,56 @@ function learnPublicKeys(roster: DeviceRosterList, selfId: string, state: LocalS
   return changed;
 }
 
+/**
+ * 确保共享目录里有一份 keyring，而且**本机在里面**；返回用内容密钥造的加密端口。
+ *
+ * 为什么"我不在里面就换代"：别人建的第一份可能只包给了它自己（它还不知道有哪些设备）。
+ * 我读到那份之后，把已知的对端 + 我自己重新包一遍，发布成 epoch+1。
+ * 现在还没用内容密钥加密任何东西，所以换代没有数据代价；等加密切换后，
+ * 换代会配合"用旧钥匙读旧段"的回退，不会丢数据。
+ */
+async function ensureKeyring(
+  options: SyncServiceOptions,
+  state: LocalSyncState | undefined,
+  blindKey: Uint8Array,
+  agreement: { publicKey: string; privateKey: string } | undefined,
+): Promise<{ ports: CryptoPorts } | undefined> {
+  if (agreement === undefined) return undefined; // 环境不支持 X25519：不假装能用
+  const port = createWebCryptoKeyWrap();
+  const recipients = [
+    { deviceId: options.deviceId, publicKey: agreement.publicKey },
+    ...Object.entries(state?.peerAgreementKeys ?? {})
+      .filter(([deviceId, publicKey]) => deviceId !== options.deviceId && publicKey !== "")
+      .map(([deviceId, publicKey]) => ({ deviceId, publicKey })),
+  ];
+
+  let existing: Keyring | undefined;
+  try {
+    existing = parseKeyring(new TextDecoder().decode(await options.backend.get(KEYRING_FILE)));
+  } catch {
+    existing = undefined; // 还没有 / 读不到：按"要新建"处理
+  }
+
+  if (existing !== undefined) {
+    try {
+      const key = await openKeyring(port, existing, options.deviceId, agreement.privateKey, agreement.publicKey);
+      // 我在里面，而且它已经覆盖了我认识的所有设备：直接用
+      const known = new Set(existing.entries.map((entry) => entry.deviceId));
+      const missing = recipients.filter((recipient) => !known.has(recipient.deviceId));
+      if (missing.length === 0) {
+        return { ports: await createPortsFromContentKey(key, blindKey) };
+      }
+    } catch {
+      // 打不开（例如这份只包给了别的设备）：往下走，换代
+    }
+  }
+
+  const epoch = (existing?.epoch ?? 0) + 1;
+  const created = await createKeyring(port, recipients, epoch);
+  await options.backend.put(KEYRING_FILE, new TextEncoder().encode(serializeKeyring(created.keyring)));
+  return { ports: await createPortsFromContentKey(created.contentKey, blindKey) };
+}
+
 export async function createSyncService(options: SyncServiceOptions): Promise<SyncService> {
   const now = options.now ?? (() => Date.now());
   const keys = await deriveSyncKeys(options.secret);
@@ -197,10 +250,11 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
     };
     if (restored !== undefined) engineOptions.state = restored;
     // 协商密钥对（X25519）：收自己那份内容密钥要用它，管理方式与签名密钥一致
-    if (await detectKeyWrapSupport()) {
-      const agreement = await loadOrCreateAgreementKeys(createWebCryptoKeyWrap(), options.device);
-      engineOptions.agreementKey = agreement.publicKey;
-    }
+    const keyWrapSupported = await detectKeyWrapSupport();
+    const agreement = keyWrapSupported
+      ? await loadOrCreateAgreementKeys(createWebCryptoKeyWrap(), options.device)
+      : undefined;
+    if (agreement !== undefined) engineOptions.agreementKey = agreement.publicKey;
 
     if (signer.publicKeyHex !== '') {
       engineOptions.publicKey = signer.publicKeyHex;
@@ -210,6 +264,16 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
         await saveRoster(options.device, roster);
       }
     }
+    // "一人一把锁"：把内容密钥按名单里每台设备的公钥各包一份，发布到共享目录。
+    //
+    // 现在只**准备**钥匙（发布 + 打开），还没拿它替换段加密——那一步是格式变更，
+    // 要和"读旧数据回退"一起做（见 docs/M2-STATUS.md 的 ⑥ 后半）。
+    // 注意：这里**只准备钥匙**（发布 keyring 并打开自己那份），
+    // **不**把端口换成内容密钥——那一步会让已有旧段读不出来（段还是用口令派生的钥匙加的密）。
+    // 正确的切换要和"解密失败时用旧钥匙回退"一起做，见 docs/M2-STATUS.md 的 ⑥ 后半。
+    const keyring = await ensureKeyring(options, restored, keys.blindKey, agreement);
+    void keyring;
+
     if (onOps !== undefined) engineOptions.onOps = onOps;
     const engine = new SyncEngine(engineOptions);
 

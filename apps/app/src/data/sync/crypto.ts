@@ -42,6 +42,24 @@ export async function deriveSyncKeys(secret: string, salt = 'storylantern-sync-v
   return { cipher, blindKey: new Uint8Array(blindBits) };
 }
 
+/**
+ * 用**内容密钥**（"一人一把锁"里发下来的那把）造加密端口。
+ *
+ * 之所以只换 `cipher`、`blindKey` 还沿用口令派生的那把：
+ * blindKey 决定会话在远端目录里的**盲路径**，换掉等于所有会话路径重置（等于全量重传）。
+ */
+export async function createPortsFromContentKey(contentKey: Uint8Array, blindKey: Uint8Array): Promise<CryptoPorts> {
+  const subtle = subtleOf();
+  const cipher = await subtle.importKey(
+    'raw',
+    toSource(contentKey),
+    { name: 'AES-GCM' },
+    false,
+    ['encrypt', 'decrypt'],
+  );
+  return createWebCryptoPorts({ cipher, blindKey });
+}
+
 export function createWebCryptoPorts(keys: SyncKeyMaterial): CryptoPorts {
   const subtle = subtleOf();
 
