@@ -372,4 +372,7 @@ export const en: AppMessages = {
   'sync.signing.weak': 'Signing: weak (this WebView lacks Ed25519, so a shared group key is used). Outsiders cannot forge, but **members can impersonate each other**.',
   'sync.devices.fingerprint': 'fingerprint {{fp}}',
   'sync.devices.noKey': 'no public key yet (older build or weak mode)',
+  'settings.sync.saf.pick': 'Pick a folder with the system picker',
+  'settings.sync.saf.picked': 'Selected: {{name}}',
+  'settings.sync.saf.note': 'Note: this only picks and remembers the folder so far. Reading and writing still go through the path above; taking over I/O via SAF is the next step.',
 };

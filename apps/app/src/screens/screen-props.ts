@@ -32,6 +32,13 @@ export interface SyncAdmin {
   problem(): Promise<string | undefined>;
   /** 当前本地文件夹根目录（宿主解析出来的绝对路径）。 */
   folderRoot(): Promise<string>;
+  /**
+   * 用系统的目录选择器（Android SAF）挑一个文件夹。
+   *
+   * 只做到"选中并记住"：同步的读写还没走 SAF，所以返回的结果用于显示与后续接管，
+   * 界面必须写清这一点。没有宿主（浏览器）时返回 undefined。
+   */
+  safPick?: (() => Promise<{ uri: string; name: string } | { error: string }>) | undefined;
   /** 跑一次同步；`secret` 非空时先存进设备本地 kv。 */
   run(secret?: string): Promise<{ uploaded: number; downloaded: number; appliedOps: number; warnings: string[]; root?: string }>;
   /**

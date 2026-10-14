@@ -14,7 +14,7 @@ import { Banner, Button, ConfirmDialog, ListRow, Sheet, SheetItem } from '../ui/
  * 判定依据在 `sync-core/gc.ts`：名单内全部活跃设备都已并入 + 超过宽限期，
  * 而且只会回收**本机自己发布的段**（对端段没有可信的发布时间记录，保守跳过）。
  */
-export function SyncDevices({ sync }: { sync: SyncAdmin }): ReactNode {
+export function SyncDevices({ sync, safPick }: { sync: SyncAdmin; safPick?: SyncAdmin['safPick'] }): ReactNode {
   const t = useT();
   const [devices, setDevices] = useState<SyncDevice[] | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
@@ -26,6 +26,8 @@ export function SyncDevices({ sync }: { sync: SyncAdmin }): ReactNode {
   const [note, setNote] = useState<string | undefined>(undefined);
   /** 签名强度：老设备上 WebCrypto 没有 Ed25519，只能退到组内共享密钥（弱模式）。 */
   const [signing, setSigning] = useState<'ed25519' | 'hmac-sha256' | undefined>(undefined);
+  /** SAF 选择器结果：现在只做到"选中并记住"，界面必须说清。 */
+  const [safNote, setSafNote] = useState<string | undefined>(undefined);
 
   const reload = async (): Promise<void> => {
     try {
@@ -49,6 +51,29 @@ export function SyncDevices({ sync }: { sync: SyncAdmin }): ReactNode {
     <>
       {error !== undefined && <Banner tone="error">{error}</Banner>}
       {note !== undefined && <Banner tone="info">{note}</Banner>}
+
+      {safPick !== undefined && (
+        <>
+          <div className="row">
+            <Button
+              variant="ghost"
+              onClick={() => {
+                void safPick().then((result) => {
+                  if ('error' in result) {
+                    setSafNote(result.error);
+                    return;
+                  }
+                  setSafNote(t('settings.sync.saf.picked', { name: result.name === '' ? result.uri : result.name }));
+                });
+              }}
+            >
+              {t('settings.sync.saf.pick')}
+            </Button>
+          </div>
+          {safNote !== undefined && <p className="muted">{safNote}</p>}
+          <p className="muted">{t('settings.sync.saf.note')}</p>
+        </>
+      )}
 
       {signing !== undefined && (
         <p className={signing === 'ed25519' ? 'muted' : 'notice notice--warn'}>

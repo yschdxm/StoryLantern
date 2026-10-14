@@ -19,24 +19,35 @@ use store::Store;
 use tauri::Manager;
 use wire::WireState;
 
+/// SAF 插件句柄：注册后必须有人持有（丢了插件就悬空）。
+#[cfg(target_os = "android")]
+struct SafPluginHandle(std::sync::Mutex<Option<tauri::plugin::PluginHandle<tauri::Wry>>>);
+
+
+/// 系统目录选择器（SAF）插件。
+///
+/// 为什么必须在 Kotlin 侧：Rust 拿不到 `content://` 树。
+/// **注册在插件的 `setup` 钩子里**——`register_android_plugin` 是 `PluginApi` 的方法，
+/// 只有钩子里才拿得到它（放在 `tauri::Builder` 上会编译不过）。
+#[cfg(target_os = "android")]
+fn saf_plugin() -> tauri::plugin::TauriPlugin<tauri::Wry> {
+    tauri::plugin::Builder::<tauri::Wry, ()>::new("saf")
+        .setup(|app, api| {
+            let handle = api.register_android_plugin("app.storylantern", "SafPlugin")?;
+            app.manage(SafPluginHandle(std::sync::Mutex::new(Some(handle))));
+            Ok(())
+        })
+        .build()
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
-        .setup(|app| {
-            // TODO(⑧): 把 SAF 插件注册进来。
-            //
-            // 卡点（已定位，不是猜）：`tauri::plugin::Builder::register_android_plugin` 在
-            // `#[cfg(mobile)]` 的模块里，而这个 cfg 由 **Tauri CLI** 的构建路径设置。
-            // 我们手工的 `cargo build --target x86_64-linux-android` 路线拿不到它
-            // （试过 TAURI_ENV_PLATFORM=android 与 RUSTFLAGS=--cfg mobile 都不行——
-            //  后者对已编译的 tauri 依赖不生效）。
-            //
-            // 所以 ⑧ 的正解是回到 `tauri android build` 的构建路径，
-            // 或者把这个手工配方里缺的 cfg 打通；在此之前不放半截注册代码。
+    let builder = tauri::Builder::default();
+    #[cfg(target_os = "android")]
+    let builder = builder.plugin(saf_plugin());
 
-            // 数据库放在应用私有目录：卸载即清除，且不会被其它应用读到。
-            // 具体路径由平台决定（Android 是 /data/data/<pkg>/files），因此由 Tauri 解析。
+    builder
+        .setup(|app| {
             let directory = app
                 .path()
                 .app_data_dir()

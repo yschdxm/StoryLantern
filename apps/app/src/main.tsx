@@ -11,6 +11,7 @@ import { SETTING_KEYS } from './data/types.ts';
 import type { Repository } from './data/repository.ts';
 import type { OpLogRepository } from './data/op-repository.ts';
 import type { OpLogAdmin, SyncAdmin } from './screens/screen-props.ts';
+import { pickSafFolder } from './data/saf.ts';
 import { buildSyncService, describeSyncProblem, readSyncConfig, runSync, SYNC_SECRET_KEY, type FolderBackendProvider, type RunSyncInput, type SyncBackendFactory, type SyncConfig } from './data/sync/app-sync.ts';
 import { syncAvailable } from './data/sync/service.ts';
 import { createHostFetch } from './data/sync/host-fetch.ts';
@@ -153,6 +154,7 @@ function Root(): ReturnType<typeof AppShell> {
           folderAvailable: folderProvider !== undefined,
           hasSecret: hasSyncSecret,
           problem: async () => describeSyncProblem(await readSyncConfig(store.getState().settings, ports.device), syncAvailable()),
+          ...(bridge === undefined ? {} : { safPick: () => pickSafFolder(bridge) }),
           folderRoot: async () => {
             if (transport === undefined) return '';
             const result = await new WireClient(transport).call<{ path: string }>('files', 'root');

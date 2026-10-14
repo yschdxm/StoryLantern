@@ -268,7 +268,7 @@ export function SettingsScreen({ store, router, host, chat, ops, sync, plugins, 
             </Field>
             {folderRoot !== '' && <p className="muted">{t('settings.sync.folder.root', { path: folderRoot })}</p>}
             {/* 设备名单与回收：都只在配了同步之后有意义 */}
-            {sync !== undefined && <SyncDevices sync={sync} />}
+            {sync !== undefined && <SyncDevices sync={sync} safPick={sync.safPick} />}
           </>
         )}
         {(value(SETTING_KEYS.syncKind) || 'off') !== 'off' && (
