@@ -19,10 +19,22 @@ use store::Store;
 use tauri::Manager;
 use wire::WireState;
 
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
+            // TODO(⑧): 把 SAF 插件注册进来。
+            //
+            // 卡点（已定位，不是猜）：`tauri::plugin::Builder::register_android_plugin` 在
+            // `#[cfg(mobile)]` 的模块里，而这个 cfg 由 **Tauri CLI** 的构建路径设置。
+            // 我们手工的 `cargo build --target x86_64-linux-android` 路线拿不到它
+            // （试过 TAURI_ENV_PLATFORM=android 与 RUSTFLAGS=--cfg mobile 都不行——
+            //  后者对已编译的 tauri 依赖不生效）。
+            //
+            // 所以 ⑧ 的正解是回到 `tauri android build` 的构建路径，
+            // 或者把这个手工配方里缺的 cfg 打通；在此之前不放半截注册代码。
+
             // 数据库放在应用私有目录：卸载即清除，且不会被其它应用读到。
             // 具体路径由平台决定（Android 是 /data/data/<pkg>/files），因此由 Tauri 解析。
             let directory = app

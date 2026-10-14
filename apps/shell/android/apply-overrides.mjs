@@ -30,6 +30,10 @@ const files = [
     from: join(here, 'overrides/MainActivity.kt'),
     to: join(androidRoot, 'app/src/main/java/app/storylantern/MainActivity.kt'),
   },
+  {
+    from: join(here, 'overrides/SafPlugin.kt'),
+    to: join(androidRoot, 'app/src/main/java/app/storylantern/SafPlugin.kt'),
+  },
 ];
 
 let changed = 0;

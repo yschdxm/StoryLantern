@@ -54,7 +54,8 @@ class MainActivity : TauriActivity() {
     if (data.scheme == "storylantern-saf" && data.host == "pick") startTreePicker()
   }
 
-  private fun startTreePicker() {
+  /** 供 SafPlugin 调用（JS 侧 invoke('plugin:saf|pick')）。 */
+  fun startTreePicker() {
     if (pendingResult != null) return
     pendingResult = { uri -> if (uri != null) persistChoice(uri) }
     try {
