@@ -17,10 +17,12 @@ import {
 } from '../../../../../packages/sync-core/src/keyring.ts';
 import type { DeviceStore } from '../op-ports.ts';
 import {
+  signJoinWithRecovery,
   verifyRecoverySignature,
   type RecoveryFile,
   type RecoveryProofPort,
 } from '../../../../../packages/sync-core/src/recovery.ts';
+import { createWebCryptoRecoveryProof } from './recovery-key.ts';
 
 /**
  * 加入流程（"输密码进来"这条路）。
@@ -49,16 +51,28 @@ export interface PublishJoinInput {
   joinProof: JoinProofPort;
   /** 忘记口令时：用恢复私钥签一份恢复证明带在请求里（没有就走口令那条路）。 */
   recoveryProof?: string;
+  /** 或者直接给私钥，这里自己签（界面粘的就是私钥，少一步）。 */
+  recoveryPrivateKey?: string;
   now?: () => number;
 }
 
 /** 写（或更新）自己的加入请求。 */
 export async function publishJoinRequest(input: PublishJoinInput): Promise<void> {
+  // 粘了私钥就在这儿签：证明绑定设备与时间，搬运与重放都不行
+  const signed =
+    input.recoveryPrivateKey === undefined || input.recoveryPrivateKey === ""
+      ? undefined
+      : await signJoinWithRecovery(createWebCryptoRecoveryProof(), {
+          privateKey: input.recoveryPrivateKey,
+          deviceId: input.deviceId,
+          at: input.now?.() ?? Date.now(),
+        });
+  const proof = input.recoveryProof ?? signed;
   const request = await createJoinRequest(input.joinProof, {
     deviceId: input.deviceId,
     publicKey: input.publicKey,
     agreementKey: input.agreementKey,
-    ...(input.recoveryProof === undefined ? {} : { recoveryProof: input.recoveryProof }),
+    ...(proof === undefined ? {} : { recoveryProof: proof }),
     ...(input.now === undefined ? {} : { at: input.now() }),
   });
   await input.backend.put(joinPath(input.deviceId), new TextEncoder().encode(serializeJoinRequest(request)));

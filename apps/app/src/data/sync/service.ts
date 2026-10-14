@@ -21,20 +21,7 @@ import { publishRecoveryKey } from './recovery-publish.ts';
 import { acceptJoinRequests, publishJoinRequest } from './join-flow.ts';
 import { describeDevice, loadRoster, mergeRoster, saveRoster } from './roster-store.ts';
 
-/**
- * 同步服务：把 op 段推到"哑存储"，再从那儿拉回来。
- *
- * 设计取舍（都写在这里，免得日后有人以为漏了）：
- *  - **共享口令**：两台设备输入同一个同步口令，派生出相同的盲化密钥与加密密钥。
- *    哑存储只看到盲化路径与密文，既不知道会话是谁，也读不出内容。设备名单因此"自动发现"
- *    （能解开的就是自己人）；显式配对（公钥交换）是下一步。
- *  - **不做每设备签名**：AEAD 已保证"改不了、读不出"；签名额外给的是"归属"证明，
- *    等配对流程做好再补。
- *  - **关闭同步侧快照**（`snapshotThreshold: 0`）：那类快照给的是"状态"而不是 op，
- *    而本应用的读模型完全由 op 重建。冷启动加速另有本机快照（见 `op-snapshot.ts`）。
- *  - **设备名单本地持久化**：GC 需要"所有活跃设备都已并入"这个判据，哑存储给不出，
- *    只能在客户端维护；之前每次同步临时重建，导致吊销重启就忘。
- */
+/** 同步服务：把 op 段推到"哑存储"，再从那儿拉回来。 */
 
 export interface SyncStorePort {
   load(): Promise<{ state?: LocalSyncState; enqueuedSeq: number }>;
@@ -55,7 +42,8 @@ export interface SyncSummary {
 }
 
 export interface SyncService {
-  sync(): Promise<SyncSummary>;
+  /** 忘记口令时把恢复私钥传进来（只这一次调用用，不落盘）。 */
+  sync(recoveryPrivateKey?: string): Promise<SyncSummary>;
   /** 设备名单（本地持久化 + 远端发现合并后的结果）。 */
   devices(): Promise<SyncDevice[]>;
   /** 吊销设备：它离线期间的新数据将不再保留。本机不能被吊销。 */
@@ -157,6 +145,8 @@ function learnPublicKeys(roster: DeviceRosterList, selfId: string, state: LocalS
 
 export async function createSyncService(options: SyncServiceOptions): Promise<SyncService> {
   const now = options.now ?? (() => Date.now());
+  // 忘记口令时的一次性恢复私钥：只在本次 sync 调用里生效，不落盘
+  let pendingRecoveryKey: string | undefined;
   const keys = await deriveSyncKeys(options.secret);
   const ports = createWebCryptoPorts(keys);
 
@@ -284,6 +274,7 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
           agreementKey: agreement.publicKey,
           joinProof,
           now,
+          ...(pendingRecoveryKey === undefined ? {} : { recoveryPrivateKey: pendingRecoveryKey }),
         });
       }
     }
@@ -295,7 +286,8 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
   };
 
   return {
-    async sync(): Promise<SyncSummary> {
+    async sync(recoveryPrivateKey?: string): Promise<SyncSummary> {
+      pendingRecoveryKey = recoveryPrivateKey;
       let imported = 0;
       const prepared = await prepare(async (ops) => {
         // 拉到的 op 必须先落进本地日志，再应用到内存状态
