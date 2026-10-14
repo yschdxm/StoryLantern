@@ -59,9 +59,18 @@ function createMemorySyncStore(): SyncStorePort {
 }
 
 interface Device {
+  name: string;
   repository: OpLogRepository;
   sync: () => Promise<{ uploaded: number; downloaded: number; appliedOps: number }>;
 }
+
+/**
+ * 同一个文件夹（= 同一个共享目录）里的设备登记表。
+ *
+ * 按设计，新设备写 join 请求后需要一台**已授权设备**同步一轮来接纳它（把数据钥匙包给它）。
+ * 夹具自动补这一轮，让测试关注"数据是否真的同步过去"。
+ */
+const JOIN_PEERS = new WeakMap<FilePort, Device[]>();
 
 async function createDevice(name: string, files: FilePort, secret: string): Promise<Device> {
   const ports = createLocalOpPorts(createMemoryKeyValue());
@@ -75,13 +84,25 @@ async function createDevice(name: string, files: FilePort, secret: string): Prom
     store: createMemorySyncStore(),
     device: ports.device,
   });
-  return {
+  const device: Device = {
+    name,
     repository,
     sync: async () => {
-      const summary = await service.sync();
+      let summary = await service.sync();
+      if (summary.warnings.some((warning) => warning.includes('加入请求'))) {
+        for (const peer of JOIN_PEERS.get(files) ?? []) {
+          // 跳过自己：否则会递归（我等待接纳 → 又调我自己）
+          if (peer.name !== name) await peer.sync();
+        }
+        summary = await service.sync();
+      }
       return { uploaded: summary.uploaded, downloaded: summary.downloaded, appliedOps: summary.appliedOps };
     },
   };
+  const peers = JOIN_PEERS.get(files) ?? [];
+  peers.push(device);
+  JOIN_PEERS.set(files, peers);
+  return device;
 }
 
 test('文件夹同步：A 的数据经加密段落到文件夹，B 读得到（含消息与角色）', async () => {
