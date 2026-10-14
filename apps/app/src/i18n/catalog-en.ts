@@ -375,4 +375,5 @@ export const en: AppMessages = {
   'settings.sync.saf.pick': 'Pick a folder with the system picker',
   'settings.sync.saf.picked': 'Selected: {{name}}',
   'settings.sync.saf.note': 'Note: this only picks and remembers the folder so far. Reading and writing still go through the path above; taking over I/O via SAF is the next step.',
+  'settings.sync.saf.unavailable': 'System picker unavailable: no host bridge (Android shell only).',
 };

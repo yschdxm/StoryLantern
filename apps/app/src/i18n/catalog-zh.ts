@@ -386,4 +386,5 @@ export const zhCN: AppMessages = {
   'settings.sync.saf.pick': '用系统选择器选文件夹',
   'settings.sync.saf.picked': '已选择：{{name}}',
   'settings.sync.saf.note': '注意：现在只做到选中并记住。同步的读写还没走系统选择器（那一步要用 SAF 的文件接口接管），所以上面的路径框仍是实际生效的位置。',
+  'settings.sync.saf.unavailable': '系统选择器不可用：没有拿到宿主桥（这一步只在 Android 壳里有）。',
 };

@@ -52,12 +52,17 @@ export function SyncDevices({ sync, safPick }: { sync: SyncAdmin; safPick?: Sync
       {error !== undefined && <Banner tone="error">{error}</Banner>}
       {note !== undefined && <Banner tone="info">{note}</Banner>}
 
-      {safPick !== undefined && (
+      {/* 系统目录选择器：宿主插件缺失时也要说清楚，而不是悄悄不显示 */}
+      {true && (
         <>
           <div className="row">
             <Button
               variant="ghost"
               onClick={() => {
+                if (safPick === undefined) {
+                  setSafNote(t('settings.sync.saf.unavailable'));
+                  return;
+                }
                 void safPick().then((result) => {
                   if ('error' in result) {
                     setSafNote(result.error);
