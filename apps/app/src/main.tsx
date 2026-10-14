@@ -2,8 +2,15 @@ import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App.tsx';
 import { createAppRuntime, type AppRuntime } from './composition.ts';
+import { createHostClient } from './host-panel.ts';
 import { buildViewModel, type ChatMessage } from './view-model.ts';
 import './styles.css';
+
+/**
+ * 宿主客户端在模块加载时确定一次：在 Tauri 里探测到 `window.__TAURI__` 就走 IPC，
+ * 在浏览器里则是"不可用"的降级实现（面板会说明这一点，而不是假装有宿主）。
+ */
+const host = createHostClient();
 
 /**
  * 演示数据：刻意写成长句，好让默认预算（用户 patch 里调成 256）真的裁掉历史块，
@@ -45,6 +52,7 @@ function Root() {
     <App
       key={revision}
       viewModel={viewModel}
+      host={host}
       onChangeLocale={(next) => {
         runtime.locale.setLocale(next);
         setRevision((value) => value + 1);

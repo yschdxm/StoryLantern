@@ -1,8 +1,12 @@
+import { HostPanel } from './HostPanel.tsx';
+import type { HostClient } from './host-panel.ts';
 import type { AppViewModel } from './view-model.ts';
 
 export interface AppProps {
   viewModel: AppViewModel;
   onChangeLocale(locale: string): void;
+  /** 宿主客户端由外部注入：浏览器里它是"不可用"的降级实现，Tauri 里走 IPC。 */
+  host: HostClient;
 }
 
 /**
@@ -11,7 +15,7 @@ export interface AppProps {
  * M0 的目标不是好看，而是**把可解释性摆到台面上**：每个上下文块是否纳入、占多少 token、
  * 为什么被裁掉，以及整份文案随语言切换。真正的设计系统在 M3 落地。
  */
-export function App({ viewModel, onChangeLocale }: AppProps) {
+export function App({ viewModel, onChangeLocale, host }: AppProps) {
   return (
     <main className="app">
       <header className="app__header">
@@ -77,6 +81,8 @@ export function App({ viewModel, onChangeLocale }: AppProps) {
             ))}
           </ul>
         </section>
+
+        <HostPanel client={host} />
       </div>
     </main>
   );

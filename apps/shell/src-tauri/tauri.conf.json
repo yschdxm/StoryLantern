@@ -10,6 +10,7 @@
     "beforeBuildCommand": "node build-frontend.mjs"
   },
   "app": {
+    "withGlobalTauri": true,
     "windows": [
       {
         "title": "Story Lantern",

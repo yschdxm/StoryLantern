@@ -77,32 +77,71 @@ $zipalign = "$env:ANDROID_HOME\build-tools\<最新版本>\zipalign.exe"
 
 ```powershell
 # 1) 模拟器：端口必须避开 Windows/Hyper-V 保留段（5554/5555 都在里面！），图形后端用 -gpu off
-#    （swiftshader 在本机会卡在 Vulkan 初始化）
+#    （swiftshader 在本机会卡在 Vulkan 初始化），内存给足（AVD 默认 2GB 会被 LOW_MEMORY 杀进程）
 & "$env:ANDROID_HOME\emulator\emulator.exe" -avd Pixel_9 -no-window -no-audio -no-boot-anim `
-    -no-snapshot -gpu off -port 6554 -no-metrics
+    -no-snapshot -gpu off -memory 4096 -port 6554 -no-metrics
 
 # 2) adb 连非默认端口
 adb connect 127.0.0.1:6555
 adb -s 127.0.0.1:6555 wait-for-device
 
-# 3) 安装 + 启动
-adb -s 127.0.0.1:6555 install -r app-x86_64-debug.apk
+# 3) 安装 + 启动（release 包已内嵌前端，不需要 dev server；debug 包见下面的 adb reverse）
+adb -s 127.0.0.1:6555 install -r storylantern-x86_64-release.apk
 adb -s 127.0.0.1:6555 shell am start -n app.storylantern/.MainActivity
 
-# 4) **debug 构建走 devUrl**（WebView 请求 http://127.0.0.1:15199/），
-#    而模拟器里的 127.0.0.1 是它自己 —— 必须把端口反向映射到宿主机：
-#    （宿主机先起 dev/preview：apps/app 里 `vite --port 15199`）
-adb -s 127.0.0.1:6555 reverse tcp:15199 tcp:15199
-
-# 5) 截图取证
+# 4) 截图取证
 adb -s 127.0.0.1:6555 shell screencap -p /sdcard/s.png; adb -s 127.0.0.1:6555 pull /sdcard/s.png shot.png
 ```
 
-实测结果（Android 17 / SDK 37 / x86_64 / 16KB 页 / WebView 145）：
-`Status: ok`、`Displayed app.storylantern/.MainActivity +801ms`、界面渲染出
-`7 PLUGINS ACTIVE` 与 `CONTEXT GRAPH`（截图见 `docs/assets/android-ui.png` 与 `android-promptgraph.png`）。
+> **debug 包**走 `devUrl`（WebView 请求 `http://127.0.0.1:15199/`），而模拟器里的 `127.0.0.1` 是它自己，
+> 必须把端口反向映射到宿主机：`adb -s 127.0.0.1:6555 reverse tcp:15199 tcp:15199`
+> （宿主机先起 `vite --port 15199`）。**release 包**把前端产物嵌进 `.so`，无需 dev server——
+> 验收与分发给用户都用 release 包。
 
-## 四个坑与应对（本机环境，不是项目缺陷）
+## 宿主侧对外提供什么（wire 服务表）
+
+`src-tauri/src/wire.rs` 里那张服务表就是"宿主能做什么"的唯一事实源，界面通过 `packages/wire` 调用：
+
+| Service | 方法 | 类型 | 说明 |
+|---|---|---|---|
+| `shell` | `info` | call | 产品名/版本/平台/架构 |
+| `shell` | `debugStats` | call | 流式发射统计（排障：没发出 vs 没送达） |
+| `shell` | `demoStream` | **stream** | 演示流：分片推送文本 + 取消 |
+| `store` | `probe` | call | SQLite：路径、journal_mode、page_size、版本、可写性 |
+| `store` | `listNotes` / `addNote` / `deleteNote` | call | 便签读写（探针表 `spike_notes`，跨重启持久化） |
+
+**流式两条通道**（行为一致，`packages/wire` 里都实现了）：
+
+1. **Channel（首选）**：JS 建 `Channel` 作为 `wire_stream_open` 的 `onEvent` 参数，Rust 侧
+   `channel.send({value}|{done}|{error})`。它是 invoke 的参数，**不经过事件系统的 ACL**。
+   注意 Rust 侧可选通道必须用 `tauri::ipc::JavaScriptChannelId`（`Channel` 只实现 `Serialize`，
+   `Option<Channel<_>>` 作为命令参数要不到 `Deserialize`）。
+2. **Event（回退）**：`listen('wire-chunk' | 'wire-end')`。需要
+   `src-tauri/capabilities/default.json` 授权（`core:event:allow-listen/unlisten`），否则报
+   `Command plugin:event|listen not allowed by ACL`。
+
+> 本机实测：补了 capability 之后事件路径**仍然收不到事件**（宿主发射统计显示成功 0 次，
+> 说明流根本没开起来、卡在 `listen`）。Channel 路径一次通过。因此 Channel 是默认路径，
+> 事件路径保留为回退。真实原因没有继续深挖——Channel 是 Tauri v2 官方推荐的 Rust→JS 流式路径。
+
+## 打签名 release APK
+
+release 构建类型**没有**签名配置，所以 Gradle 产出的是 `*-unsigned.apk`，需要手动对齐 + 签名：
+
+```powershell
+$bt = "$env:ANDROID_HOME\build-tools\<最新版本>"
+# 1) 16KB 对齐
+& $bt\zipalign.exe -P 16 -f 4 app\build\outputs\apk\x86_64\release\app-x86_64-release-unsigned.apk aligned.apk
+# 2) 签名（本仓库用开发用 keystore：.keystore/storylantern-dev.jks，口令 storylantern-dev）
+& $bt\apksigner.bat sign --ks ..\..\..\..\.keystore\storylantern-dev.jks --ks-pass pass:storylantern-dev `
+    --key-pass pass:storylantern-dev --ks-key-alias storylantern --out storylantern-x86_64-release.apk aligned.apk
+# 3) 校验（成功时静默，用退出码判断）
+& $bt\apksigner.bat verify --print-certs storylantern-x86_64-release.apk
+```
+
+`.keystore/` 已在 `.gitignore` 里；正式分发**必须换掉**这个开发密钥（见 `.keystore/README.md`）。
+
+## 八个坑与应对（本机/平台环境，不是项目缺陷）
 
 1. **符号链接被禁**：`tauri android build` 要把 `.so` 软链进 `jniLibs`，Windows 未开"开发者模式"时
    报 `Creation symbolic link is not allowed for this system`。两条路：开开发者模式（系统设置），
@@ -116,9 +155,6 @@ adb -s 127.0.0.1:6555 shell screencap -p /sdcard/s.png; adb -s 127.0.0.1:6555 pu
    因此构建加 `--no-configuration-cache`（或按上面的 `gradle.properties` 关闭）。
 4. **Gradle 插件还会自己调 CLI 编 Rust**：`:app:rustBuild*` 任务会执行 `node tauri android
    android-studio-script`。我们已经自己编好 `.so`，因此用 `-x` 排除该任务，让 Gradle 只做打包。
-
-### 另外两个容易误判成"权限问题"的坑
-
 5. **`EACCES` 通常是端口保留段，不是权限**：`vite preview`、模拟器 console/adb 端口如果落在
    Windows/Hyper-V 的动态保留段里，`listen` 会直接 `EACCES`（本机保留段含 5141–5240、
    5458–5557、5558–5657…）。查：`netsh interface ipv4 show excludedportrange protocol=tcp`；
@@ -127,16 +163,22 @@ adb -s 127.0.0.1:6555 shell screencap -p /sdcard/s.png; adb -s 127.0.0.1:6555 pu
 6. **16KB 页镜像要求原生库 16KB 对齐**：否则系统弹 "This app isn't 16 KB compatible" 并以兼容模式运行。
    需要 Rust 侧 `-C link-arg=-Wl,-z,max-page-size=16384`（`LOAD` 段对齐 `0x4000`）
    与 APK 内 `zipalign -P 16`（AGP 新版默认满足）。
+7. **`window.__TAURI__` 默认不存在**：Tauri v2 需要 `app.withGlobalTauri = true`。
+   没有它，界面会（诚实地）显示"浏览器（无宿主 IPC）"。
+8. **模拟器内存**：AVD 默认 2GB 时，应用与 WebView 会被 `LOW_MEMORY` 杀掉
+   （`adb shell dumpsys activity exit-info app.storylantern` 看 `reason=3`）。
+   用 `-memory 4096` 启动即稳定；不必改 AVD 配置。
 
 ## 已验证 / 未验证
 
 - **已验证（可复现）**：
-  - Rust 侧 aarch64 与 x86_64 交叉编译（strip 后 `.so` 分别 6.24 / 6.77 MB，`LOAD` 对齐 `0x4000`）；
-  - 双 ABI debug APK 打包（arm64 16.10 MB / x86_64 16.57 MB；内含对应 ABI 的 `.so`），
-    `aapt2 dump badging` 显示 `package=app.storylantern`、`versionName=0.0.1`、`label='Story Lantern'`、
-    `launchable-activity=app.storylantern.MainActivity`、`native-code=arm64-v8a`；
-  - **在 Android 17 模拟器上安装、启动、渲染出界面**（`7 PLUGINS ACTIVE` 由 bundle patch 组合而来，
-    `CONTEXT GRAPH` 显示每块的纳入/裁掉与理由）；
-  - `zipalign -c -P 16` 两个 APK 都通过。
-- **未验证**：SSE 流式与 SQLite 在设备上的专项验证；release 签名 APK（当前 debug 依赖
-  `adb reverse` 连 dev server；release 会把 `frontendDist` 打进包里，但需要签名配置）。
+  - Rust 侧 aarch64 与 x86_64 交叉编译（strip 后 `.so` 6–8 MB，`LOAD` 对齐 `0x4000`）；
+  - **双 ABI release APK**：arm64 9.45 MB / x86_64 9.96 MB，`apksigner verify` 退出码 0，
+    `zipalign -c -P 16` 通过；
+  - **在 Android 17（SDK 37 / x86_64 / 16KB 页 / 4GB 内存）模拟器上安装运行**：
+    界面（`7 PLUGINS ACTIVE` 由 bundle patch 组合）、`CONTEXT GRAPH`、
+    **宿主 SQLite**（`journal=wal`、`page_size=4096`、`sqlite=3.50.2`、可写、库在应用私有目录）、
+    **便签跨进程重启仍在**、
+    **Channel 流式 8 片全部到达**（宿主发射统计：成功 9 次 / 失败 0 次）。
+    截图：`docs/assets/android-ui.png`、`docs/assets/android-host-panel.png`。
+- **未验证**：真机（arm64 签名包已产出，等设备）；真实模型的 HTTP/SSE 客户端路径。

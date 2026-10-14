@@ -16,6 +16,8 @@ apps/shell/src-tauri/gen/
 .gradle-home/
 # 构建出来供安装的 APK（可随时重建）
 .apk-out/
+# 签名密钥：绝不入库（见 .keystore/README.md）
+.keystore/
 
 # fixtures generated on demand
 fixtures/chats/large.jsonl

@@ -18,4 +18,10 @@ export {
 } from './transport.ts';
 export { WireHost, type ExposeOptions, type WireHandler } from './host.ts';
 export { createMemoryPair, WireClient, type CallOptions, type MemoryPair, type MemoryPairOptions, type WireClientOptions } from './client.ts';
+export {
+  createTauriBridgeFromGlobal,
+  createTauriTransport,
+  type TauriBridge,
+  type TauriTransportOptions,
+} from './tauri.ts';
 export { createWireInspectProvider, type WireInspectProvider } from './inspect.ts';

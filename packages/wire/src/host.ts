@@ -119,6 +119,9 @@ export class WireHost {
     let produced: unknown;
     try {
       produced = call(...args, { signal });
+      // 把 async 函数误声明成流式是很常见的错误：它是"会 reject 的 Promise"，
+      // 如果不在这里 await，就会留下一个**未处理的 rejection**（能把整个进程搞崩）。
+      if (isThenable(produced)) produced = await produced;
     } catch (error) {
       throw wrap(error, service, method);
     }
@@ -153,4 +156,8 @@ function wrap(error: unknown, service: string, method: string): WireError {
     return new WireError(typeof code === 'string' ? code : 'handler-failed', error.message, { service, method });
   }
   return new WireError('handler-failed', String(error), { service, method });
+}
+
+function isThenable(value: unknown): value is Promise<unknown> {
+  return typeof value === 'object' && value !== null && typeof (value as { then?: unknown }).then === 'function';
 }
