@@ -1,4 +1,14 @@
-import { messageAppend, messageDelete, messageEdit, ulid, type HlcClock, type Materializer, type Op } from '../../../../packages/oplog/src/index.ts';
+import {
+  candidateAppend,
+  candidateSelect,
+  messageAppend,
+  messageDelete,
+  messageEdit,
+  ulid,
+  type HlcClock,
+  type Materializer,
+  type Op,
+} from '../../../../packages/oplog/src/index.ts';
 import { authorOf, messageView } from './op-views.ts';
 import { DataError, validateMessageRole, type MessageStore } from './repository.ts';
 import type { MessageStatus } from './types.ts';
@@ -67,6 +77,40 @@ export function createMessageStore(deps: MessageStoreDeps): MessageStore {
             status: status === 'error' ? 'error' : 'done',
           }),
         ]);
+        return true;
+      }),
+
+    /**
+     * 追加候选回复：每条候选一个 op（`message.candidate.append`）。
+     *
+     * 跳过空串、与正文相同、以及已存在的候选——因此导入重放不会堆出重复候选。
+     */
+    appendCandidates: (id, contents) =>
+      deps.withReady(async () => {
+        const record = deps.materializer().state.messages[id];
+        if (record === undefined || record.deleted !== undefined) return 0;
+        const existing = new Set(record.candidates.map((candidate) => candidate.content.trim()));
+        // 正文（当前 revision）本身也是一种内容：swipes 里常常把当前这条也带了一份
+        const active = record.revisions.find((revision) => revision.revisionId === record.activeRevision.revisionId);
+        const activeText = (active?.content ?? '').trim();
+        const ops: Op[] = [];
+        for (const content of contents) {
+          const clean = content.trim();
+          if (clean === '' || clean === activeText || existing.has(clean)) continue;
+          existing.add(clean);
+          ops.push(candidateAppend(deps.base(), { messageId: id, candidateId: ulid(), content: clean }));
+        }
+        if (ops.length === 0) return 0;
+        await deps.appendAndApply(ops);
+        return ops.length;
+      }),
+
+    selectCandidate: (id, candidateId) =>
+      deps.withReady(async () => {
+        const record = deps.materializer().state.messages[id];
+        if (record === undefined || record.deleted !== undefined) return false;
+        if (!record.candidates.some((candidate) => candidate.candidateId === candidateId)) return false;
+        await deps.appendAndApply([candidateSelect(deps.base(), { messageId: id, candidateId })]);
         return true;
       }),
 

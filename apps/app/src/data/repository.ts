@@ -54,6 +54,13 @@ export interface MessageStore {
   /** `createdAt` 用于导入历史记录：不传就用当前时间。 */
   append(sessionId: string, role: MessageRole, content: string, status?: MessageStatus, createdAt?: number): Promise<Message>;
   update(id: string, content: string, status?: MessageStatus): Promise<boolean>;
+  /**
+   * 追加候选回复（SillyTavern 的 swipes 落在这里）。
+   * 返回真正新增的条数：重复内容与空串会被忽略，因此重放是安全的。
+   */
+  appendCandidates(id: string, contents: readonly string[]): Promise<number>;
+  /** 选中某个候选；选中的那条成为该消息的显示正文。 */
+  selectCandidate(id: string, candidateId: string): Promise<boolean>;
   remove(id: string): Promise<boolean>;
 }
 

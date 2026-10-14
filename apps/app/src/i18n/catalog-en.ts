@@ -366,4 +366,6 @@ export const en: AppMessages = {
   'character.greetings': 'Alternate greetings',
   'character.greetings.hint': 'One per line. The first greeting is the field above; these are the others.',
   'character.greetings.placeholder': 'one per line',
+  'chat.candidates.action': 'Alternate replies ({{count}})',
+  'chat.candidates.title': 'Pick a reply',
 };

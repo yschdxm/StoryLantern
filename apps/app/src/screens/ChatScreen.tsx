@@ -38,6 +38,11 @@ export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings }:
   const [trace, setTrace] = useState<RequestTraceState | undefined>(undefined);
   const [traceOpen, setTraceOpen] = useState(false);
   const [menuFor, setMenuFor] = useState<string | undefined>(undefined);
+  /** 正在看候选回复的消息（swipes：同一条消息的多次生成）。 */
+  const [pickerFor, setPickerFor] = useState<string | undefined>(undefined);
+  /** 长按消息时它有多少候选（swipes），决定菜单里要不要出现"备选回复"。 */
+  const candidateCount =
+    menuFor === undefined ? 0 : (state.messages.find((message) => message.id === menuFor)?.candidates.length ?? 0);
   const [composerOffset, setComposerOffset] = useState(0);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const controllerRef = useRef<AbortController | null>(null);
@@ -304,6 +309,17 @@ export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings }:
       </div>
 
       <Sheet open={menuFor !== undefined} onClose={() => setMenuFor(undefined)}>
+        {candidateCount > 0 && (
+          <SheetItem
+            icon="edit"
+            label={t('chat.candidates.action', { count: candidateCount })}
+            onClick={() => {
+              const id = menuFor;
+              setMenuFor(undefined);
+              setPickerFor(id);
+            }}
+          />
+        )}
         <SheetItem
           icon="trash"
           label={t('chat.deleteMessage')}
@@ -314,6 +330,22 @@ export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings }:
             if (id !== undefined) void store.actions.removeMessage(id);
           }}
         />
+      </Sheet>
+
+      {/* 候选回复（swipes）：选中的那条成为这条消息的正文 */}
+      <Sheet open={pickerFor !== undefined} title={t('chat.candidates.title')} onClose={() => setPickerFor(undefined)}>
+        {(state.messages.find((message) => message.id === pickerFor)?.candidates ?? []).map((candidate) => (
+          <SheetItem
+            key={candidate.id}
+            icon="edit"
+            label={candidate.content.length > 60 ? `${candidate.content.slice(0, 60)}…` : candidate.content}
+            onClick={() => {
+              const messageId = pickerFor;
+              setPickerFor(undefined);
+              if (messageId !== undefined) void store.actions.selectCandidate(messageId, candidate.id);
+            }}
+          />
+        ))}
       </Sheet>
 
       <RequestTracePanel

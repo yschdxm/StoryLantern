@@ -51,13 +51,13 @@ export interface AppActions {
   renameSession(id: string, title: string): Promise<void>;
   deleteSession(id: string): Promise<void>;
   send(sessionId: string, text: string): Promise<void>;
-  /** 追加一条消息（导入历史、或把生成结果落库都用它）。 */
+  /** 追加一条消息（导入历史、或把生成结果落库都用它）；返回刚写入的那条。 */
   appendMessage(
     sessionId: string,
     role: Message['role'],
     content: string,
     options?: { createdAt?: number; status?: Message['status'] },
-  ): Promise<void>;
+  ): Promise<Message>;
   updateMessage(id: string, content: string, status?: Message['status']): Promise<void>;
   removeMessage(id: string): Promise<void>;
   setSetting(key: string, value: string): Promise<void>;
@@ -68,6 +68,10 @@ export interface AppActions {
   saveLoreEntry(draft: LoreEntryDraft): Promise<Lorebook>;
   removeLoreEntry(lorebookId: string, entryId: string): Promise<void>;
   // ---- 长期记忆 ----
+  /** 追加候选回复（导入 swipes 的落点）。 */
+  appendCandidates(messageId: string, contents: readonly string[]): Promise<number>;
+  /** 选中候选：选中的那条成为显示正文。 */
+  selectCandidate(messageId: string, candidateId: string): Promise<boolean>;
   refreshMemories(): Promise<void>;
   saveMemory(draft: MemoryDraft): Promise<Memory>;
   deleteMemory(id: string): Promise<void>;
@@ -185,6 +189,19 @@ export function createAppStore(repository: Repository): AppStore {
       await actions.refreshLorebooks();
     },
 
+    async appendCandidates(messageId, contents) {
+      const added = await run('appendCandidates', () => repository.messages.appendCandidates(messageId, contents));
+      // 候选落在别的消息上时，界面只关心当前会话：重新读一次就够
+      if (added > 0 && state.activeSessionId !== undefined) await actions.loadMessages(state.activeSessionId);
+      return added;
+    },
+
+    async selectCandidate(messageId, candidateId) {
+      const changed = await run('selectCandidate', () => repository.messages.selectCandidate(messageId, candidateId));
+      if (changed && state.activeSessionId !== undefined) await actions.loadMessages(state.activeSessionId);
+      return changed;
+    },
+
     async refreshMemories() {
       set({ memories: await repository.memories.list() });
     },
@@ -285,6 +302,7 @@ export function createAppStore(repository: Repository): AppStore {
             : session,
         ),
       });
+      return message;
     },
 
     async updateMessage(id, content, status) {

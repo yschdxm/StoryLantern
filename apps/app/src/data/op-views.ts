@@ -69,6 +69,8 @@ export function messageView(materializer: Materializer, messageId: string): Mess
     content: materializer.textOf(messageId) ?? '',
     status: materializer.statusOf(messageId) === 'error' ? 'error' : 'done',
     createdAt: record.appendHlc.t,
+    candidates: record.candidates.map((candidate) => ({ id: candidate.candidateId, content: candidate.content })),
+    selectedCandidateId: record.selectedCandidate?.candidateId ?? '',
   };
 }
 

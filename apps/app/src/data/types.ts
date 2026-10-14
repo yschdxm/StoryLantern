@@ -56,9 +56,20 @@ export interface Message {
   id: string;
   sessionId: string;
   role: MessageRole;
+  /** 当前显示的正文（选了候选时就是那条候选的正文）。 */
   content: string;
   status: MessageStatus;
   createdAt: number;
+  /** 同一位置的其它候选回复（SillyTavern 的 swipes 落在这一类上）。 */
+  candidates: MessageCandidate[];
+  /** 当前选中的候选 id（空串 = 用最初那条正文）。 */
+  selectedCandidateId: string;
+}
+
+/** 一条候选回复：导入历史时来自 swipes，将来重新生成也会落到这里。 */
+export interface MessageCandidate {
+  id: string;
+  content: string;
 }
 
 export type SettingsMap = Record<string, string>;

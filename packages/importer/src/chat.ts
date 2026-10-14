@@ -55,7 +55,7 @@ export function parseChatText(text: string, source: string): ImportedChat {
   const withCandidates = messages.filter((message) => (message.candidates ?? []).length > 0).length;
   if (swipes > 0)
     notes.push(
-      `${withCandidates} 条消息有多次生成：解析出了候选回复，但应用侧暂未保存它们（只保留当前选中的那条）`,
+      `${withCandidates} 条消息的备选回复已作为候选导入（可在消息菜单里切换）`,
     );
   if (broken > 0) notes.push(`${broken} 行无法解析，已跳过`);
 

@@ -182,6 +182,8 @@ export function createMemoryRepository(
           content: character.firstMessage.trim(),
           status: 'done',
           createdAt: stamp,
+          candidates: [],
+          selectedCandidateId: '',
         });
       }
       commit();
@@ -226,6 +228,8 @@ export function createMemoryRepository(
         status,
         // 导入历史时保留原始时间；0/未传都按"现在"处理
         createdAt: createdAt !== undefined && createdAt > 0 ? createdAt : now(),
+        candidates: [],
+        selectedCandidateId: '',
       };
       state.messages.push(message);
       touchSession(sessionId);
@@ -238,6 +242,35 @@ export function createMemoryRepository(
       if (message === undefined) return false;
       message.content = content;
       message.status = status;
+      commit();
+      return true;
+    },
+
+    /** 追加候选回复（导入 swipes 的落点）：重复与空串都跳过，因此可以安全重放。 */
+    async appendCandidates(id, contents) {
+      const message = state.messages.find((item) => item.id === id);
+      if (message === undefined) return 0;
+      let added = 0;
+      for (const content of contents) {
+        const clean = content.trim();
+        if (clean === '') continue;
+        if (message.content.trim() === clean) continue;
+        if (message.candidates.some((candidate) => candidate.content === clean)) continue;
+        message.candidates.push({ id: nextId('c'), content: clean });
+        added += 1;
+      }
+      if (added > 0) commit();
+      return added;
+    },
+
+    /** 选中某个候选：选中的那条成为显示正文。 */
+    async selectCandidate(id, candidateId) {
+      const message = state.messages.find((item) => item.id === id);
+      if (message === undefined) return false;
+      const candidate = message.candidates.find((item) => item.id === candidateId);
+      if (candidate === undefined) return false;
+      message.selectedCandidateId = candidateId;
+      message.content = candidate.content;
       commit();
       return true;
     },

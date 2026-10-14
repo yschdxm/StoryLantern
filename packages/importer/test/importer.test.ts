@@ -108,7 +108,7 @@ test('导入：单人聊天 JSONL（角色名、角色归属、候选回复有�
     withCandidates.every((message) => (message.candidates ?? []).every((candidate) => candidate.trim() !== '')),
     '候选不该是空串',
   );
-  assert.ok(chat.notes.some((note) => note.includes('候选')));
+  assert.ok(chat.notes.some((note) => note.includes('候选')), '提示要说清候选被带进来了');
 });
 
 test('导入：群聊 JSONL 也能读出消息与角色名', async () => {

@@ -110,9 +110,11 @@ export function ImportScreen({ store, router }: ScreenProps): ReactNode {
           const session = await store.actions.createSession(characterId, plan.title);
           sessions += 1;
           for (const message of plan.messages) {
-            await store.actions.appendMessage(session.id, message.role, message.content, {
+            const saved = await store.actions.appendMessage(session.id, message.role, message.content, {
               ...(message.createdAt === undefined ? {} : { createdAt: message.createdAt }),
             });
+            // swipes：当前那条已作为正文落库，其余作为候选跟上去（重复与空串会被忽略）
+            if (message.candidates.length > 0) await store.actions.appendCandidates(saved.id, message.candidates);
           }
           // 逐条追加时只做了就地更新；批量结束后对齐一次，列表摘要才是权威值
           await store.actions.refreshSessions();

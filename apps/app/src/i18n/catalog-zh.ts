@@ -377,4 +377,6 @@ export const zhCN: AppMessages = {
   'character.greetings': '备选开场白',
   'character.greetings.hint': '一行一条。第一条开场白在上面单独填，这里放卡片里的其它开场白。',
   'character.greetings.placeholder': '一行一条',
+  'chat.candidates.action': '备选回复（{{count}}）',
+  'chat.candidates.title': '选一条回复',
 };

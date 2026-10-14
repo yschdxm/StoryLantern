@@ -67,7 +67,7 @@ export interface ChatImportPlan {
   /** 已有同名角色时直接用，避免同一角色被导入成两份。 */
   existingCharacter?: Character;
   title: string;
-  messages: Array<{ role: MessageRole; content: string; createdAt?: number }>;
+  messages: Array<{ role: MessageRole; content: string; candidates: string[]; createdAt?: number }>;
 }
 
 export function chatImportPlan(chat: ImportedChat, characters: Character[]): ChatImportPlan {
@@ -79,6 +79,8 @@ export function chatImportPlan(chat: ImportedChat, characters: Character[]): Cha
     messages: chat.messages.map((message) => ({
       role: message.role,
       content: message.content,
+      // swipes：当前那条是正文，其余作为候选（导入时一并落库）
+      candidates: [...(message.candidates ?? [])],
       // 0 表示原始文件没给时间：交给仓储按"现在"处理，而不是塞一个 1970 年
       ...(message.createdAt > 0 ? { createdAt: message.createdAt } : {}),
     })),
