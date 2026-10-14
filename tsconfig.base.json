@@ -17,6 +17,7 @@
     "erasableSyntaxOnly": true,
     "verbatimModuleSyntax": true,
     "allowImportingTsExtensions": true,
+    "jsx": "react-jsx",
     "isolatedModules": true,
     "noEmit": true,
     "skipLibCheck": true,

@@ -1,0 +1,10 @@
+{
+  "name": "@storylantern/wire",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "类型化 RPC：宿主 Service 暴露给客户端，含清单、错误映射、流式与取消",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

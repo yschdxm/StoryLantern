@@ -14,7 +14,7 @@ import path from 'node:path';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 const MAX_LINES = 400;
-const SCAN_DIRS = ['packages', 'plugins', 'scripts'];
+const SCAN_DIRS = ['packages', 'plugins', 'scripts', 'apps'];
 
 /** 允许的内部依赖：包名 -> 允许依赖的包名集合（'*' 表示除自身外任意 packages/*）。 */
 const ALLOWED_DEPS = {
@@ -65,7 +65,9 @@ function checkImports(relPath, text) {
     const spec = match[2];
     if (!spec.startsWith('.')) continue;
 
-    if (!/\.(ts|json|css|mjs)$/.test(spec)) {
+    // Vite 的 `?raw` / `?url` 后缀：校验前先摘掉，本体仍须是已知扩展名。
+    const bare = spec.split('?')[0];
+    if (!/\.(ts|tsx|json|css|mjs|yml|yaml)$/.test(bare)) {
       violations.push(`${relPath}: 相对导入缺少扩展名 -> '${spec}'`);
       continue;
     }
@@ -74,7 +76,7 @@ function checkImports(relPath, text) {
     // （将来会由 packages/plugin-api 统一承载这些共享类型）。
     if (typeOnly) continue;
 
-    const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(relPath), spec));
+    const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(relPath), bare));
     if (/^packages\/[^/]+\//.test(resolved) || /^plugins\/[^/]+\//.test(resolved)) {
       const from = packageOf(relPath);
       const to = packageOf(resolved);

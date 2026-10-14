@@ -34,6 +34,14 @@ export const MESSAGES: Record<string, LocaleMessages> = {
 
     'character.count.other': '{{count}} 个角色',
     'message.count.other': '{{count}} 条消息',
+
+    'chat.author.user': '用户',
+    'chat.author.character': '角色',
+    'graph.title': '上下文块图',
+    'graph.included': '已纳入',
+    'graph.omitted': '已裁掉',
+    'graph.budget': '已用 {{used}} / {{budget}} tokens，裁掉 {{omitted}} 块',
+    'app.pluginsActive.other': '已激活 {{count}} 个插件',
   },
   en: {
     'app.name': 'Story Lantern',
@@ -61,6 +69,15 @@ export const MESSAGES: Record<string, LocaleMessages> = {
     'character.count.other': '{{count}} characters',
     'message.count.one': '{{count}} message',
     'message.count.other': '{{count}} messages',
+
+    'chat.author.user': 'User',
+    'chat.author.character': 'Character',
+    'graph.title': 'Context graph',
+    'graph.included': 'Included',
+    'graph.omitted': 'Dropped',
+    'graph.budget': '{{used}} / {{budget}} tokens used, {{omitted}} blocks dropped',
+    'app.pluginsActive.one': '{{count}} plugin active',
+    'app.pluginsActive.other': '{{count}} plugins active',
   },
 };
 

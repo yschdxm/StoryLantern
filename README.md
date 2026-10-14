@@ -13,13 +13,15 @@
 | `packages/i18n` | 国际化实现：回退链、插值、复数（`Intl.PluralRules`）、缺翻译报告 |
 | `packages/oplog` | Op 编解码、HLC、段打包（压缩 + 校验 + 签名 + 加密）、幂等重放与物化、会话快照 |
 | `packages/sync-core` | 同步引擎、manifest 索引、设备名单、GC 判定、信封/快照/资产、扫码配对 |
+| `packages/wire` | 类型化 RPC：宿主 Service → 客户端（清单驱动、错误按 code、流式与取消、承载可换） |
 | `plugins/*` | 产品特性，每个目录 = 一个可独立发布的 npm 包（`locale` 提供界面语言服务） |
 | `bundles/core` | 核心组合：locale / log-sink / settings / blocks / pipeline / sync-memory / sync-folder |
 | `bundles/sync` | 同步组合：打开文件夹后端并新增 WebDAV 后端 |
-| `apps/*` | 应用产物（`app` SPA / `shell` Tauri / `relay` 可选中继） |
+| `apps/app` | 界面（React + Vite）；**功能集合由 bundle patch 驱动**，含 PromptGraph 可视化 |
+| `apps/*` | 其余应用产物（`shell` Tauri / `relay` 可选中继） |
 | `eval/perf` | 性能预算 harness：把 PLAN §11 的预算变成可运行断言 |
 | `spikes/*` | 一次性 spike（例如 cordis vs 自研内核的 A/B） |
-| `docs/` | 计划、ADR、进度台账、spike 结论 |
+| `docs/` | 计划、ADR（0001–0010）、进度台账、spike 结论 |
 
 ## 开发（零依赖即可跑测试）
 
@@ -38,6 +40,18 @@ npm run perf            # 性能预算（未达标即退出码 1；含已知待�
 pnpm install
 pnpm run typecheck
 ```
+
+## 跑界面（M0 的可解释性闭环）
+
+界面由 `bundles/core/storylantern.patch.yml` + `apps/app/src/user-patch.yml` **组合**出来，
+一屏同时显示聊天与"这次请求是怎么拼出来的"（每个上下文块是否纳入、占多少 token、为什么被裁掉）。
+
+```bash
+pnpm --filter @storylantern/app dev      # 开发服务器
+pnpm --filter @storylantern/app build    # 产出 dist/（约 236 KB，gzip 77 KB）
+```
+
+界面逻辑（视图模型 + 真实组合 + i18n）有 Node 侧测试覆盖：`node --test "apps/**/*.test.ts"`。
 
 ## 约定（硬性）
 

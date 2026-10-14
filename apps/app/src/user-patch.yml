@@ -1,0 +1,11 @@
+# 用户 patch 层（叠加在 bundle 之上）。
+#
+# 这里演示两件事：
+#   1. 覆盖 bundle 里的行——整体替换 config，不做深合并；
+#   2. 界面**不需要**为此改代码：功能集合是数据。
+#
+# 把预算调小是为了让 PromptGraph 面板一开始就能看到"被裁掉"的块与理由。
+- id: pipeline
+  config:
+    budgetTokens: 256
+    historyLimit: 6
