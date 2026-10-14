@@ -130,3 +130,15 @@ export {
   type Keyring,
   type KeyringEntry,
 } from './keyring.ts';
+
+export {
+  createJoinRequest,
+  verifyJoinRequest,
+  parseJoinRequest,
+  serializeJoinRequest,
+  joinPath,
+  JOIN_PREFIX,
+  type JoinProofPort,
+  type JoinRequest,
+  type JoinDecision,
+} from './join.ts';
