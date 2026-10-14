@@ -143,4 +143,11 @@ export {
   type JoinDecision,
 } from './join.ts';
 
-export { ensureKeyring, type EnsureKeyringInput, type EnsureKeyringResult } from './keyring-store.ts';
+export {
+  ensureKeyring,
+  readKeyring,
+  rotateKeyring,
+  type EnsureKeyringInput,
+  type EnsureKeyringResult,
+  type RotateKeyringInput,
+} from './keyring-store.ts';

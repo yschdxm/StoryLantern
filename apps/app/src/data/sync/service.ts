@@ -16,6 +16,7 @@ import { createWebCryptoKeyWrap, loadOrCreateAgreementKeys } from './envelope.ts
 import { ensureKeyring } from '../../../../../packages/sync-core/src/keyring-store.ts';
 import type { CryptoPorts } from '../../../../../packages/oplog/src/index.ts';
 import { createPasswordProofPort, createPortsFromContentKey } from './crypto.ts';
+import { rotateKeyring } from '../../../../../packages/sync-core/src/keyring-store.ts';
 import { acceptJoinRequests, publishJoinRequest } from './join-flow.ts';
 import { describeDevice, loadRoster, mergeRoster, saveRoster } from './roster-store.ts';
 
@@ -349,12 +350,37 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
       if (changed) await saveRoster(options.device, roster);
       return changed;
     },
-    /** 永久禁用：写进黑名单（本机不能被禁用，见 DeviceRosterList.ban）。 */
+    /**
+     * 永久禁用：写进黑名单 + **换代**（新数据钥匙只包给留下的人）。
+     *
+     * 两步缺一不可：只拉黑能挡住它"再连进来"，但挡不住它用旧钥匙读新内容；
+     * 只换代能挡住读，但它输密码又能拿回新钥匙。
+     * 拉黑成功但换代失败时不回滚（黑名单已经生效），下次同步会再试换代。
+     */
     async ban(deviceId: string): Promise<boolean> {
-      const { roster } = await prepare();
+      const { roster, restored } = await prepare();
       if (deviceId === options.deviceId) return false;
       if (!roster.ban(deviceId, now())) return false;
       await saveRoster(options.device, roster);
+
+      if (!(await detectKeyWrapSupport())) return true; // 环境不支持 X25519：只拉黑，改不了钥匙
+      const agreement = await loadOrCreateAgreementKeys(createWebCryptoKeyWrap(), options.device);
+      const peers = restored?.peerAgreementKeys ?? {};
+      const kept = roster.list().filter((record) => record.bannedAt === undefined && record.revokedAt === undefined);
+      const recipients = [
+        { deviceId: options.deviceId, publicKey: agreement.publicKey },
+        ...kept
+          .filter((record) => record.deviceId !== options.deviceId)
+          .flatMap((record) => {
+            const publicKey = peers[record.deviceId] ?? '';
+            return publicKey === '' ? [] : [{ deviceId: record.deviceId, publicKey }];
+          }),
+      ];
+      try {
+        await rotateKeyring({ backend: options.backend, keyWrap: createWebCryptoKeyWrap(), recipients });
+      } catch {
+        // 换代失败（例如被别的设备抢先写了另一个 epoch）：黑名单已经生效，下次同步再来
+      }
       return true;
     },
 
