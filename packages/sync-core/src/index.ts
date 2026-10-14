@@ -119,3 +119,14 @@ export {
   type SignedEnvelope,
   type VerifyOutcome,
 } from './signing.ts';
+
+export {
+  createKeyring,
+  openKeyring,
+  parseKeyring,
+  serializeKeyring,
+  KEYRING_FILE,
+  type KeyWrapPort,
+  type Keyring,
+  type KeyringEntry,
+} from './keyring.ts';
