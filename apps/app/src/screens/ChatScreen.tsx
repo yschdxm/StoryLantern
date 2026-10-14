@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import type { ScreenProps } from './screen-props.ts';
 import { useAppState, useAsync } from './screen-props.ts';
+import { useT } from '../i18n/context.tsx';
 import { formatTime, isModelConfigured } from '../data/repository.ts';
-import { SETTING_KEYS } from '../data/types.ts';
-import { Banner, Button, Sheet, SheetItem } from '../ui/components.tsx';
+import { Banner, Button, LoadMore, Sheet, SheetItem, useWindowedList } from '../ui/components.tsx';
 
 export interface ChatScreenProps extends ScreenProps {
   sessionId: number;
@@ -13,11 +13,14 @@ export interface ChatScreenProps extends ScreenProps {
 /**
  * 聊天页。
  *
- * 布局三段式：顶栏（外壳）· 消息滚动区 · 底部输入栏。
- * 生成时把宿主推来的分片实时画在气泡里；宿主同时在数据库里更新同一条消息，
- * 所以"停下来"或"失败"都不会丢掉已经看到的内容。
+ * 三段式布局：顶栏（外壳）· 消息滚动区 · 底部输入栏。
+ * 三处细节决定"像不像原生"：
+ *  1. 输入栏跟随键盘（visualViewport），不是被键盘盖住；
+ *  2. 新消息到达自动贴底，但**往上翻看历史时不打断**；
+ *  3. 历史很长时只渲染最近一屏多一点，翻到顶再往前加载（窗口化），万条消息也不卡。
  */
 export function ChatScreen({ store, sessionId, chat, onOpenSettings }: ChatScreenProps): ReactNode {
+  const t = useT();
   const state = useAppState(store);
   const session = state.sessions.find((item) => item.id === sessionId);
   const [draft, setDraft] = useState('');
@@ -27,14 +30,27 @@ export function ChatScreen({ store, sessionId, chat, onOpenSettings }: ChatScree
   const [composerOffset, setComposerOffset] = useState(0);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const controllerRef = useRef<AbortController | null>(null);
+  const heightBeforeRef = useRef(0);
 
   useAsync(() => store.actions.loadMessages(sessionId), [sessionId, store]);
 
-  const baseUrl = state.settings[SETTING_KEYS.baseUrl] ?? '';
+  const { visible, hidden, sentinel } = useWindowedList(state.messages, { pageSize: 40, from: 'end' });
+
   const configured = isModelConfigured(state.settings);
   const canReply = chat.available;
 
-  // 新内容出现就滚到底：聊天最忌讳"新消息在下面看不见"
+  // 在提交前记录滚动高度：向前加载历史后要补偿，否则视野会跳
+  heightBeforeRef.current = scrollRef.current?.scrollHeight ?? heightBeforeRef.current;
+
+  useLayoutEffect(() => {
+    const node = scrollRef.current;
+    if (node === null) return;
+    const delta = node.scrollHeight - heightBeforeRef.current;
+    if (delta > 0) node.scrollTop += delta;
+    heightBeforeRef.current = node.scrollHeight;
+  }, [hidden]);
+
+  // 新消息 / 生成内容变化时贴底
   useEffect(() => {
     const node = scrollRef.current;
     if (node !== null) node.scrollTop = node.scrollHeight;
@@ -45,8 +61,8 @@ export function ChatScreen({ store, sessionId, chat, onOpenSettings }: ChatScree
     const viewport = (globalThis as { visualViewport?: VisualViewport }).visualViewport;
     if (viewport === undefined) return;
     const update = (): void => {
-      const hidden = Math.max(0, globalThis.innerHeight - viewport.height - viewport.offsetTop);
-      setComposerOffset(hidden);
+      const hiddenByKeyboard = Math.max(0, globalThis.innerHeight - viewport.height - viewport.offsetTop);
+      setComposerOffset(hiddenByKeyboard);
     };
     update();
     viewport.addEventListener('resize', update);
@@ -93,16 +109,14 @@ export function ChatScreen({ store, sessionId, chat, onOpenSettings }: ChatScree
   };
 
   const banner = ((): { tone: 'warn' | 'error'; text: string; action?: ReactNode } | undefined => {
-    if (!chat.available) {
-      return { tone: 'warn', text: '浏览器里不调用模型（密钥会落到前端）。请用桌面或 Android 版。' };
-    }
+    if (!chat.available) return { tone: 'warn', text: t('chat.noHost') };
     if (!configured) {
       return {
         tone: 'warn',
-        text: '还没有配置模型，暂时不能生成回复',
+        text: t('chat.unconfigured'),
         action: (
           <Button variant="ghost" onClick={onOpenSettings}>
-            去配置
+            {t('chat.goSettings')}
           </Button>
         ),
       };
@@ -121,33 +135,40 @@ export function ChatScreen({ store, sessionId, chat, onOpenSettings }: ChatScree
 
       <div className="chat__scroll" ref={scrollRef}>
         {state.messages.length === 0 && streaming === null ? (
-          <p className="chat__hint">{session?.characterName ?? '角色'} 还没有说话，先从下面发一句试试。</p>
+          <p className="chat__hint">{t('chat.empty', { name: session?.characterName ?? '' })}</p>
         ) : (
-          <ul className="chat__list">
-            {state.messages.map((message) => (
-              <li key={message.id} className={`msg msg--${message.role}`}>
-                <button
-                  type="button"
-                  className="msg__bubble"
-                  onClick={() => setMenuFor(message.id)}
-                  aria-label={`第 ${message.id} 条消息的操作`}
-                >
-                  <span className="msg__text">{message.content === '' ? '…' : message.content}</span>
-                </button>
-                <span className="msg__meta">
-                  {message.status === 'streaming' ? '生成中…' : message.status === 'error' ? '失败' : formatTime(message.createdAt)}
-                </span>
-              </li>
-            ))}
-            {streaming !== null && (
-              <li className="msg msg--assistant">
-                <span className="msg__bubble">
-                  <span className="msg__text">{streaming.text === '' ? '…' : streaming.text}</span>
-                </span>
-                <span className="msg__meta">生成中…</span>
-              </li>
-            )}
-          </ul>
+          <>
+            <LoadMore hidden={hidden} sentinel={sentinel} />
+            <ul className="chat__list">
+              {visible.map((message) => (
+                <li key={message.id} className={`msg msg--${message.role}`}>
+                  <button
+                    type="button"
+                    className="msg__bubble"
+                    onClick={() => setMenuFor(message.id)}
+                    aria-label={t('chat.messageActions', { id: message.id })}
+                  >
+                    <span className="msg__text">{message.content === '' ? '…' : message.content}</span>
+                  </button>
+                  <span className="msg__meta">
+                    {message.status === 'streaming'
+                      ? t('chat.streaming')
+                      : message.status === 'error'
+                        ? t('chat.failed')
+                        : formatTime(message.createdAt)}
+                  </span>
+                </li>
+              ))}
+              {streaming !== null && (
+                <li className="msg msg--assistant">
+                  <span className="msg__bubble">
+                    <span className="msg__text">{streaming.text === '' ? '…' : streaming.text}</span>
+                  </span>
+                  <span className="msg__meta">{t('chat.streaming')}</span>
+                </li>
+              )}
+            </ul>
+          </>
         )}
       </div>
 
@@ -156,7 +177,7 @@ export function ChatScreen({ store, sessionId, chat, onOpenSettings }: ChatScree
           className="composer__input"
           value={draft}
           rows={1}
-          placeholder={configured && chat.available ? '说点什么…' : '先到设置里配置模型'}
+          placeholder={configured && chat.available ? t('chat.placeholder') : t('chat.placeholder.unconfigured')}
           disabled={!configured || !chat.available || streaming !== null}
           onChange={(event) => setDraft(event.target.value)}
           onInput={(event) => {
@@ -167,11 +188,11 @@ export function ChatScreen({ store, sessionId, chat, onOpenSettings }: ChatScree
         />
         {streaming !== null ? (
           <Button variant="danger" onClick={() => controllerRef.current?.abort()}>
-            停止
+            {t('chat.stop')}
           </Button>
         ) : (
           <Button disabled={!configured || !chat.available || draft.trim() === ''} onClick={send}>
-            发送
+            {t('chat.send')}
           </Button>
         )}
       </div>
@@ -179,7 +200,7 @@ export function ChatScreen({ store, sessionId, chat, onOpenSettings }: ChatScree
       <Sheet open={menuFor !== undefined} onClose={() => setMenuFor(undefined)}>
         <SheetItem
           icon="trash"
-          label="删除这条消息"
+          label={t('chat.deleteMessage')}
           danger
           onClick={() => {
             const id = menuFor;

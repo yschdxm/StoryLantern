@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useT } from './i18n/context.tsx';
 import type { HostClient, HostViewModel, StreamChunk } from './host-panel.ts';
 
 export interface HostPanelProps {
@@ -12,6 +13,7 @@ export interface HostPanelProps {
  * 诊断信息只该在需要排障时出现。
  */
 export function HostPanel({ client }: HostPanelProps) {
+  const t = useT();
   const [view, setView] = useState<HostViewModel | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [streamed, setStreamed] = useState<{ text: string; chunks: number; cancelled: boolean } | null>(null);
@@ -46,7 +48,7 @@ export function HostPanel({ client }: HostPanelProps) {
         setNotice(cause instanceof Error ? cause.message : String(cause));
       }
     })();
-    // 只在挂载时跑一次
+    // 只在挂载时跑一次；client 是稳定的单例
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -59,40 +61,40 @@ export function HostPanel({ client }: HostPanelProps) {
   };
 
   return (
-    <section className="settings-group" aria-label="开发者">
+    <section aria-label={t('settings.developer')}>
       <p className="muted">
-        传输：{view === null ? '…' : view.available ? view.transport : '浏览器（无宿主 IPC）'}
+        {t('dev.transport')}：{view === null ? '…' : view.available ? view.transport : t('dev.transport.none')}
         {view?.info !== undefined && ` · ${view.info.product} ${view.info.version} · ${view.info.os}/${view.info.arch}`}
-        {view?.info !== undefined && ` · 宿主方法 ${view.methods.length} 个`}
+        {view?.info !== undefined && ` · ${t('dev.methods', { count: view.methods.length })}`}
       </p>
       {view?.error !== undefined && <p className="notice notice--warn">{view.error}</p>}
       {notice !== null && <p className="notice notice--warn">{notice}</p>}
-      {view?.available === false && (
-        <p className="muted">浏览器里没有宿主 IPC，这些诊断项不可用；用 Tauri 壳打开才有真实数据。</p>
-      )}
+      {view?.available === false && <p className="muted">{t('dev.noHost')}</p>}
 
       {view?.sqlite !== undefined && (
         <div className="kv-grid">
-          <span>数据库</span>
+          <span>{t('dev.db')}</span>
           <code>{view.sqlite.path}</code>
-          <span>journal / page</span>
+          <span>{t('dev.journal')}</span>
           <code>
             {view.sqlite.journalMode} / {view.sqlite.pageSize}
           </code>
-          <span>sqlite</span>
+          <span>{t('dev.sqlite')}</span>
           <code>{view.sqlite.sqliteVersion}</code>
-          <span>可写</span>
-          <code>{view.sqlite.writable ? '是' : '否'}</code>
-          <span>数据量</span>
+          <span>{t('dev.writable')}</span>
+          <code>{view.sqlite.writable ? t('dev.writable.yes') : t('dev.writable.no')}</code>
+          <span>{t('dev.volume')}</span>
           <code>
-            角色 {view.sqlite.characters} · 会话 {view.sqlite.sessions} · 消息 {view.sqlite.messages}
+            {t('dev.volume.counts', {
+              characters: t('count.characters', { count: view.sqlite.characters }),
+              sessions: t('count.sessions', { count: view.sqlite.sessions }),
+              messages: t('count.messages', { count: view.sqlite.messages }),
+            })}
           </code>
           {view.streamStats !== undefined && (
             <>
-              <span>流式发射</span>
-              <code>
-                成功 {view.streamStats.ok} · 失败 {view.streamStats.errors.length}
-              </code>
+              <span>{t('dev.emits')}</span>
+              <code>{t('dev.emits.counts', { ok: view.streamStats.ok, errors: view.streamStats.errors.length })}</code>
             </>
           )}
         </div>
@@ -100,17 +102,20 @@ export function HostPanel({ client }: HostPanelProps) {
 
       <div className="row">
         <button className="btn btn--ghost" disabled={!client.available} onClick={start}>
-          重跑流式自检
+          {t('dev.rerun')}
         </button>
         <button className="btn btn--ghost" disabled={controller === null} onClick={() => controller?.abort()}>
-          取消
+          {t('dev.cancel')}
         </button>
         <button className="btn btn--ghost" onClick={() => void client.load().then(setView)}>
-          刷新
+          {t('dev.refresh')}
         </button>
         {streamed !== null && (
           <span className="muted">
-            收到 {streamed.chunks} 片{streamed.cancelled ? '（已取消）' : '（已完成）'}
+            {t('dev.chunks', {
+              count: streamed.chunks,
+              state: streamed.cancelled ? t('dev.chunks.cancelled') : t('dev.chunks.done'),
+            })}
           </span>
         )}
       </div>

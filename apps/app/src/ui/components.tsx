@@ -1,61 +1,11 @@
-import type { ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useT } from '../i18n/context.tsx';
+import { Icon, type IconName } from './icons.tsx';
 
-/** 内联 SVG 图标：不引图标库，避免多一个依赖与字体加载抖动。全部 24×24、stroke 描边。 */
-export type IconName = 'chat' | 'user' | 'gear' | 'back' | 'plus' | 'more' | 'send' | 'trash' | 'edit' | 'check' | 'warn' | 'stop';
-
-const PATHS: Record<IconName, ReactNode> = {
-  chat: <path d="M4 5h16v11H8l-4 3z" />,
-  user: (
-    <>
-      <circle cx="12" cy="8" r="3.5" />
-      <path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6" />
-    </>
-  ),
-  gear: (
-    <>
-      <circle cx="12" cy="12" r="3" />
-      <path d="M12 3v2.5M12 18.5V21M4.9 7.5l2.2 1.2M16.9 15.3l2.2 1.2M4.9 16.5l2.2-1.2M16.9 8.7l2.2-1.2" />
-    </>
-  ),
-  back: <path d="M15 5l-7 7 7 7" />,
-  plus: <path d="M12 5v14M5 12h14" />,
-  more: (
-    <>
-      <circle cx="12" cy="5.5" r="1.4" />
-      <circle cx="12" cy="12" r="1.4" />
-      <circle cx="12" cy="18.5" r="1.4" />
-    </>
-  ),
-  send: <path d="M4 12l16-8-6 8 6 8z" />,
-  trash: <path d="M5 7h14M9 7V5h6v2M7 7l1 13h8l1-13" />,
-  edit: <path d="M5 19h3l10-10-3-3L5 16zM14 6l3 3" />,
-  check: <path d="M5 13l4 4L19 7" />,
-  warn: (
-    <>
-      <path d="M12 4l9 16H3z" />
-      <path d="M12 10v4M12 17h.01" />
-    </>
-  ),
-  stop: <rect x="7" y="7" width="10" height="10" rx="1.5" />,
-};
-
-export function Icon({ name, size = 22 }: { name: IconName; size?: number }): ReactNode {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.7"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      {PATHS[name]}
-    </svg>
-  );
-}
+// 图标与窗口化拆到各自文件（单一职责 + 单文件行数保持可读），这里统一再导出，调用方只认一个入口。
+export { Icon } from './icons.tsx';
+export type { IconName } from './icons.tsx';
+export { LoadMore, useWindowedList } from './windowing.tsx';
 
 export function Button({
   children,
@@ -67,7 +17,7 @@ export function Button({
 }: {
   children: ReactNode;
   onClick?: () => void;
-  variant?: 'primary' | 'ghost' | 'danger';
+  variant?: 'primary' | 'ghost' | 'danger' | 'accent-ghost';
   disabled?: boolean;
   block?: boolean;
   type?: 'button' | 'submit';
@@ -142,38 +92,144 @@ export function Banner({
   );
 }
 
-export function LoadingState({ label = '正在加载…' }: { label?: string }): ReactNode {
+export function LoadingState({ label }: { label?: string }): ReactNode {
+  const t = useT();
   return (
     <div className="loading" role="status">
       <span className="spinner" aria-hidden="true" />
-      <span className="muted">{label}</span>
+      <span className="muted">{label ?? t('sessions.loading')}</span>
     </div>
   );
 }
 
+const SWIPE_REVEAL = 96;
+const SWIPE_TRIGGER = 42;
+const LONG_PRESS_MS = 480;
+
+/**
+ * 列表行。支持三种操作方式，都符合拇指习惯：
+ *  - 点整行 → 主操作（进详情）；
+ *  - 向左滑 → 露出删除（滑动手势只认"横向位移明显大于纵向"，不会抢页面滚动）；
+ *  - 长按 → 打开操作面板（与右侧「⋯」等价，两个入口，不必记哪一个）。
+ */
 export function ListRow({
   title,
   subtitle,
   meta,
   onClick,
   trailing,
+  onSwipeDelete,
+  onLongPress,
 }: {
   title: ReactNode;
   subtitle?: ReactNode;
   meta?: ReactNode;
   onClick?: () => void;
   trailing?: ReactNode;
+  onSwipeDelete?: () => void;
+  onLongPress?: () => void;
 }): ReactNode {
+  const t = useT();
+  const [offset, setOffset] = useState(0);
+  const drag = useRef<{ x: number; y: number; axis: 'none' | 'x' | 'y'; startOffset: number } | null>(null);
+  const longPress = useRef<ReturnType<typeof globalThis.setTimeout> | null>(null);
+  const suppressClick = useRef(false);
+
+  const clearLongPress = useCallback((): void => {
+    if (longPress.current !== null) {
+      globalThis.clearTimeout(longPress.current);
+      longPress.current = null;
+    }
+  }, []);
+
+  useEffect(() => clearLongPress, [clearLongPress]);
+
+  const swipeEnabled = onSwipeDelete !== undefined;
+
   return (
     <li className="list__item">
-      <button type="button" className="list__row" onClick={onClick} disabled={onClick === undefined}>
-        <span className="list__main">
-          <span className="list__title">{title}</span>
-          {subtitle !== undefined && <span className="list__sub">{subtitle}</span>}
-        </span>
-        {meta !== undefined && <span className="list__meta">{meta}</span>}
-      </button>
-      {trailing !== undefined && <span className="list__trailing">{trailing}</span>}
+      {swipeEnabled && (
+        <button
+          type="button"
+          className="list__delete"
+          aria-label={t('common.delete')}
+          onClick={() => {
+            setOffset(0);
+            onSwipeDelete?.();
+          }}
+        >
+          <Icon name="trash" size={20} />
+          <span>{t('common.delete')}</span>
+        </button>
+      )}
+
+      <div
+        className="list__slide"
+        style={{
+          transform: `translateX(${offset}px)`,
+          transition: drag.current === null ? 'transform .18s ease-out' : 'none',
+        }}
+        onPointerDown={(event) => {
+          drag.current = { x: event.clientX, y: event.clientY, axis: 'none', startOffset: offset };
+          if (onLongPress !== undefined) {
+            clearLongPress();
+            longPress.current = globalThis.setTimeout(() => {
+              longPress.current = null;
+              suppressClick.current = true;
+              onLongPress();
+            }, LONG_PRESS_MS);
+          }
+        }}
+        onPointerMove={(event) => {
+          const state = drag.current;
+          if (state === null) return;
+          const dx = event.clientX - state.x;
+          const dy = event.clientY - state.y;
+          if (state.axis === 'none') {
+            if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+            state.axis = Math.abs(dx) > Math.abs(dy) * 1.4 ? 'x' : 'y';
+            clearLongPress();
+          }
+          if (state.axis !== 'x' || !swipeEnabled) return;
+          setOffset(Math.max(-SWIPE_REVEAL, Math.min(0, state.startOffset + dx)));
+        }}
+        onPointerUp={() => {
+          clearLongPress();
+          const state = drag.current;
+          drag.current = null;
+          if (state === null || state.axis !== 'x' || !swipeEnabled) return;
+          setOffset(offset < -SWIPE_TRIGGER ? -SWIPE_REVEAL : 0);
+        }}
+        onPointerCancel={() => {
+          clearLongPress();
+          drag.current = null;
+          setOffset(0);
+        }}
+      >
+        <button
+          type="button"
+          className="list__row"
+          onClick={() => {
+            if (suppressClick.current) {
+              suppressClick.current = false;
+              return;
+            }
+            if (offset !== 0) {
+              setOffset(0);
+              return;
+            }
+            onClick?.();
+          }}
+          disabled={onClick === undefined}
+        >
+          <span className="list__main">
+            <span className="list__title">{title}</span>
+            {subtitle !== undefined && <span className="list__sub">{subtitle}</span>}
+          </span>
+          {meta !== undefined && <span className="list__meta">{meta}</span>}
+        </button>
+        {trailing !== undefined && <span className="list__trailing">{trailing}</span>}
+      </div>
     </li>
   );
 }
@@ -191,10 +247,21 @@ export function Sheet({
   onClose: () => void;
   children: ReactNode;
 }): ReactNode {
+  const t = useT();
+  // 打开时锁住背景滚动：手机上一滑动背后列表就跟着动，是很典型的"不像原生"的观感
+  useEffect(() => {
+    if (!open) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [open]);
+
   if (!open) return null;
   return (
     <div className="sheet" role="dialog" aria-modal="true">
-      <button type="button" className="sheet__backdrop" aria-label="关闭" onClick={onClose} />
+      <button type="button" className="sheet__backdrop" aria-label={t('common.close')} onClick={onClose} />
       <div className="sheet__panel">
         {title !== undefined && <p className="sheet__title">{title}</p>}
         {children}
@@ -217,7 +284,12 @@ export function SheetItem({
   disabled?: boolean;
 }): ReactNode {
   return (
-    <button type="button" className={`sheet__item${danger ? ' sheet__item--danger' : ''}`} onClick={onClick} disabled={disabled}>
+    <button
+      type="button"
+      className={`sheet__item${danger ? ' sheet__item--danger' : ''}`}
+      onClick={onClick}
+      disabled={disabled}
+    >
       {icon !== undefined && <Icon name={icon} size={20} />}
       <span>{label}</span>
     </button>
@@ -228,7 +300,7 @@ export function ConfirmDialog({
   open,
   title,
   message,
-  confirmLabel = '删除',
+  confirmLabel,
   onConfirm,
   onCancel,
 }: {
@@ -239,19 +311,20 @@ export function ConfirmDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }): ReactNode {
+  const t = useT();
   if (!open) return null;
   return (
     <div className="modal" role="dialog" aria-modal="true">
-      <button type="button" className="modal__backdrop" aria-label="取消" onClick={onCancel} />
+      <button type="button" className="modal__backdrop" aria-label={t('common.cancel')} onClick={onCancel} />
       <div className="modal__panel">
         <p className="modal__title">{title}</p>
         <p className="modal__message">{message}</p>
         <div className="modal__actions">
           <Button variant="ghost" onClick={onCancel}>
-            取消
+            {t('common.cancel')}
           </Button>
           <Button variant="danger" onClick={onConfirm}>
-            {confirmLabel}
+            {confirmLabel ?? t('common.delete')}
           </Button>
         </div>
       </div>
@@ -259,15 +332,7 @@ export function ConfirmDialog({
   );
 }
 
-export function Field({
-  label,
-  hint,
-  children,
-}: {
-  label: string;
-  hint?: string;
-  children: ReactNode;
-}): ReactNode {
+export function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }): ReactNode {
   return (
     <label className="field">
       <span className="field__label">{label}</span>

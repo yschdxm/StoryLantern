@@ -253,7 +253,7 @@ fn messages_append(store: &Store, args: &[Value]) -> Result<Value, WireErrorPayl
         if value.is_empty() { "done".to_string() } else { value }
     };
     let message: Message = store
-        .append_message(session_id, &role, &content, &status)
+        .append_message(session_id, &role, &content, &status, int_arg(args, 4))
         .map_err(|message| WireErrorPayload::new("invalid-argument", message))?;
     to_value(message, "消息")
 }

@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import type { Route } from '../app/router.ts';
 import type { AppStore } from '../app/state.ts';
+import { useT } from '../i18n/context.tsx';
 import { useAppState } from '../screens/screen-props.ts';
 import { Button, ConfirmDialog, IconButton, Sheet, SheetItem } from './components.tsx';
 
@@ -18,6 +19,7 @@ export function ScreenMenu({
   store: AppStore;
   onDeleted: () => void;
 }): ReactNode {
+  const t = useT();
   const state = useAppState(store);
   const [open, setOpen] = useState(false);
   const [renaming, setRenaming] = useState('');
@@ -29,12 +31,12 @@ export function ScreenMenu({
 
   return (
     <>
-      <IconButton icon="more" label="会话操作" onClick={() => setOpen(true)} />
+      <IconButton icon="more" label={t('sessions.actionMenu')} onClick={() => setOpen(true)} />
 
       <Sheet open={open} title={session.title} onClose={() => setOpen(false)}>
         <SheetItem
           icon="edit"
-          label="重命名会话"
+          label={t('sessions.rename.action')}
           onClick={() => {
             setRenaming(session.title);
             setOpen(false);
@@ -42,7 +44,7 @@ export function ScreenMenu({
         />
         <SheetItem
           icon="trash"
-          label="删除会话"
+          label={t('sessions.delete')}
           danger
           onClick={() => {
             setConfirmDelete(true);
@@ -51,7 +53,7 @@ export function ScreenMenu({
         />
       </Sheet>
 
-      <Sheet open={renaming !== ''} title="重命名会话" onClose={() => setRenaming('')}>
+      <Sheet open={renaming !== ''} title={t('sessions.rename')} onClose={() => setRenaming('')}>
         <div className="sheet__form">
           <input className="input" value={renaming} autoFocus onChange={(event) => setRenaming(event.target.value)} />
           <Button
@@ -63,15 +65,15 @@ export function ScreenMenu({
               void store.actions.renameSession(session.id, title);
             }}
           >
-            确定
+            {t('common.confirm')}
           </Button>
         </div>
       </Sheet>
 
       <ConfirmDialog
         open={confirmDelete}
-        title="删除会话"
-        message={`「${session.title}」及其 ${session.messageCount} 条消息将被删除，无法恢复。`}
+        title={t('sessions.delete')}
+        message={t('sessions.delete.message', { title: session.title, count: session.messageCount })}
         onCancel={() => setConfirmDelete(false)}
         onConfirm={() => {
           setConfirmDelete(false);

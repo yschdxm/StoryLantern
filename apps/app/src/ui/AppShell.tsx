@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { activeTabName, TABS, type Route } from '../app/router.ts';
+import { useT } from '../i18n/context.tsx';
 import { Icon, IconButton, type IconName } from './components.tsx';
 
 export interface AppShellProps {
@@ -35,13 +36,15 @@ export function AppShell({
   layout = 'scroll',
   hideTabs = false,
 }: AppShellProps): ReactNode {
+  const t = useT();
   const active = activeTabName(route);
+
   return (
     <div className="app">
       <header className="appbar">
         <div className="appbar__left">
           {onBack !== undefined ? (
-            <IconButton icon="back" label="返回" onClick={onBack} />
+            <IconButton icon="back" label={t('common.back')} onClick={onBack} />
           ) : (
             <span className="appbar__spacer" />
           )}
@@ -56,7 +59,7 @@ export function AppShell({
       <main className={layout === 'fill' ? 'screen screen--fill' : 'screen'}>{children}</main>
 
       {!hideTabs && (
-        <nav className="tabbar" aria-label="主导航">
+        <nav className="tabbar" aria-label={t('tab.nav')}>
           {TABS.map((tab) => {
             const isActive = active === tab.route.name;
             return (
@@ -68,7 +71,7 @@ export function AppShell({
                 onClick={() => onNavigate(tab.route)}
               >
                 <Icon name={tab.icon as IconName} size={22} />
-                <span className="tab__label">{tab.label}</span>
+                <span className="tab__label">{t(tab.label)}</span>
               </button>
             );
           })}

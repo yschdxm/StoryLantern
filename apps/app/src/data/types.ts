@@ -67,6 +67,7 @@ export const SETTING_KEYS = {
   systemPrompt: 'chat.system_prompt',
   locale: 'app.locale',
   theme: 'app.theme',
+  fontScale: 'app.font_scale',
   developerMode: 'app.developer_mode',
 } as const;
 

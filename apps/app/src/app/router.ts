@@ -9,6 +9,7 @@ export type Route =
   | { name: 'sessions' }
   | { name: 'characters' }
   | { name: 'settings' }
+  | { name: 'import' }
   | { name: 'chat'; sessionId: number }
   | { name: 'character'; characterId: number | 'new' };
 
@@ -28,6 +29,8 @@ export function parseRoute(hash: string): Route {
       return { name: 'characters' };
     case 'settings':
       return { name: 'settings' };
+    case 'import':
+      return { name: 'import' };
     case 'chat': {
       const sessionId = Number(tail);
       return Number.isInteger(sessionId) && sessionId > 0 ? { name: 'chat', sessionId } : ROOT_ROUTE;
@@ -50,6 +53,8 @@ export function routeToHash(route: Route): string {
       return '#/characters';
     case 'settings':
       return '#/settings';
+    case 'import':
+      return '#/import';
     case 'chat':
       return `#/chat/${route.sessionId}`;
     case 'character':
@@ -59,9 +64,9 @@ export function routeToHash(route: Route): string {
 
 /** 底部标签：只有这三个是"根页面"；聊天与角色编辑是二级页面（带返回）。 */
 export const TABS: Array<{ route: Route; label: string; icon: string }> = [
-  { route: { name: 'sessions' }, label: '会话', icon: 'chat' },
-  { route: { name: 'characters' }, label: '角色', icon: 'user' },
-  { route: { name: 'settings' }, label: '设置', icon: 'gear' },
+  { route: { name: 'sessions' }, label: 'tab.sessions', icon: 'chat' },
+  { route: { name: 'characters' }, label: 'tab.characters', icon: 'user' },
+  { route: { name: 'settings' }, label: 'tab.settings', icon: 'gear' },
 ];
 
 export function isRootRoute(route: Route): boolean {
@@ -71,7 +76,7 @@ export function isRootRoute(route: Route): boolean {
 /** 当前标签（二级页面归属它的来源标签，保证底栏高亮不闪）。 */
 export function activeTabName(route: Route): Route['name'] {
   if (route.name === 'chat') return 'sessions';
-  if (route.name === 'character') return 'characters';
+  if (route.name === 'character' || route.name === 'import') return 'characters';
   return route.name;
 }
 
@@ -89,6 +94,7 @@ export function parentOf(route: Route): Route | undefined {
     case 'chat':
       return { name: 'sessions' };
     case 'character':
+    case 'import':
       return { name: 'characters' };
     default:
       return undefined;

@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import type { ScreenProps } from './screen-props.ts';
 import { useAppState } from './screen-props.ts';
+import { useT } from '../i18n/context.tsx';
 import { Button, ConfirmDialog, Field, TextArea, TextInput } from '../ui/components.tsx';
 
 export interface CharacterEditScreenProps extends ScreenProps {
@@ -17,6 +18,7 @@ export interface CharacterEditScreenProps extends ScreenProps {
  *     这样不必把表单状态提升到外壳去渲染顶栏按钮。
  */
 export function CharacterEditScreen({ store, characterId, onDone }: CharacterEditScreenProps): ReactNode {
+  const t = useT();
   const state = useAppState(store);
   const existing = characterId === 'new' ? undefined : state.characters.find((item) => item.id === characterId);
 
@@ -67,34 +69,49 @@ export function CharacterEditScreen({ store, characterId, onDone }: CharacterEdi
     <div className="form-screen">
       <div className="form">
         {error !== undefined && <p className="notice notice--warn">{error}</p>}
-        <Field label="名字" hint="必填，最多 60 字">
-          <TextInput value={name} onChange={setName} placeholder="例如：星野" autoFocus={isNew} />
+        <Field label={t('character.name')} hint={t('character.name.hint')}>
+          <TextInput value={name} onChange={setName} placeholder={t('character.name.placeholder')} autoFocus={isNew} />
         </Field>
-        <Field label="描述" hint="她是谁、长什么样、什么身份">
-          <TextArea value={description} onChange={setDescription} rows={4} placeholder="夜巡的守望者，话不多但记得每一个名字。" />
+        <Field label={t('character.description')} hint={t('character.description.hint')}>
+          <TextArea
+            value={description}
+            onChange={setDescription}
+            rows={4}
+            placeholder={t('character.description.placeholder')}
+          />
         </Field>
-        <Field label="性格" hint="语气、习惯、在意什么">
-          <TextArea value={personality} onChange={setPersonality} rows={3} placeholder="克制、敏锐、对旧物有执念。" />
+        <Field label={t('character.personality')} hint={t('character.personality.hint')}>
+          <TextArea
+            value={personality}
+            onChange={setPersonality}
+            rows={3}
+            placeholder={t('character.personality.placeholder')}
+          />
         </Field>
-        <Field label="场景" hint="对话发生在哪里、什么时候">
-          <TextArea value={scenario} onChange={setScenario} rows={3} placeholder="雪线之上的隘口，灯火将尽。" />
+        <Field label={t('character.scenario')} hint={t('character.scenario.hint')}>
+          <TextArea value={scenario} onChange={setScenario} rows={3} placeholder={t('character.scenario.placeholder')} />
         </Field>
-        <Field label="开场白" hint="新建会话时自动出现的这句话">
-          <TextArea value={firstMessage} onChange={setFirstMessage} rows={3} placeholder="「进来吧，风会替你关门。」" />
+        <Field label={t('character.greeting')} hint={t('character.greeting.hint')}>
+          <TextArea
+            value={firstMessage}
+            onChange={setFirstMessage}
+            rows={3}
+            placeholder={t('character.greeting.placeholder')}
+          />
         </Field>
-        <Field label="示例对话" hint="给她一两轮示范，模型会照着这个语气走">
+        <Field label={t('character.example')} hint={t('character.example.hint')}>
           <TextArea
             value={exampleDialogue}
             onChange={setExampleDialogue}
             rows={4}
-            placeholder={'{{user}}: 你守了多久？\n{{char}}: 久到忘了数。'}
+            placeholder={t('character.example.placeholder')}
           />
         </Field>
 
         {!isNew && (
           <div className="form__danger">
             <Button variant="ghost" onClick={() => setPendingDelete(true)}>
-              删除这个角色
+              {t('character.delete')}
             </Button>
           </div>
         )}
@@ -102,14 +119,14 @@ export function CharacterEditScreen({ store, characterId, onDone }: CharacterEdi
 
       <div className="actionbar">
         <Button block disabled={busy || name.trim() === ''} onClick={() => void save()}>
-          {busy ? '保存中…' : isNew ? '创建角色' : '保存'}
+          {busy ? t('common.saving') : isNew ? t('character.create') : t('character.save')}
         </Button>
       </div>
 
       <ConfirmDialog
         open={pendingDelete}
-        title="删除角色"
-        message={`「${existing?.name ?? name}」以及它的所有会话和消息都会被删除，无法恢复。`}
+        title={t('characters.delete')}
+        message={t('characters.delete.message', { name: existing?.name ?? name })}
         onCancel={() => setPendingDelete(false)}
         onConfirm={() => {
           setPendingDelete(false);

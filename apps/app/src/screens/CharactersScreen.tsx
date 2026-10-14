@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import type { ScreenProps } from './screen-props.ts';
 import { useAppState } from './screen-props.ts';
+import { useT } from '../i18n/context.tsx';
 import { previewOf } from '../data/repository.ts';
 import {
   Banner,
@@ -11,24 +12,31 @@ import {
   IconButton,
   ListRow,
   LoadingState,
+  LoadMore,
   Sheet,
   SheetItem,
+  useWindowedList,
 } from '../ui/components.tsx';
 
-/** 角色列表。每行显示名字 + 一句话描述；右侧「⋯」提供编辑/删除。 */
+/** 角色列表。每行显示名字 + 一句话描述；滑动或长按都能删，点击进编辑。 */
 export function CharactersScreen({ store, router }: ScreenProps): ReactNode {
+  const t = useT();
   const state = useAppState(store);
   const [menuFor, setMenuFor] = useState<number | undefined>(undefined);
   const [confirmDelete, setConfirmDelete] = useState<number | undefined>(undefined);
+
+  const { visible, hidden, sentinel } = useWindowedList(state.characters, { pageSize: 30 });
+
   const menu = state.characters.find((character) => character.id === menuFor);
   const deleting = state.characters.find((character) => character.id === confirmDelete);
+  const openNew = (): void => router.navigate({ name: 'character', characterId: 'new' });
 
-  if (state.status === 'loading' && state.characters.length === 0) return <LoadingState label="正在读取角色…" />;
+  if (state.status === 'loading' && state.characters.length === 0) return <LoadingState label={t('characters.loading')} />;
 
   return (
     <>
       {state.error !== undefined && (
-        <Banner tone="error" action={<Button variant="ghost" onClick={() => void store.actions.refresh()}>重试</Button>}>
+        <Banner tone="error" action={<Button variant="ghost" onClick={() => void store.actions.refresh()}>{t('common.retry')}</Button>}>
           {state.error}
         </Banner>
       )}
@@ -36,38 +44,39 @@ export function CharactersScreen({ store, router }: ScreenProps): ReactNode {
       {state.characters.length === 0 ? (
         <EmptyState
           icon="user"
-          title="还没有角色"
-          hint="填个名字就能开始；描述、性格、开场白可以以后再补"
-          action={<Button onClick={() => router.navigate({ name: 'character', characterId: 'new' })}>新建角色</Button>}
+          title={t('characters.empty.title')}
+          hint={t('characters.empty.hint')}
+          action={<Button onClick={openNew}>{t('characters.new')}</Button>}
         />
       ) : (
         <ul className="list">
-          {state.characters.map((character) => (
+          {visible.map((character) => (
             <ListRow
               key={character.id}
               title={character.name}
-              subtitle={previewOf(character.description || character.personality || '（没有描述）', 40)}
-              meta={character.firstMessage === '' ? '无开场白' : '有开场白'}
+              subtitle={previewOf(character.description || character.personality || t('characters.noDescription'), 40)}
+              meta={character.firstMessage === '' ? t('characters.noGreeting') : t('characters.hasGreeting')}
               onClick={() => router.navigate({ name: 'character', characterId: character.id })}
-              trailing={<IconButton icon="more" label="更多操作" onClick={() => setMenuFor(character.id)} />}
+              onLongPress={() => setMenuFor(character.id)}
+              onSwipeDelete={() => setConfirmDelete(character.id)}
+              trailing={<IconButton icon="more" label={t('common.more')} onClick={() => setMenuFor(character.id)} />}
             />
           ))}
         </ul>
       )}
+      <LoadMore hidden={hidden} sentinel={sentinel} />
 
-      <button
-        type="button"
-        className="fab"
-        aria-label="新建角色"
-        onClick={() => router.navigate({ name: 'character', characterId: 'new' })}
-      >
+      <button type="button" className="fab" aria-label={t('characters.new')} onClick={openNew}>
         <Icon name="plus" size={26} />
+      </button>
+      <button type="button" className="fab fab--secondary" aria-label={t('import.title')} onClick={() => router.navigate({ name: 'import' })}>
+        <Icon name="import" size={22} />
       </button>
 
       <Sheet open={menu !== undefined} title={menu?.name} onClose={() => setMenuFor(undefined)}>
         <SheetItem
           icon="edit"
-          label="编辑"
+          label={t('characters.edit')}
           onClick={() => {
             const id = menuFor;
             setMenuFor(undefined);
@@ -76,7 +85,7 @@ export function CharactersScreen({ store, router }: ScreenProps): ReactNode {
         />
         <SheetItem
           icon="trash"
-          label="删除角色"
+          label={t('characters.delete')}
           danger
           onClick={() => {
             setConfirmDelete(menuFor);
@@ -87,8 +96,8 @@ export function CharactersScreen({ store, router }: ScreenProps): ReactNode {
 
       <ConfirmDialog
         open={deleting !== undefined}
-        title="删除角色"
-        message={`「${deleting?.name ?? ''}」以及它的所有会话和消息都会被删除，无法恢复。`}
+        title={t('characters.delete')}
+        message={t('characters.delete.message', { name: deleting?.name ?? '' })}
         onCancel={() => setConfirmDelete(undefined)}
         onConfirm={() => {
           const id = confirmDelete;

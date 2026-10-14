@@ -112,7 +112,7 @@ pub fn chat_reply(
 
     // 先落一条 streaming 占位：界面立刻能看到"正在生成"，中断也不会丢内容
     let placeholder = store
-        .append_message(session_id, "assistant", "", "streaming")
+        .append_message(session_id, "assistant", "", "streaming", None)
         .map_err(|message| WireErrorPayload::new("store-error", message))?;
     out.chunk(json!({ "messageId": placeholder.id, "delta": "", "started": true }));
 

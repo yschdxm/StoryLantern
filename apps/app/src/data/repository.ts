@@ -35,7 +35,8 @@ export interface SessionStore {
 
 export interface MessageStore {
   list(sessionId: number): Promise<Message[]>;
-  append(sessionId: number, role: MessageRole, content: string, status?: MessageStatus): Promise<Message>;
+  /** `createdAt` 用于导入历史记录：不传就用当前时间。 */
+  append(sessionId: number, role: MessageRole, content: string, status?: MessageStatus, createdAt?: number): Promise<Message>;
   update(id: number, content: string, status?: MessageStatus): Promise<boolean>;
   remove(id: number): Promise<boolean>;
 }

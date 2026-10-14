@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useAppState, type ScreenProps } from './screen-props.ts';
+import { useT } from '../i18n/context.tsx';
 import { formatTime, previewOf } from '../data/repository.ts';
 import {
   Banner,
@@ -10,22 +11,27 @@ import {
   IconButton,
   ListRow,
   LoadingState,
+  LoadMore,
   Sheet,
   SheetItem,
+  useWindowedList,
 } from '../ui/components.tsx';
 
 /**
  * 会话列表（首页）。
  *
  * 人机工学要点：每行 64px 高、整行可点、右侧「⋯」是独立 44px 触控目标；
- * 空态给一句明确的下一步，而不是空白页。
+ * 支持"向左滑删除"与"长按出菜单"两种不必记住的入口；空态给明确的下一步，不留白屏。
  */
 export function SessionsScreen({ store, router }: ScreenProps): ReactNode {
+  const t = useT();
   const state = useAppState(store);
   const [menuFor, setMenuFor] = useState<number | undefined>(undefined);
   const [pickCharacter, setPickCharacter] = useState(false);
   const [renaming, setRenaming] = useState<{ id: number; title: string } | undefined>(undefined);
   const [confirmDelete, setConfirmDelete] = useState<number | undefined>(undefined);
+
+  const { visible, hidden, sentinel } = useWindowedList(state.sessions, { pageSize: 30 });
 
   const menu = state.sessions.find((session) => session.id === menuFor);
   const deleting = state.sessions.find((session) => session.id === confirmDelete);
@@ -38,12 +44,12 @@ export function SessionsScreen({ store, router }: ScreenProps): ReactNode {
     setPickCharacter(true);
   };
 
-  if (state.status === 'loading' && state.sessions.length === 0) return <LoadingState label="正在读取会话…" />;
+  if (state.status === 'loading' && state.sessions.length === 0) return <LoadingState label={t('sessions.loading')} />;
 
   return (
     <>
       {state.error !== undefined && (
-        <Banner tone="error" action={<Button variant="ghost" onClick={() => void store.actions.refresh()}>重试</Button>}>
+        <Banner tone="error" action={<Button variant="ghost" onClick={() => void store.actions.refresh()}>{t('common.retry')}</Button>}>
           {state.error}
         </Banner>
       )}
@@ -51,32 +57,33 @@ export function SessionsScreen({ store, router }: ScreenProps): ReactNode {
       {state.sessions.length === 0 ? (
         <EmptyState
           icon="chat"
-          title="还没有会话"
-          hint={state.characters.length === 0 ? '先创建一个角色，然后就能和它聊天了' : '选一个角色开始新的会话'}
-          action={<Button onClick={startNew}>{state.characters.length === 0 ? '创建角色' : '新建会话'}</Button>}
+          title={t('sessions.empty.title')}
+          hint={state.characters.length === 0 ? t('sessions.empty.needCharacter') : t('sessions.empty.pickCharacter')}
+          action={<Button onClick={startNew}>{state.characters.length === 0 ? t('sessions.createCharacter') : t('sessions.new')}</Button>}
         />
       ) : (
         <ul className="list">
-          {state.sessions.map((session) => (
+          {visible.map((session) => (
             <ListRow
               key={session.id}
               title={session.title}
               subtitle={previewOf(session.lastMessage)}
               meta={formatTime(session.updatedAt)}
               onClick={() => router.navigate({ name: 'chat', sessionId: session.id })}
-              trailing={
-                <IconButton icon="more" label="更多操作" onClick={() => setMenuFor(session.id)} />
-              }
+              onLongPress={() => setMenuFor(session.id)}
+              onSwipeDelete={() => setConfirmDelete(session.id)}
+              trailing={<IconButton icon="more" label={t('common.more')} onClick={() => setMenuFor(session.id)} />}
             />
           ))}
         </ul>
       )}
+      <LoadMore hidden={hidden} sentinel={sentinel} />
 
-      <button type="button" className="fab" aria-label="新建会话" onClick={startNew}>
+      <button type="button" className="fab" aria-label={t('sessions.new')} onClick={startNew}>
         <Icon name="plus" size={26} />
       </button>
 
-      <Sheet open={pickCharacter} title="选择角色" onClose={() => setPickCharacter(false)}>
+      <Sheet open={pickCharacter} title={t('sessions.pick.title')} onClose={() => setPickCharacter(false)}>
         {state.characters.map((character) => (
           <SheetItem
             key={character.id}
@@ -95,7 +102,7 @@ export function SessionsScreen({ store, router }: ScreenProps): ReactNode {
       <Sheet open={menu !== undefined} title={menu?.title} onClose={() => setMenuFor(undefined)}>
         <SheetItem
           icon="edit"
-          label="重命名"
+          label={t('sessions.rename.action')}
           onClick={() => {
             if (menu !== undefined) setRenaming({ id: menu.id, title: menu.title });
             setMenuFor(undefined);
@@ -103,7 +110,7 @@ export function SessionsScreen({ store, router }: ScreenProps): ReactNode {
         />
         <SheetItem
           icon="trash"
-          label="删除会话"
+          label={t('sessions.delete')}
           danger
           onClick={() => {
             setConfirmDelete(menuFor);
@@ -123,8 +130,8 @@ export function SessionsScreen({ store, router }: ScreenProps): ReactNode {
 
       <ConfirmDialog
         open={deleting !== undefined}
-        title="删除会话"
-        message={`「${deleting?.title ?? ''}」及其 ${deleting?.messageCount ?? 0} 条消息将被删除，无法恢复。`}
+        title={t('sessions.delete')}
+        message={t('sessions.delete.message', { title: deleting?.title ?? '', count: deleting?.messageCount ?? 0 })}
         onCancel={() => setConfirmDelete(undefined)}
         onConfirm={() => {
           const id = confirmDelete;
@@ -146,6 +153,7 @@ function RenameSheet({
   onClose: () => void;
   onSubmit: (id: number, title: string) => void;
 }): ReactNode {
+  const t = useT();
   const [draft, setDraft] = useState('');
 
   useEffect(() => {
@@ -153,13 +161,13 @@ function RenameSheet({
   }, [value]);
 
   return (
-    <Sheet open={value !== undefined} title="重命名会话" onClose={onClose}>
+    <Sheet open={value !== undefined} title={t('sessions.rename')} onClose={onClose}>
       <div className="sheet__form">
         <input
           className="input"
           value={draft}
           autoFocus
-          placeholder="会话名"
+          placeholder={t('sessions.title.field')}
           onChange={(event) => setDraft(event.target.value)}
         />
         <Button
@@ -169,7 +177,7 @@ function RenameSheet({
             if (value !== undefined) onSubmit(value.id, draft.trim());
           }}
         >
-          确定
+          {t('common.confirm')}
         </Button>
       </div>
     </Sheet>

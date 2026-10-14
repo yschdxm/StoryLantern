@@ -41,10 +41,10 @@ test('路由：返回层级与底栏高亮归属', () => {
   assert.equal(activeTabName({ name: 'settings' }), 'settings');
 });
 
-test('路由：底栏正好三个根标签', () => {
+test('路由：底栏正好三个根标签（标签名是 i18n key，不是硬编码文案）', () => {
   assert.deepEqual(
     TABS.map((tab) => tab.label),
-    ['会话', '角色', '设置'],
+    ['tab.sessions', 'tab.characters', 'tab.settings'],
   );
   for (const tab of TABS) assert.equal(isRootRoute(tab.route), true);
 });

@@ -34,6 +34,8 @@ export interface AppActions {
   renameSession(id: number, title: string): Promise<void>;
   deleteSession(id: number): Promise<void>;
   send(sessionId: number, text: string): Promise<void>;
+  /** 追加一条已存在的消息（导入历史记录用；`createdAt` 保留原始时间）。 */
+  appendMessage(sessionId: number, role: Message['role'], content: string, createdAt?: number): Promise<void>;
   updateMessage(id: number, content: string, status?: Message['status']): Promise<void>;
   removeMessage(id: number): Promise<void>;
   setSetting(key: string, value: string): Promise<void>;
@@ -174,6 +176,27 @@ export function createAppStore(repository: Repository): AppStore {
       await run('send', async () => {
         await repository.messages.append(sessionId, 'user', content, 'done');
         await Promise.all([actions.loadMessages(sessionId), refreshSessions()]);
+      });
+    },
+
+    async appendMessage(sessionId, role, content, createdAt) {
+      const message = await repository.messages.append(
+        sessionId,
+        role,
+        content,
+        'done',
+        ...(createdAt === undefined ? [] : [createdAt]),
+      );
+      if (state.activeSessionId === sessionId) await actions.loadMessages(sessionId);
+      // 就地更新会话摘要（条数/最后一条/时间）。
+      // 不在这里逐条 refreshSessions：导入上万条历史会打出上万次查询。
+      // 批量导入结束时由调用方跑一次 refreshSessions 对齐。
+      set({
+        sessions: state.sessions.map((session) =>
+          session.id === sessionId
+            ? { ...session, messageCount: session.messageCount + 1, lastMessage: content, updatedAt: message.createdAt }
+            : session,
+        ),
       });
     },
 

@@ -92,9 +92,17 @@ export function createHostRepository(transport: WireTransport): Repository {
   const messages: MessageStore = {
     list: (sessionId) => call<Message[]>('messages', 'list', sessionId),
 
-    async append(sessionId, role: MessageRole, content: string, status: MessageStatus = 'done') {
+    async append(sessionId, role: MessageRole, content: string, status: MessageStatus = 'done', createdAt?: number) {
       const safeRole = validateMessageRole(role);
-      return call<Message>('messages', 'append', sessionId, safeRole, content, status);
+      return call<Message>(
+        'messages',
+        'append',
+        sessionId,
+        safeRole,
+        content,
+        status,
+        ...(createdAt === undefined ? [] : [createdAt]),
+      );
     },
 
     async update(id, content, status: MessageStatus = 'done') {

@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import type { ScreenProps } from './screen-props.ts';
 import { useAppState } from './screen-props.ts';
+import { useT } from '../i18n/context.tsx';
 import { SETTING_KEYS } from '../data/types.ts';
 import { HostPanel } from '../HostPanel.tsx';
 import { Button, Field, TextInput } from '../ui/components.tsx';
@@ -11,22 +12,46 @@ export interface SettingsScreenProps extends ScreenProps {
   onLocaleChange(locale: string): void;
 }
 
-const PROVIDERS = [
-  { value: 'openai-compatible', label: 'OpenAI 兼容（DeepSeek / OpenAI / 本地模型）' },
-  { value: 'offline', label: '不调用模型（只记录消息）' },
-];
+/** 分段选择器：主题/字号这种"少量互斥选项"用它比下拉框少一次点击，也看得见当前值。 */
+function Segmented<T extends string>({
+  value,
+  options,
+  onChange,
+}: {
+  value: T;
+  options: Array<{ value: T; label: string }>;
+  onChange: (value: T) => void;
+}): ReactNode {
+  return (
+    <div className="segmented" role="group">
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          className={`segmented__item${option.value === value ? ' segmented__item--active' : ''}`}
+          aria-pressed={option.value === value}
+          onClick={() => onChange(option.value)}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 /**
  * 设置页。
  *
  * 只放**用户真的会改**的东西：模型服务、外观、数据、开发者。
- * 每一项都是"改完立即生效并存库"，没有"保存"按钮——移动端表单里多一个保存按钮就是多一次误操作。
+ * 文本类改完即存（失焦自动保存），选择类点一下就生效——没有"保存"按钮，
+ * 移动端表单里多一个保存按钮就是多一次误操作。
  */
-export function SettingsScreen({ store, host, chat, plugins, locales, onLocaleChange }: SettingsScreenProps): ReactNode {
+export function SettingsScreen({ store, router, host, chat, plugins, locales, onLocaleChange }: SettingsScreenProps): ReactNode {
+  const t = useT();
   const state = useAppState(store);
   const [local, setLocal] = useState<Record<string, string>>({});
   const [showKey, setShowKey] = useState(false);
-  const [probeResult, setProbeResult] = useState<string | undefined>(undefined);
+  const [probeResult, setProbeResult] = useState<{ ok: boolean; text: string } | undefined>(undefined);
   const [probing, setProbing] = useState(false);
 
   const value = (key: string): string => local[key] ?? state.settings[key] ?? '';
@@ -42,9 +67,7 @@ export function SettingsScreen({ store, host, chat, plugins, locales, onLocaleCh
     });
   }, [state.settings]);
 
-  const update = (key: string, next: string): void => {
-    setLocal((current) => ({ ...current, [key]: next }));
-  };
+  const update = (key: string, next: string): void => setLocal((current) => ({ ...current, [key]: next }));
 
   const commit = (key: string): void => {
     const next = value(key);
@@ -52,30 +75,27 @@ export function SettingsScreen({ store, host, chat, plugins, locales, onLocaleCh
     void store.actions.setSetting(key, next);
   };
 
+  const saveNow = (key: string, next: string): void => {
+    update(key, next);
+    void store.actions.setSetting(key, next);
+  };
+
   const provider = value(SETTING_KEYS.providerKind) === '' ? 'openai-compatible' : value(SETTING_KEYS.providerKind);
   const theme = value(SETTING_KEYS.theme) === '' ? 'dark' : value(SETTING_KEYS.theme);
+  const fontScale = value(SETTING_KEYS.fontScale) === '' ? 'normal' : value(SETTING_KEYS.fontScale);
+  const locale = state.settings[SETTING_KEYS.locale] ?? locales[0] ?? '';
 
   return (
     <div className="settings">
       <section className="settings-group">
-        <h2 className="settings-group__title">模型服务</h2>
-        <Field label="服务类型">
-          <select
-            className="input"
-            value={provider}
-            onChange={(event) => {
-              update(SETTING_KEYS.providerKind, event.target.value);
-              void store.actions.setSetting(SETTING_KEYS.providerKind, event.target.value);
-            }}
-          >
-            {PROVIDERS.map((item) => (
-              <option key={item.value} value={item.value}>
-                {item.label}
-              </option>
-            ))}
+        <h2 className="settings-group__title">{t('settings.model')}</h2>
+        <Field label={t('settings.model.provider')}>
+          <select className="input" value={provider} onChange={(event) => saveNow(SETTING_KEYS.providerKind, event.target.value)}>
+            <option value="openai-compatible">{t('settings.model.provider.openai')}</option>
+            <option value="offline">{t('settings.model.provider.offline')}</option>
           </select>
         </Field>
-        <Field label="接口地址" hint="例如 https://api.deepseek.com/v1（本地地址可以不填密钥）">
+        <Field label={t('settings.model.baseUrl')} hint={t('settings.model.baseUrl.hint')}>
           <TextInput
             type="url"
             value={value(SETTING_KEYS.baseUrl)}
@@ -84,7 +104,7 @@ export function SettingsScreen({ store, host, chat, plugins, locales, onLocaleCh
             onBlur={() => commit(SETTING_KEYS.baseUrl)}
           />
         </Field>
-        <Field label="API Key" hint="只存在宿主数据库里，不会写进前端日志；界面拿到的只是掩码">
+        <Field label={t('settings.model.apiKey')} hint={t('settings.model.apiKey.hint')}>
           <TextInput
             type={showKey ? 'text' : 'password'}
             value={value(SETTING_KEYS.apiKey)}
@@ -93,7 +113,7 @@ export function SettingsScreen({ store, host, chat, plugins, locales, onLocaleCh
             onBlur={() => commit(SETTING_KEYS.apiKey)}
           />
         </Field>
-        <Field label="模型名" hint="例如 deepseek-chat / gpt-4o-mini">
+        <Field label={t('settings.model.name')} hint={t('settings.model.name.hint')}>
           <TextInput
             value={value(SETTING_KEYS.model)}
             placeholder="deepseek-chat"
@@ -103,7 +123,7 @@ export function SettingsScreen({ store, host, chat, plugins, locales, onLocaleCh
         </Field>
         <div className="row">
           <Button variant="ghost" onClick={() => setShowKey((current) => !current)}>
-            {showKey ? '隐藏密钥' : '显示密钥'}
+            {showKey ? t('settings.model.hideKey') : t('settings.model.showKey')}
           </Button>
           <Button
             variant="ghost"
@@ -113,42 +133,53 @@ export function SettingsScreen({ store, host, chat, plugins, locales, onLocaleCh
               setProbeResult(undefined);
               void chat
                 .probe()
-                .then((result) => setProbeResult(`${result.ok ? '✓' : '✗'} ${result.message}`))
+                .then((result) =>
+                  setProbeResult(
+                    result.ok
+                      ? { ok: true, text: t('settings.model.probeOk') }
+                      : { ok: false, text: t('settings.model.probeFail', { message: result.message }) },
+                  ),
+                )
                 .finally(() => setProbing(false));
             }}
           >
-            {probing ? '测试中…' : '测试连接'}
+            {probing ? t('settings.model.testing') : t('settings.model.test')}
           </Button>
         </div>
-        {probeResult !== undefined && <p className="notice">{probeResult}</p>}
-        <p className="muted">
-          改完离开输入框即自动保存。调用由宿主发出（Rust），密钥只存在宿主数据库里，日志里也不会出现明文。
-        </p>
+        {probeResult !== undefined && <p className={`notice notice--${probeResult.ok ? 'ok' : 'warn'}`}>{probeResult.text}</p>}
+        <p className="muted">{t('settings.model.note')}</p>
       </section>
 
       <section className="settings-group">
-        <h2 className="settings-group__title">外观</h2>
-        <Field label="主题">
-          <select
-            className="input"
+        <h2 className="settings-group__title">{t('settings.appearance')}</h2>
+        <Field label={t('settings.theme')}>
+          <Segmented
             value={theme}
-            onChange={(event) => {
-              update(SETTING_KEYS.theme, event.target.value);
-              void store.actions.setSetting(SETTING_KEYS.theme, event.target.value);
-              document.documentElement.dataset['theme'] = event.target.value;
-            }}
-          >
-            <option value="dark">深色</option>
-            <option value="light">浅色</option>
-            <option value="system">跟随系统</option>
-          </select>
+            onChange={(next) => saveNow(SETTING_KEYS.theme, next)}
+            options={[
+              { value: 'dark', label: t('settings.theme.dark') },
+              { value: 'light', label: t('settings.theme.light') },
+              { value: 'system', label: t('settings.theme.system') },
+            ]}
+          />
+        </Field>
+        <Field label={t('settings.fontScale')}>
+          <Segmented
+            value={fontScale}
+            onChange={(next) => saveNow(SETTING_KEYS.fontScale, next)}
+            options={[
+              { value: 'small', label: t('settings.fontScale.small') },
+              { value: 'normal', label: t('settings.fontScale.normal') },
+              { value: 'large', label: t('settings.fontScale.large') },
+            ]}
+          />
         </Field>
         {locales.length > 0 && (
-          <Field label="界面语言">
-            <select className="input" value={state.settings[SETTING_KEYS.locale] ?? locales[0] ?? ''} onChange={(event) => onLocaleChange(event.target.value)}>
+          <Field label={t('settings.language')}>
+            <select className="input" value={locale} onChange={(event) => onLocaleChange(event.target.value)}>
               {locales.map((item) => (
                 <option key={item} value={item}>
-                  {item}
+                  {item === 'zh-CN' ? '简体中文' : item === 'en' ? 'English' : item}
                 </option>
               ))}
             </select>
@@ -157,17 +188,21 @@ export function SettingsScreen({ store, host, chat, plugins, locales, onLocaleCh
       </section>
 
       <section className="settings-group">
-        <h2 className="settings-group__title">数据</h2>
+        <h2 className="settings-group__title">{t('settings.data')}</h2>
+        <p className="muted">{host.available ? t('settings.data.store.host') : t('settings.data.store.browser')}</p>
         <p className="muted">
-          存储：{host.available ? '宿主 SQLite（应用私有目录）' : '浏览器 localStorage'}
+          {t('settings.data.counts', {
+            characters: t('count.characters', { count: state.characters.length }),
+            sessions: t('count.sessions', { count: state.sessions.length }),
+          })}
         </p>
-        <p className="muted">
-          角色 {state.characters.length} · 会话 {state.sessions.length}
-        </p>
+        <Button variant="ghost" onClick={() => router.navigate({ name: 'import' })}>
+          {t('import.title')}
+        </Button>
       </section>
 
       <section className="settings-group">
-        <h2 className="settings-group__title">已激活的插件</h2>
+        <h2 className="settings-group__title">{t('settings.plugins')}</h2>
         <ul className="chips">
           {plugins.map((plugin) => (
             <li key={plugin.id} className={`chip chip--${plugin.status}`}>
@@ -176,15 +211,15 @@ export function SettingsScreen({ store, host, chat, plugins, locales, onLocaleCh
             </li>
           ))}
         </ul>
-        <p className="muted">这些行来自组合文件（bundle patch）；关掉一行，对应功能就消失。</p>
+        <p className="muted">{t('settings.plugins.note')}</p>
       </section>
 
       <section className="settings-group">
-        <h2 className="settings-group__title">开发者</h2>
+        <h2 className="settings-group__title">{t('settings.developer')}</h2>
         <HostPanel client={host} />
       </section>
 
-      <p className="muted settings__version">Story Lantern v0.1 · 手机优先 · 构建 {__BUILD_STAMP__}</p>
+      <p className="muted settings__version">{t('settings.version', { stamp: __BUILD_STAMP__ })}</p>
     </div>
   );
 }

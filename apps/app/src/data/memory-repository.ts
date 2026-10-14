@@ -177,7 +177,7 @@ export function createMemoryRepository(
       return state.messages.filter((message) => message.sessionId === sessionId).sort((a, b) => a.id - b.id);
     },
 
-    async append(sessionId, role: MessageRole, content: string, status: MessageStatus = 'done') {
+    async append(sessionId, role: MessageRole, content: string, status: MessageStatus = 'done', createdAt?: number) {
       const safeRole = validateMessageRole(role);
       const message: Message = {
         id: nextId(),
@@ -185,7 +185,8 @@ export function createMemoryRepository(
         role: safeRole,
         content,
         status,
-        createdAt: now(),
+        // 导入历史时保留原始时间；0/未传都按"现在"处理
+        createdAt: createdAt !== undefined && createdAt > 0 ? createdAt : now(),
       };
       state.messages.push(message);
       touchSession(sessionId);

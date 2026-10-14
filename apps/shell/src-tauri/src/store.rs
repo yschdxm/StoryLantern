@@ -400,11 +400,12 @@ impl Store {
         collect(rows)
     }
 
-    pub fn append_message(&self, session_id: i64, role: &str, content: &str, status: &str) -> Result<Message, String> {
+    pub fn append_message(&self, session_id: i64, role: &str, content: &str, status: &str, created_at: Option<i64>) -> Result<Message, String> {
         if role != "user" && role != "assistant" && role != "system" {
             return Err(format!("未知的消息角色：{role}"));
         }
-        let now = now_ms();
+        // 导入历史记录时要保留原始时间：否则一年前的对话会显示成"刚刚"
+        let now = created_at.filter(|value| *value > 0).unwrap_or_else(now_ms);
         let conn = self.lock()?;
         conn.execute(
             "INSERT INTO messages (session_id, role, content, status, created_at) VALUES (?1,?2,?3,?4,?5)",

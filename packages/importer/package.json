@@ -1,0 +1,10 @@
+{
+  "name": "@storylantern/importer",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "导入器：角色卡（PNG/JSON/CHARX）、世界书、聊天记录 → 领域对象（零依赖，纯 TS）",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}
