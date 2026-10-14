@@ -8,9 +8,18 @@ build/
 out/
 *.tsbuildinfo
 
+# rust / tauri
+apps/shell/src-tauri/target/
+# Tauri 生成的移动端工程：可用 `tauri android init` / `tauri ios init` 重建
+apps/shell/src-tauri/gen/
+# 仓库内的 Gradle 影子目录（复用 ~/.gradle 的 wrapper 与 caches，但不继承失效的代理配置）
+.gradle-home/
+
+# fixtures generated on demand
+fixtures/chats/large.jsonl
+
 # test / coverage
 coverage/
-.mf/
 
 # local runtime data (never commit user data, keys or synced stores)
 .data/
@@ -25,6 +34,5 @@ Thumbs.db
 Desktop.ini
 .DS_Store
 
-# ������ʱ�ύ��Ϣ�ļ�
-.commit-msg.tmp
-.git-commit-msg.tmp
+# local commit message scratch files
+.commit-msg*.tmp

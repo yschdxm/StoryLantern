@@ -1,0 +1,23 @@
+[package]
+name = "storylantern-shell"
+version = "0.0.1"
+description = "Story Lantern 原生壳（Tauri v2）"
+edition = "2021"
+rust-version = "1.77"
+
+# 移动端需要 staticlib/cdylib，桌面需要 rlib。
+[lib]
+name = "storylantern_shell_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[features]
+# 由 tauri 官方模板约定：custom-protocol 用于生产构建
+custom-protocol = ["tauri/custom-protocol"]

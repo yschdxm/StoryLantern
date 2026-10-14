@@ -1,0 +1,36 @@
+{
+  "order": [
+    "character",
+    "style-guide",
+    "history"
+  ],
+  "usedTokens": 99,
+  "budgetTokens": 256,
+  "omitted": 1,
+  "nodes": [
+    {
+      "id": "character",
+      "included": true,
+      "tokens": 5,
+      "reason": "Included (priority 100, 5 tokens)"
+    },
+    {
+      "id": "style-guide",
+      "included": true,
+      "tokens": 13,
+      "reason": "Included (priority 90, 13 tokens)"
+    },
+    {
+      "id": "history",
+      "included": true,
+      "tokens": 81,
+      "reason": "Included (priority 60, 81 tokens)"
+    },
+    {
+      "id": "long-lore",
+      "included": false,
+      "tokens": 800,
+      "reason": "Dropped for budget (used 99/256, needs 800)"
+    }
+  ]
+}

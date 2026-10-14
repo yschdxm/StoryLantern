@@ -10,8 +10,9 @@
     "node": ">=22.18.0"
   },
   "scripts": {
-    "test": "node --test --test-reporter=spec \"packages/**/*.test.ts\" \"plugins/**/*.test.ts\" \"apps/**/*.test.ts\"",
-    "test:watch": "node --test --watch \"packages/**/*.test.ts\" \"plugins/**/*.test.ts\" \"apps/**/*.test.ts\"",
+    "test": "node --test --test-reporter=spec \"packages/**/*.test.ts\" \"plugins/**/*.test.ts\" \"apps/**/*.test.ts\" \"fixtures/**/*.test.ts\" \"eval/**/*.test.ts\"",
+    "test:watch": "node --test --watch \"packages/**/*.test.ts\" \"plugins/**/*.test.ts\" \"apps/**/*.test.ts\" \"fixtures/**/*.test.ts\" \"eval/**/*.test.ts\"",
+    "fixtures": "node fixtures/tools/make-fixtures.mjs",
     "gate": "node scripts/check-boundaries.mjs",
     "perf": "node eval/perf/budgets.mjs",
     "typecheck": "tsc -p tsconfig.json",

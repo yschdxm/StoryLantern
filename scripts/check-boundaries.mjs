@@ -8,6 +8,11 @@
  *  3. `packages/oplog`、`packages/sync-core` 禁止 `any`（核心协议层要强类型）。
  *  4. 相对导入必须带 `.ts` 扩展名（Node 类型擦除不做扩展名重写）。
  *  5. 依赖方向：包之间只允许表中声明的方向。
+ *
+ * 扫描范围是**产品与工具代码**（packages / plugins / scripts / apps）。
+ * 刻意不扫描 `spikes/`、`eval/`、`fixtures/`：它们是开发期一次性产物或测试数据生成器
+ * （`fixtures/tools/make-fixtures.mjs` 就明显超过 400 行，因为样本数据本身就长），
+ * 不随产品发布。这是**有意的排除**，不是遗漏。
  */
 import { readdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
@@ -32,6 +37,8 @@ const FORBID_ANY = new Set(['oplog', 'sync-core']);
 
 const violations = [];
 
+const BUILD_DIRS = new Set(['node_modules', 'dist', 'build', 'target', 'gen', 'coverage', 'out']);
+
 async function walk(dir, out = []) {
   let entries;
   try {
@@ -40,12 +47,57 @@ async function walk(dir, out = []) {
     return out;
   }
   for (const entry of entries) {
-    if (entry.name === 'node_modules' || entry.name === 'dist' || entry.name.startsWith('.')) continue;
+    if (BUILD_DIRS.has(entry.name) || entry.name.startsWith('.')) continue;
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) await walk(full, out);
     else out.push(full);
   }
   return out;
+}
+
+/** 文本类文件：UTF-8 校验只针对这些（二进制夹具跳过）。 */
+const TEXT_FILE = /\.(ts|mts|tsx|mjs|js|cjs|json|jsonl|md|ya?ml|toml|txt|gitignore|gitattributes|editorconfig|properties|kts|gradle|rs|py|html|css)$/i;
+const TEXT_ROOTS = ['docs', 'bundles', 'fixtures', 'eval', 'spikes'];
+const TEXT_ROOT_FILES = [
+  'README.md',
+  'package.json',
+  'pnpm-workspace.yaml',
+  'tsconfig.json',
+  'tsconfig.base.json',
+  '.gitignore',
+  '.gitattributes',
+  '.editorconfig',
+];
+
+/**
+ * 校验文本文件是合法 UTF-8。
+ *
+ * 为什么值得单独一条：本机已经三次因"用 PowerShell 追加内容"写进 GBK 字节，
+ * 造出混合编码文件——其中一次直接把 `.gitignore` 变成非法 UTF-8，另一次让 `.ps1` 解析失败。
+ * Node 读非法 UTF-8 **不会报错**（静默替换成 U+FFFD），所以必须显式往返比对。
+ */
+async function checkUtf8(files) {
+  const targets = [...files];
+  for (const dir of TEXT_ROOTS) {
+    const full = path.join(ROOT, dir);
+    const info = await stat(full).catch(() => null);
+    if (info?.isDirectory()) await walk(full, targets);
+  }
+  for (const name of TEXT_ROOT_FILES) {
+    const full = path.join(ROOT, name);
+    const info = await stat(full).catch(() => null);
+    if (info?.isFile()) targets.push(full);
+  }
+
+  for (const file of targets) {
+    const relPath = path.relative(ROOT, file).split(path.sep).join('/');
+    if (!TEXT_FILE.test(relPath)) continue;
+    const bytes = await readFile(file);
+    const roundTrip = Buffer.from(bytes.toString('utf8'), 'utf8');
+    if (!roundTrip.equals(bytes)) {
+      violations.push(`${relPath}: 不是合法 UTF-8（混入了其它编码；用 UTF-8 重写该文件）`);
+    }
+  }
 }
 
 /** 'packages/oplog/src/x.ts' -> 'oplog'；非包内文件返回 null。 */
@@ -130,12 +182,14 @@ async function main() {
     checkImports(relPath, text);
   }
 
+  await checkUtf8(files);
+
   if (violations.length > 0) {
     console.error(`✗ 门禁失败：${violations.length} 项`);
     for (const v of violations) console.error(`  - ${v}`);
     process.exit(1);
   }
-  console.log(`✓ 门禁通过（${sourceFiles.length} 个源文件：行数 / 可擦除性 / any / 依赖方向）`);
+  console.log(`✓ 门禁通过（${sourceFiles.length} 个源文件 + 文本文件 UTF-8：行数 / 可擦除性 / any / 依赖方向 / 编码）`);
 }
 
 await main();

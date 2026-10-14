@@ -1,0 +1,36 @@
+{
+  "order": [
+    "character",
+    "style-guide",
+    "history"
+  ],
+  "usedTokens": 99,
+  "budgetTokens": 256,
+  "omitted": 1,
+  "nodes": [
+    {
+      "id": "character",
+      "included": true,
+      "tokens": 5,
+      "reason": "纳入（优先级 100，占用 5 tokens）"
+    },
+    {
+      "id": "style-guide",
+      "included": true,
+      "tokens": 13,
+      "reason": "纳入（优先级 90，占用 13 tokens）"
+    },
+    {
+      "id": "history",
+      "included": true,
+      "tokens": 81,
+      "reason": "纳入（优先级 60，占用 81 tokens）"
+    },
+    {
+      "id": "long-lore",
+      "included": false,
+      "tokens": 800,
+      "reason": "预算不足裁掉（已用 99/256，本块需 800）"
+    }
+  ]
+}

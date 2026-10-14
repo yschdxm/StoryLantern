@@ -1,0 +1,10 @@
+{
+  "temp": 0.8,
+  "top_k": 40,
+  "top_p": 0.9,
+  "rep_pen": 1.1,
+  "story_string": "{{#if system}}{{system}}\n{{/if}}{{#if description}}{{description}}\n{{/if}}{{#if scenario}}Scenario: {{scenario}}\n{{/if}}{{#if personality}}{{personality}}\n{{/if}}",
+  "chat_start": "***",
+  "example_separator": "***",
+  "name": "夹具叙事模板"
+}

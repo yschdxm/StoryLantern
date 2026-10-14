@@ -1,0 +1,36 @@
+[
+  {
+    "id": "fixture-strip-ooc",
+    "scriptName": "去掉 OOC 括号",
+    "findRegex": "/\\(OOC:.*?\\)/gs",
+    "replaceString": "",
+    "trimStrings": [],
+    "placement": [
+      2
+    ],
+    "disabled": false,
+    "markdownOnly": false,
+    "promptOnly": true,
+    "runOnEdit": true,
+    "substituteRegex": 0,
+    "minDepth": null,
+    "maxDepth": null
+  },
+  {
+    "id": "fixture-worldinfo-flag",
+    "scriptName": "世界书里标注来源",
+    "findRegex": "/^/",
+    "replaceString": "[lore] ",
+    "trimStrings": [],
+    "placement": [
+      5
+    ],
+    "disabled": false,
+    "markdownOnly": true,
+    "promptOnly": false,
+    "runOnEdit": false,
+    "substituteRegex": 0,
+    "minDepth": null,
+    "maxDepth": null
+  }
+]

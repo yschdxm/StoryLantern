@@ -1,0 +1,89 @@
+{
+  "temperature": 0.9,
+  "frequency_penalty": 0.2,
+  "presence_penalty": 0.1,
+  "top_p": 0.95,
+  "openai_max_context": 8192,
+  "openai_max_tokens": 1024,
+  "wrap_in_quotes": false,
+  "names_behavior": 0,
+  "send_if_empty": "",
+  "impersonation_prompt": "[Write your next reply from the point of view of {{user}}.]",
+  "new_chat_prompt": "[Start a new chat]",
+  "new_group_chat_prompt": "[Start a new group chat]",
+  "prompts": [
+    {
+      "identifier": "main",
+      "name": "主提示",
+      "system_prompt": true,
+      "role": "system",
+      "content": "你以克制的笔触叙事。"
+    },
+    {
+      "identifier": "worldInfoBefore",
+      "name": "世界书（前）",
+      "system_prompt": true,
+      "role": "system",
+      "content": ""
+    },
+    {
+      "identifier": "charDescription",
+      "name": "角色描述",
+      "system_prompt": true,
+      "role": "system",
+      "content": ""
+    },
+    {
+      "identifier": "chatHistory",
+      "name": "聊天记录",
+      "system_prompt": true,
+      "role": "system",
+      "content": ""
+    },
+    {
+      "identifier": "worldInfoAfter",
+      "name": "世界书（后）",
+      "system_prompt": true,
+      "role": "system",
+      "content": ""
+    },
+    {
+      "identifier": "jailbreak",
+      "name": "越狱",
+      "system_prompt": true,
+      "role": "system",
+      "content": "保持语气一致。"
+    }
+  ],
+  "prompt_order": [
+    {
+      "character_id": 100001,
+      "order": [
+        {
+          "identifier": "main",
+          "enabled": true
+        },
+        {
+          "identifier": "worldInfoBefore",
+          "enabled": true
+        },
+        {
+          "identifier": "charDescription",
+          "enabled": true
+        },
+        {
+          "identifier": "chatHistory",
+          "enabled": true
+        },
+        {
+          "identifier": "worldInfoAfter",
+          "enabled": true
+        },
+        {
+          "identifier": "jailbreak",
+          "enabled": true
+        }
+      ]
+    }
+  ]
+}
