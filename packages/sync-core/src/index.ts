@@ -152,3 +152,14 @@ export {
   type EnsureKeyringResult,
   type RotateKeyringInput,
 } from './keyring-store.ts';
+
+export {
+  RECOVERY_FILE,
+  recoveryPayload,
+  signJoinWithRecovery,
+  verifyRecoverySignature,
+  parseRecoveryFile,
+  serializeRecoveryFile,
+  type RecoveryProofPort,
+  type RecoveryFile,
+} from './recovery.ts';

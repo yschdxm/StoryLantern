@@ -31,8 +31,14 @@ export interface JoinRequest {
   publicKey: string;
   /** 协商公钥（X25519，十六进制）：把数据钥匙包给它时要用。 */
   agreementKey: string;
-  /** 密码证明（base64）：能解开就说明它知道门码。 */
+  /** 密码证明（base64）：能解开就说明它知道门码。用恢复密钥加入时可以是空串。 */
   proof: string;
+  /**
+   * 恢复证明（十六进制签名）：忘记口令的设备用它加入。
+   *
+   * 共享目录里公布的恢复公钥能验证它——这就是「用恢复密钥重置口令」的实际含义。
+   */
+  recoveryProof?: string;
   /** 写入时间（毫秒）：用来判断"这是新的请求还是旧的"。 */
   at: number;
 }
@@ -46,7 +52,7 @@ function proofPayload(input: { deviceId: string; publicKey: string; agreementKey
 
 export async function createJoinRequest(
   port: JoinProofPort,
-  input: { deviceId: string; publicKey: string; agreementKey: string; at?: number },
+  input: { deviceId: string; publicKey: string; agreementKey: string; at?: number; recoveryProof?: string },
 ): Promise<JoinRequest> {
   if (input.publicKey === '') throw new Error('加入请求必须带签名公钥');
   if (input.agreementKey === '') throw new Error('加入请求必须带协商公钥（否则别人没法把钥匙包给你）');
@@ -55,7 +61,9 @@ export async function createJoinRequest(
     deviceId: input.deviceId,
     publicKey: input.publicKey,
     agreementKey: input.agreementKey,
-    proof: await port.seal(proofPayload(input)),
+    // 有恢复证明时不必有密码证明（两条路二选一即可）
+    proof: input.recoveryProof === undefined ? await port.seal(proofPayload(input)) : "",
+    ...(input.recoveryProof === undefined ? {} : { recoveryProof: input.recoveryProof }),
     at: input.at ?? Date.now(),
   };
 }
@@ -75,7 +83,12 @@ export interface JoinDecision {
 export async function verifyJoinRequest(
   port: JoinProofPort,
   request: JoinRequest,
-  options: { revoked: ReadonlySet<string>; knownSince?: (deviceId: string) => number | undefined },
+  options: {
+    revoked: ReadonlySet<string>;
+    knownSince?: (deviceId: string) => number | undefined;
+    /** 验恢复证明（有恢复公钥时才给）：给了就允许「没口令但有恢复证明」的设备加入。 */
+    verifyRecovery?: (request: JoinRequest) => Promise<{ ok: boolean; reason?: string }>;
+  },
 ): Promise<JoinDecision> {
   if (options.revoked.has(request.deviceId)) {
     return { ok: false, reason: `设备 ${request.deviceId} 已被永久禁用（黑名单）` };
@@ -83,16 +96,20 @@ export async function verifyJoinRequest(
   if (request.publicKey === '' || request.agreementKey === '') {
     return { ok: false, reason: '加入请求缺少公钥' };
   }
-  let opened: Uint8Array;
-  try {
-    opened = await port.open(request.proof);
-  } catch {
-    return { ok: false, reason: '密码证明解不开（口令不对，或证明被改过）' };
-  }
-  const expected = proofPayload(request);
-  if (opened.length !== expected.length) return { ok: false, reason: '密码证明与请求内容不符' };
-  for (let index = 0; index < expected.length; index += 1) {
-    if (opened[index] !== expected[index]) return { ok: false, reason: '密码证明与请求内容不符' };
+  // 两条路：带正确口令的密码证明，或者恢复密钥签名的恢复证明。
+  if (request.proof !== "") {
+    let opened: Uint8Array;
+    try {
+      opened = await port.open(request.proof);
+    } catch {
+      return await viaRecovery(request, options, "密码证明解不开（口令不对，或证明被改过）");
+    }
+    const expected = proofPayload(request);
+    const same = opened.length === expected.length && expected.every((byte, index) => opened[index] === byte);
+    if (!same) return await viaRecovery(request, options, "密码证明与请求内容不符");
+  } else {
+    const verdict = await tryRecovery(request, options);
+    if (verdict !== undefined) return verdict;
   }
   const known = options.knownSince?.(request.deviceId);
   if (known !== undefined && known >= request.at) {
@@ -100,6 +117,32 @@ export async function verifyJoinRequest(
     return { ok: false, reason: '这是一份旧的加入请求（已处理过）' };
   }
   return { ok: true };
+}
+
+/** 口令那条路失败时，看有没有恢复证明可以救回来。 */
+async function viaRecovery(
+  request: JoinRequest,
+  options: { verifyRecovery?: (request: JoinRequest) => Promise<{ ok: boolean; reason?: string }> },
+  failure: string,
+): Promise<JoinDecision> {
+  if (request.recoveryProof === undefined || request.recoveryProof === "") return { ok: false, reason: failure };
+  const verdict = await tryRecovery(request, options);
+  if (verdict === undefined) return { ok: false, reason: failure };
+  return verdict.ok ? { ok: true } : { ok: false, reason: verdict.reason ?? failure };
+}
+
+/** 只有恢复证明这一条路时的判定（没给验签器就明确说不接受）。 */
+async function tryRecovery(
+  request: JoinRequest,
+  options: { verifyRecovery?: (request: JoinRequest) => Promise<{ ok: boolean; reason?: string }> },
+): Promise<JoinDecision | undefined> {
+  if (request.recoveryProof === undefined || request.recoveryProof === "") {
+    return { ok: false, reason: "既没有密码证明也没有恢复证明" };
+  }
+  const recovery = options.verifyRecovery;
+  if (recovery === undefined) return { ok: false, reason: "共享目录里还没有恢复公钥，无法验恢复证明" };
+  const verdict = await recovery(request);
+  return verdict.ok ? { ok: true } : { ok: false, reason: verdict.reason ?? "恢复证明不被接受" };
 }
 
 export function parseJoinRequest(text: string): JoinRequest {
@@ -122,6 +165,9 @@ export function parseJoinRequest(text: string): JoinRequest {
     publicKey: record.publicKey as string,
     agreementKey: record.agreementKey as string,
     proof: record.proof as string,
+    ...(typeof record.recoveryProof === "string" && record.recoveryProof !== ""
+      ? { recoveryProof: record.recoveryProof }
+      : {}),
     at: record.at,
   };
 }
