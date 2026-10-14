@@ -5,6 +5,7 @@ import { useT } from '../i18n/context.tsx';
 import { SETTING_KEYS } from '../data/types.ts';
 import { formatTime } from '../data/repository.ts';
 import { HostPanel } from '../HostPanel.tsx';
+import { ModelProfilesPanel } from './ModelProfilesPanel.tsx';
 import { Button, Field, TextInput } from '../ui/components.tsx';
 
 export interface SettingsScreenProps extends ScreenProps {
@@ -206,6 +207,11 @@ export function SettingsScreen({ store, router, host, chat, ops, sync, plugins, 
             </select>
           </Field>
         )}
+      </section>
+
+      <section className="settings-group">
+        <h2 className="settings-group__title">{t('settings.models')}</h2>
+        <ModelProfilesPanel store={store} chat={chat} settings={state.settings} />
       </section>
 
       <section className="settings-group">

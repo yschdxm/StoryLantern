@@ -3,9 +3,13 @@ import type { ScreenProps } from './screen-props.ts';
 import { useAppState, useAsync } from './screen-props.ts';
 import { useT } from '../i18n/context.tsx';
 import { formatTime, isModelConfigured } from '../data/repository.ts';
-import { buildChatRequest, type PromptTrace } from '../data/prompt.ts';
+import { buildChatRequest } from '../data/prompt.ts';
+import { candidatesFor, targetLabel } from '../data/model-routing.ts';
+import type { ChatReplyResult } from '../data/chat-client.ts';
 import type { ScoredEntry } from '../../../../packages/lore/src/index.ts';
-import { Banner, Button, Field, LoadMore, Sheet, SheetItem, useWindowedList } from '../ui/components.tsx';
+import { Banner, Button, LoadMore, Sheet, SheetItem, useWindowedList } from '../ui/components.tsx';
+import { RequestTracePanel, type ModelAttempt, type RequestTraceState } from './RequestTracePanel.tsx';
+
 
 export interface ChatScreenProps extends ScreenProps {
   sessionId: string;
@@ -31,7 +35,7 @@ export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings }:
   /** 上一次请求实际注入的世界书条目（空 = 没命中）。 */
   const [injectedLore, setInjectedLore] = useState<ScoredEntry[]>([]);
   /** 上一次请求的构成说明 + 耗时（可解释性面板）。 */
-  const [trace, setTrace] = useState<{ trace: PromptTrace; startedAt: number; firstDeltaMs?: number; totalMs?: number } | undefined>(undefined);
+  const [trace, setTrace] = useState<RequestTraceState | undefined>(undefined);
   const [traceOpen, setTraceOpen] = useState(false);
   const [menuFor, setMenuFor] = useState<string | undefined>(undefined);
   const [composerOffset, setComposerOffset] = useState(0);
@@ -99,26 +103,58 @@ export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings }:
     });
     // 注入痕迹：用户随时能看到"这次模型多看了哪几条设定"（可解释性的最小一步）
     setInjectedLore(request.lore);
-    setTrace({ trace: request.trace, startedAt: Date.now() });
+    setTrace({ trace: request.trace, startedAt: Date.now(), attempts: [] });
     const startedAt = Date.now();
     let firstDeltaAt: number | undefined;
+
+    // 多模型路由：按任务排出候选（顺序即回退链），一个不行就换下一个
+    const candidates = candidatesFor(fresh.settings, 'chat');
+    const attempts: ModelAttempt[] = [];
 
     const controller = new AbortController();
     controllerRef.current = controller;
     setChatError(undefined);
     setStreaming({ text: '' });
     try {
-      const result = await chat.reply(request, {
-        signal: controller.signal,
-        onDelta: (delta) => {
-          if (delta.delta === '') return;
-          if (firstDeltaAt === undefined) firstDeltaAt = Date.now();
-          setStreaming((state) => ({ text: (state?.text ?? '') + delta.delta }));
-        },
-      });
+      if (candidates.length === 0) {
+        throw new Error(t('chat.noModel'));
+      }
+
+      let outcome: ChatReplyResult | undefined;
+      for (const candidate of candidates) {
+        // 换一个候选时把上一段的半截输出清掉：它不属于最终回复
+        setStreaming({ text: '' });
+        const attemptStarted = Date.now();
+        try {
+          outcome = await chat.reply(
+            { ...request, ...(candidate.id === '' ? {} : { profileId: candidate.id }) },
+            {
+              signal: controller.signal,
+              onDelta: (delta) => {
+                if (delta.delta === '') return;
+                if (firstDeltaAt === undefined) firstDeltaAt = Date.now();
+                setStreaming((state) => ({ text: (state?.text ?? '') + delta.delta }));
+              },
+            },
+          );
+          attempts.push({ label: targetLabel(candidate), ok: true, ms: Date.now() - attemptStarted });
+          break;
+        } catch (cause) {
+          const message = cause instanceof Error ? cause.message : String(cause);
+          attempts.push({ label: targetLabel(candidate), ok: false, ms: Date.now() - attemptStarted, error: message });
+          // 用户点了停止：不要"帮他"再试下一个
+          if (controller.signal.aborted) throw cause;
+        }
+      }
+      setTrace((current) => (current === undefined ? current : { ...current, attempts }));
+
+      if (outcome === undefined) {
+        throw new Error(attempts[attempts.length - 1]?.error ?? t('chat.noModel'));
+      }
+
       // 生成结果落成 op（宿主不再写库：它只负责转发）
-      if (result.text !== '') {
-        await store.actions.appendMessage(sessionId, 'assistant', result.text, result.aborted ? { status: 'error' } : {});
+      if (outcome.text !== '') {
+        await store.actions.appendMessage(sessionId, 'assistant', outcome.text, outcome.aborted ? { status: 'error' } : {});
       }
       setTrace((current) =>
         current === undefined
@@ -132,11 +168,11 @@ export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings }:
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause);
       setChatError(message);
+      setTrace((current) => (current === undefined ? current : { ...current, attempts, totalMs: Date.now() - startedAt }));
       // 失败也留痕：写成一条失败消息，用户看得见、也能删
       await store.actions
         .appendMessage(sessionId, 'assistant', message, { status: 'error' })
         .catch(() => undefined);
-      setTrace((current) => (current === undefined ? current : { ...current, totalMs: Date.now() - startedAt }));
     } finally {
       controllerRef.current = null;
       setStreaming(null);
@@ -276,79 +312,14 @@ export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings }:
         />
       </Sheet>
 
-      {/* 本次请求：把"模型到底看到了什么"如实摊开（可解释性） */}
-      <Sheet open={traceOpen} title={t('chat.trace.title')} onClose={() => setTraceOpen(false)}>
-        {trace !== undefined && (
-          <div className="trace">
-            <p className="trace__line">
-              {t('chat.trace.params', {
-                model: store.getState().settings['model.name'] ?? '—',
-                temperature: store.getState().settings['model.temperature'] ?? '—',
-                maxTokens: store.getState().settings['model.max_tokens'] ?? '—',
-              })}
-            </p>
-            <p className="trace__line">
-              {t('chat.trace.timing', {
-                first: trace.firstDeltaMs === undefined ? '—' : trace.firstDeltaMs,
-                total: trace.totalMs === undefined ? '—' : trace.totalMs,
-              })}
-            </p>
-
-            <h3 className="trace__heading">{t('chat.trace.blocks')}</h3>
-            {!trace.trace.pipeline && <p className="notice notice--warn">{t('chat.trace.noPipeline')}</p>}
-            <ul className="trace__list">
-              {trace.trace.blocks.map((block) => (
-                <li key={block.id} className={block.included ? undefined : 'trace__item--omitted'}>
-                  <span className="trace__name">{t(`chat.trace.block.${block.kind}`)}</span>
-                  <span className="trace__meta">
-                    {t('chat.trace.block.meta', { chars: block.chars, tokens: block.estimatedTokens })}
-                    {block.included ? '' : ` · ${t('chat.trace.block.omitted')}`}
-                  </span>
-                  {block.reason !== '' && <span className="trace__reason">{block.reason}</span>}
-                </li>
-              ))}
-            </ul>
-
-            {trace.trace.lore.length > 0 && (
-              <>
-                <h3 className="trace__heading">{t('chat.trace.lore')}</h3>
-                <ul className="trace__list">
-                  {trace.trace.lore.map((entry) => (
-                    <li key={`${entry.bookId}:${entry.entryId}`}>
-                      <span className="trace__name">{entry.matchedKeys.join('、') || entry.bookName}</span>
-                      <span className="trace__meta">{entry.content.slice(0, 40)}</span>
-                    </li>
-                  ))}
-                </ul>
-              </>
-            )}
-
-            <h3 className="trace__heading">{t('chat.trace.excluded', { count: trace.trace.excluded.length })}</h3>
-            {trace.trace.excluded.length === 0 ? (
-              <p className="trace__meta">{t('chat.trace.excluded.none')}</p>
-            ) : (
-              <ul className="trace__list">
-                {trace.trace.excluded.slice(0, 8).map((item, index) => (
-                  <li key={`${item.role}-${index}`}>
-                    <span className="trace__name">{t(`chat.trace.reason.${item.reason}`, { limit: trace.trace.historyLimit })}</span>
-                    <span className="trace__meta">{item.preview === '' ? '—' : item.preview}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-
-            <p className="trace__line">
-              {t('chat.trace.totals', {
-                system: trace.trace.systemChars,
-                messages: trace.trace.historyIncluded,
-                chars: trace.trace.messageChars,
-                tokens: trace.trace.usedTokens,
-                budget: trace.trace.budgetTokens === 0 ? '—' : trace.trace.budgetTokens,
-              })}
-            </p>
-          </div>
-        )}
-      </Sheet>
+      <RequestTracePanel
+        open={traceOpen}
+        state={trace}
+        modelLabel={
+          trace?.attempts.find((attempt) => attempt.ok)?.label ?? store.getState().settings['model.name'] ?? '—'
+        }
+        onClose={() => setTraceOpen(false)}
+      />
     </div>
   );
 }

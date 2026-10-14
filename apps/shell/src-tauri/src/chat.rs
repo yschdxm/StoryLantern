@@ -23,7 +23,70 @@ fn setting(store: &Store, key: &str, default: &str) -> String {
         .unwrap_or_else(|| default.to_string())
 }
 
-/// 前端传来的对话请求：`{ messages: [{role, content}], systemPrompt?: string }`
+/// 一次调用要用到的那组模型参数。
+///
+/// **密钥永远由宿主自己读**（`model.profile.<id>.api_key` 这类键在 wire 上只回掩码），
+/// 前端只传一个 `profileId`：多模型路由因此不需要把任何 key 送进 WebView。
+#[derive(Debug, Clone)]
+struct ModelTarget {
+    name: String,
+    base_url: String,
+    api_key: String,
+    model: String,
+    provider: String,
+    temperature: f64,
+    max_tokens: i64,
+}
+
+/// 没有 profileId 时用设置里那组"默认"参数（M1 及以前就存在的字段）。
+fn legacy_target(store: &Store) -> ModelTarget {
+    ModelTarget {
+        name: "默认".to_string(),
+        base_url: setting(store, "model.base_url", ""),
+        api_key: setting(store, "model.api_key", ""),
+        model: setting(store, "model.name", ""),
+        provider: setting(store, "model.provider", "openai-compatible"),
+        temperature: setting(store, "model.temperature", "0.9").parse().unwrap_or(0.9),
+        max_tokens: setting(store, "model.max_tokens", "1024").parse().unwrap_or(1024),
+    }
+}
+
+/// 按 id 解析一份模型配置：元数据在 `model.profiles`（JSON），密钥在 `model.profile.<id>.api_key`。
+fn resolve_target(store: &Store, profile_id: Option<&str>) -> Result<ModelTarget, WireErrorPayload> {
+    let id = profile_id.unwrap_or_default().trim();
+    if id.is_empty() {
+        return Ok(legacy_target(store));
+    }
+
+    let raw = setting(store, "model.profiles", "[]");
+    let parsed: Value = serde_json::from_str(&raw).unwrap_or_else(|_| json!([]));
+    let entry = parsed
+        .as_array()
+        .and_then(|items| items.iter().find(|item| item.get("id").and_then(Value::as_str) == Some(id)))
+        .cloned()
+        .ok_or_else(|| WireErrorPayload::new("unknown-profile", format!("找不到模型配置：{id}")))?;
+
+    let text = |key: &str| entry.get(key).and_then(Value::as_str).unwrap_or_default().to_string();
+    let number = |key: &str, default: f64| entry.get(key).and_then(Value::as_f64).unwrap_or(default);
+
+    Ok(ModelTarget {
+        name: {
+            let name = text("name");
+            if name.is_empty() { id.to_string() } else { name }
+        },
+        base_url: text("baseUrl"),
+        api_key: setting(store, &format!("model.profile.{id}.api_key"), ""),
+        model: text("model"),
+        provider: {
+            let provider = text("provider");
+            if provider.is_empty() { "openai-compatible".to_string() } else { provider }
+        },
+        temperature: number("temperature", 0.9),
+        max_tokens: number("maxTokens", 1024.0) as i64,
+    })
+}
+
+/// 前端传来的对话请求：`{ messages: [{role, content}], systemPrompt?: string, profileId?: string }`
 fn read_request(args: &[Value]) -> Result<(Vec<Value>, String), WireErrorPayload> {
     let request = args
         .first()
@@ -47,7 +110,7 @@ fn read_request(args: &[Value]) -> Result<(Vec<Value>, String), WireErrorPayload
     Ok((payload, system))
 }
 
-/// `chat.reply({ messages, systemPrompt })`：流式产出回复。
+/// `chat.reply({ messages, systemPrompt, profileId? })`：流式产出回复。
 pub fn chat_reply(
     out: &StreamOut,
     store: &Store,
@@ -55,28 +118,38 @@ pub fn chat_reply(
     cancelled: &AtomicBool,
 ) -> Result<(), WireErrorPayload> {
     let (payload_messages, _system) = read_request(args)?;
+    let profile_id = args
+        .first()
+        .and_then(|request| request.get("profileId"))
+        .and_then(Value::as_str);
 
-    let base_url = setting(store, "model.base_url", "");
-    let api_key = setting(store, "model.api_key", "");
-    let model = setting(store, "model.name", "");
-    let provider = setting(store, "model.provider", "openai-compatible");
+    let target = resolve_target(store, profile_id)?;
+    let (base_url, api_key, model, provider) = (
+        target.base_url.clone(),
+        target.api_key.clone(),
+        target.model.clone(),
+        target.provider.clone(),
+    );
 
     if provider == "offline" {
         out.fail("offline", "当前设置为「不调用模型」，只记录消息");
         return Ok(());
     }
     if base_url.is_empty() || model.is_empty() {
-        out.fail("not-configured", "还没有配置模型：请到「设置 → 模型服务」填接口地址与模型名");
+        out.fail(
+            "not-configured",
+            &format!("模型配置「{}」还不完整：请到「设置 → 模型服务」填接口地址与模型名", target.name),
+        );
         return Ok(());
     }
     // 本地端点常常不需要 key；只有远端才强制要求
     if api_key.is_empty() && !is_local_endpoint(&base_url) {
-        out.fail("not-configured", "还没有填 API Key：请到「设置 → 模型服务」补上");
+        out.fail("not-configured", &format!("模型配置「{}」还没有填 API Key", target.name));
         return Ok(());
     }
 
-    let temperature: f64 = setting(store, "model.temperature", "0.9").parse().unwrap_or(0.9);
-    let max_tokens: i64 = setting(store, "model.max_tokens", "1024").parse().unwrap_or(1024);
+    let temperature = target.temperature;
+    let max_tokens = target.max_tokens;
 
     let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
     let client = reqwest::blocking::Client::builder()
@@ -159,12 +232,18 @@ fn truncate(text: &str, limit: usize) -> String {
 }
 
 /// 连通性自检：只发一次极小的非流式请求，用来让用户确认"地址/密钥/模型名"能用。
-pub fn chat_probe(store: &Store, _args: &[Value]) -> Result<Value, WireErrorPayload> {
-    let base_url = setting(store, "model.base_url", "");
-    let api_key = setting(store, "model.api_key", "");
-    let model = setting(store, "model.name", "");
+/// 可以指定 `profileId`，因此"测试连接"按钮对每一份模型配置都有效。
+pub fn chat_probe(store: &Store, args: &[Value]) -> Result<Value, WireErrorPayload> {
+    let profile_id = args
+        .first()
+        .and_then(|request| request.get("profileId"))
+        .and_then(Value::as_str);
+    let target = resolve_target(store, profile_id)?;
+    let base_url = target.base_url.clone();
+    let api_key = target.api_key.clone();
+    let model = target.model.clone();
     if base_url.is_empty() || model.is_empty() {
-        return Ok(json!({ "ok": false, "message": "还没有配置接口地址与模型名" }));
+        return Ok(json!({ "ok": false, "message": format!("「{}」还没有配置接口地址与模型名", target.name) }));
     }
     let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
     let client = reqwest::blocking::Client::builder()

@@ -125,6 +125,8 @@ export const SETTING_KEYS = {
   model: 'model.name',
   temperature: 'model.temperature',
   maxTokens: 'model.max_tokens',
+  /** 多模型路由的配置元数据（JSON 数组；**不含密钥**，密钥在宿主侧的 model.profile.<id>.api_key）。 */
+  modelProfiles: 'model.profiles',
   systemPrompt: 'chat.system_prompt',
   /** 进入上下文的最近消息条数（0/未设 = 默认 40）。 */
   historyLimit: 'chat.history_limit',

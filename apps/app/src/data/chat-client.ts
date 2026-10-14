@@ -21,10 +21,10 @@ export interface ChatReplyResult {
 export interface ChatClient {
   readonly available: boolean;
   reply(
-    request: ChatRequest,
+    request: ChatRequest & { profileId?: string },
     handlers: { onDelta?: (delta: ChatDelta) => void; signal?: AbortSignal },
   ): Promise<ChatReplyResult>;
-  probe(): Promise<{ ok: boolean; message: string }>;
+  probe(profileId?: string): Promise<{ ok: boolean; message: string }>;
 }
 
 export function createChatClient(transport: WireTransport | undefined): ChatClient {
@@ -66,9 +66,11 @@ export function createChatClient(transport: WireTransport | undefined): ChatClie
       }
     },
 
-    async probe() {
+    async probe(profileId?: string) {
       try {
-        return await client.call<{ ok: boolean; message: string }>('chat', 'probe');
+        return await client.call<{ ok: boolean; message: string }>('chat', 'probe', {
+          ...(profileId === undefined || profileId === '' ? {} : { profileId }),
+        });
       } catch (cause) {
         if (cause instanceof WireError) return { ok: false, message: cause.message };
         return { ok: false, message: cause instanceof Error ? cause.message : String(cause) };
