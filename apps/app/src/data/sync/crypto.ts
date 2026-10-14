@@ -60,6 +60,36 @@ export async function createPortsFromContentKey(contentKey: Uint8Array, blindKey
   return createWebCryptoPorts({ cipher, blindKey });
 }
 
+/**
+ * "密码证明"用的端口：seal/open 都用**口令派生的钥匙**（不是设备密钥）。
+ *
+ * 加入请求靠它证明"我知道门码"：能解开就说明知道口令。
+ * 格式 base64(nonce | 密文)，AAD 绑定用途，避免把别处的密文搬过来当证明。
+ */
+export function createPasswordProofPort(keys: SyncKeyMaterial): { seal(plaintext: Uint8Array): Promise<string>; open(sealed: string): Promise<Uint8Array> } {
+  const cipher = createWebCryptoPorts(keys).cipher;
+  if (cipher === undefined) throw new Error('这个环境的加密端口不完整（缺少 cipher）');
+  const aad = ENCODER.encode('storylantern/join-proof/v1');
+  return {
+    async seal(plaintext) {
+      const sealed = await cipher.seal(plaintext, aad);
+      const combined = new Uint8Array(sealed.nonce.length + sealed.ciphertext.length);
+      combined.set(sealed.nonce, 0);
+      combined.set(sealed.ciphertext, sealed.nonce.length);
+      let binary = "";
+      for (const byte of combined) binary += String.fromCharCode(byte);
+      return btoa(binary);
+    },
+    async open(sealed) {
+      const binary = atob(sealed);
+      const combined = new Uint8Array(binary.length);
+      for (let index = 0; index < binary.length; index += 1) combined[index] = binary.charCodeAt(index);
+      if (combined.length <= 12) throw new Error("密码证明长度不对");
+      return cipher.open(combined.slice(0, 12), combined.slice(12), aad);
+    },
+  };
+}
+
 export function createWebCryptoPorts(keys: SyncKeyMaterial): CryptoPorts {
   const subtle = subtleOf();
 

@@ -15,7 +15,8 @@ import { createDeviceSigner } from './signer.ts';
 import { createWebCryptoKeyWrap, loadOrCreateAgreementKeys } from './envelope.ts';
 import { createKeyring, openKeyring, parseKeyring, serializeKeyring, KEYRING_FILE, type Keyring } from '../../../../../packages/sync-core/src/keyring.ts';
 import type { CryptoPorts } from '../../../../../packages/oplog/src/index.ts';
-import { createPortsFromContentKey } from './crypto.ts';
+import { createPasswordProofPort, createPortsFromContentKey } from './crypto.ts';
+import { acceptJoinRequests, publishJoinRequest } from './join-flow.ts';
 import { describeDevice, loadRoster, mergeRoster, saveRoster } from './roster-store.ts';
 
 /**
@@ -160,7 +161,7 @@ async function ensureKeyring(
   state: LocalSyncState | undefined,
   blindKey: Uint8Array,
   agreement: { publicKey: string; privateKey: string } | undefined,
-): Promise<{ ports: CryptoPorts } | undefined> {
+): Promise<{ ports: CryptoPorts; epoch: number; keyring: Keyring; contentKey: Uint8Array } | undefined> {
   if (agreement === undefined) return undefined; // 环境不支持 X25519：不假装能用
   const port = createWebCryptoKeyWrap();
   const recipients = [
@@ -184,7 +185,12 @@ async function ensureKeyring(
       const known = new Set(existing.entries.map((entry) => entry.deviceId));
       const missing = recipients.filter((recipient) => !known.has(recipient.deviceId));
       if (missing.length === 0) {
-        return { ports: await createPortsFromContentKey(key, blindKey) };
+        return {
+          ports: await createPortsFromContentKey(key, blindKey),
+          epoch: existing.epoch,
+          keyring: existing,
+          contentKey: key,
+        };
       }
     } catch {
       // 打不开（例如这份只包给了别的设备）：往下走，换代
@@ -194,7 +200,12 @@ async function ensureKeyring(
   const epoch = (existing?.epoch ?? 0) + 1;
   const created = await createKeyring(port, recipients, epoch);
   await options.backend.put(KEYRING_FILE, new TextEncoder().encode(serializeKeyring(created.keyring)));
-  return { ports: await createPortsFromContentKey(created.contentKey, blindKey) };
+  return {
+    ports: await createPortsFromContentKey(created.contentKey, blindKey),
+    epoch: created.keyring.epoch,
+    keyring: created.keyring,
+    contentKey: created.contentKey,
+  };
 }
 
 export async function createSyncService(options: SyncServiceOptions): Promise<SyncService> {
@@ -280,6 +291,33 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
     // 正确的切换要和"解密失败时用旧钥匙回退"一起做，见 docs/M2-STATUS.md 的 ⑥ 后半。
     const keyring = await ensureKeyring(options, restored, keys.blindKey, agreement);
     void keyring;
+
+    // 加入流程：能打开 keyring 就替新设备发钥匙；打不开（我不在里面）就写自己的加入请求。
+    if (keyring !== undefined && agreement !== undefined) {
+      const joinProof = createPasswordProofPort(keys);
+      const mine = keyring.keyring.entries.some((entry) => entry.deviceId === options.deviceId);
+      if (mine) {
+        await acceptJoinRequests({
+          backend: options.backend,
+          device: options.device,
+          keyWrap: createWebCryptoKeyWrap(),
+          contentKey: keyring.contentKey,
+          banned: new Set(roster.bannedIds()),
+          joinProof,
+          selfId: options.deviceId,
+          now,
+        });
+      } else {
+        await publishJoinRequest({
+          backend: options.backend,
+          deviceId: options.deviceId,
+          publicKey: signer.publicKeyHex,
+          agreementKey: agreement.publicKey,
+          joinProof,
+          now,
+        });
+      }
+    }
 
     if (onOps !== undefined) engineOptions.onOps = onOps;
     const engine = new SyncEngine(engineOptions);
