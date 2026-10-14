@@ -194,7 +194,14 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
       snapshotThreshold: 0,
     };
     if (restored !== undefined) engineOptions.state = restored;
-    if (signer.publicKeyHex !== '') engineOptions.publicKey = signer.publicKeyHex;
+    if (signer.publicKeyHex !== '') {
+      engineOptions.publicKey = signer.publicKeyHex;
+      const self = roster.get(options.deviceId);
+      if (self !== undefined && self.publicKey !== signer.publicKeyHex) {
+        roster.add({ ...self, publicKey: signer.publicKeyHex });
+        await saveRoster(options.device, roster);
+      }
+    }
     if (onOps !== undefined) engineOptions.onOps = onOps;
     const engine = new SyncEngine(engineOptions);
 
