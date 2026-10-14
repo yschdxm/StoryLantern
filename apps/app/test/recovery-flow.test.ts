@@ -3,9 +3,14 @@ import assert from 'node:assert/strict';
 import { acceptJoinRequests, publishJoinRequest } from '../src/data/sync/join-flow.ts';
 import { createWebCryptoRecoveryProof } from '../src/data/sync/recovery-key.ts';
 import { createWebCryptoKeyWrap } from '../src/data/sync/envelope.ts';
-import { signJoinWithRecovery, RECOVERY_FILE } from '../../../packages/sync-core/src/recovery.ts';
+import {
+  signJoinWithRecovery,
+  verifyRecoverySignature,
+  RECOVERY_FILE,
+} from '../../../packages/sync-core/src/recovery.ts';
 import { createKeyring, openKeyring, parseKeyring, KEYRING_FILE } from '../../../packages/sync-core/src/keyring.ts';
 import { createMemoryKeyValue } from '../src/data/local-repository.ts';
+import { parseJoinRequest, joinPath } from '../../../packages/sync-core/src/join.ts';
 import type { DeviceStore } from '../src/data/op-ports.ts';
 import type { SyncBackend, BackendEntry, ListResult, PutResult } from '../../../packages/sync-core/src/backend.ts';
 import type { JoinProofPort } from '../../../packages/sync-core/src/join.ts';
@@ -168,4 +173,29 @@ test('恢复密钥（端到端）：换一把恢复密钥签的证明不被接�
   assert.deepEqual(outcome.accepted, []);
   assert.equal(outcome.refused.length, 1);
   assert.match(outcome.refused[0]!.reason, /恢复|不符|解不开/);
+});
+
+test("用恢复私钥直接签（③ 的新路径）：请求里带出可验证的恢复证明", async () => {
+  const backend = memoryBackend();
+  const recovery = createWebCryptoRecoveryProof();
+  const pair = await recovery.generate();
+  const at = 4321;
+  await publishJoinRequest({
+    backend,
+    deviceId: "joiner",
+    publicKey: "pub-joiner",
+    agreementKey: "agree-joiner",
+    joinProof: wrongPasswordProof(),
+    recoveryPrivateKey: pair.privateKey, // ← 界面粘进来的就是它
+    now: () => at,
+  });
+  const stored = await backend.get(joinPath("joiner"));
+  const request = parseJoinRequest(decode(stored));
+  assert.equal(request.proof, "", "带恢复证明时不必有口令证明");
+  const verdict = await verifyRecoverySignature(recovery, { v: 1, publicKey: pair.publicKey, createdAt: 0 }, {
+    deviceId: "joiner",
+    at,
+    signature: request.recoveryProof ?? "",
+  });
+  assert.equal(verdict.ok, true, "公布的公钥应当能验证这份签名");
 });

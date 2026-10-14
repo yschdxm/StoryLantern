@@ -80,4 +80,7 @@ export const zhSync: AppMessages = {
   'sync.recovery.publicKey': '公钥（已公布到共享目录）：',
   'sync.recovery.privateKey': '私钥（离线保存，不要截图给任何人）：',
   'sync.recovery.close': '确认已抄好后再关闭。',
+  'sync.recovery.join.placeholder': '粘贴离线保存的恢复私钥（十六进制）',
+  'sync.recovery.join.action': '用恢复密钥加入',
+  'sync.recovery.join.hint': '忘记同步口令时用它：它会签一份恢复证明写进加入请求，共享目录里公布的恢复公钥能验证它。它不能替你读旧内容；被永久禁用的设备仍然进不来。',
 };

@@ -39,6 +39,8 @@ export interface SyncSummary {
   enqueued: number;
   requests: number;
   warnings: string[];
+  /** 有 keyring 但没包给我：加入请求已提交，等一台已授权设备接纳。 */
+  waiting?: boolean;
 }
 
 export interface SyncService {
@@ -303,6 +305,7 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
           enqueued: 0,
           requests: 0,
           warnings: ['已提交加入请求：需要一台已授权设备同步一轮来把数据钥匙包给你。'],
+            waiting: true,
         };
       }
 

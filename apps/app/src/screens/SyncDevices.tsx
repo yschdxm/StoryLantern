@@ -41,6 +41,8 @@ export function SyncDevices({
   const [safNote, setSafNote] = useState<string | undefined>(undefined);
   /** 刚生成的恢复密钥：只在这一次显示，关掉就没了（我们刻意不保存私钥）。 */
   const [recovery, setRecovery] = useState<{ publicKey: string; privateKey: string } | undefined>(undefined);
+  /** 粘贴进来的恢复私钥：只在这一次调用里用，不落盘。 */
+  const [recoveryDraft, setRecoveryDraft] = useState('');
 
   const reload = async (): Promise<void> => {
     try {
@@ -107,6 +109,28 @@ export function SyncDevices({
         </>
       )}
 
+      <div className="row">
+        <input
+          className="input"
+          value={recoveryDraft}
+          placeholder={t('sync.recovery.join.placeholder')}
+          onChange={(event) => setRecoveryDraft(event.target.value)}
+        />
+      </div>
+      <div className="row">
+        <Button
+          variant="ghost"
+          onClick={() => {
+            void sync
+              .joinWithRecovery(recoveryDraft)
+              .then((outcome) => setError(outcome.ok ? undefined : outcome.reason))
+              .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)));
+          }}
+        >
+          {t('sync.recovery.join.action')}
+        </Button>
+      </div>
+      <p className="muted">{t('sync.recovery.join.hint')}</p>
       <div className="row">
         <Button
           variant="ghost"

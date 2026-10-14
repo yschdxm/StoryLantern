@@ -231,6 +231,13 @@ function Root(): ReturnType<typeof AppShell> {
             const built = await buildSyncService(syncInput(await readSyncConfig(store.getState().settings, ports.device)));
             return built.service.createRecovery();
           },
+          joinWithRecovery: async (privateKey: string) => {
+            const built = await buildSyncService(syncInput(await readSyncConfig(store.getState().settings, ports.device)));
+            const summary = await built.service.sync(privateKey);
+            return summary.waiting === true
+              ? { ok: false, reason: "已提交带恢复证明的加入请求：等一台已授权设备接纳。" }
+              : { ok: true };
+          },
           collect: async (dryRun: boolean) => {
             const built = await buildSyncService(syncInput(await readSyncConfig(store.getState().settings, ports.device)));
             return built.service.collect(dryRun);

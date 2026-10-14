@@ -54,6 +54,8 @@ export interface SyncAdmin {
   ban(deviceId: string): Promise<boolean>;
   /** 生成恢复密钥（公钥发布到共享目录；私钥只返回这一次，请离线保存）。 */
   createRecovery(): Promise<{ publicKey: string; privateKey: string }>;
+  /** 忘记同步口令时：用离线保存的恢复私钥签一份证明去加入（仍在等待接纳时 ok = false）。 */
+  joinWithRecovery(privateKey: string): Promise<{ ok: boolean; reason?: string }>;
   /**
    * 回收分析（默认只分析、不动手）。
    *

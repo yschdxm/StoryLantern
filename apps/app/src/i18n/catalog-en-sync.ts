@@ -80,4 +80,7 @@ export const enSync: AppMessages = {
   'sync.recovery.publicKey': 'Public key (already published to the shared folder):',
   'sync.recovery.privateKey': 'Private key (keep offline; do not share or screenshot):',
   'sync.recovery.close': 'Close only after you have copied it down.',
+  'sync.recovery.join.placeholder': 'Paste the offline recovery private key (hex)',
+  'sync.recovery.join.action': 'Join with recovery key',
+  'sync.recovery.join.hint': 'Use this if you forgot the sync passphrase: it signs a recovery proof into the join request, verifiable with the public key published in the shared folder. It cannot read old content for you, and banned devices still cannot join.',
 };
