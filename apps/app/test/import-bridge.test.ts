@@ -65,7 +65,7 @@ test('导入映射：世界书并入「参考设定」，空条目被跳过，�
 
 test('导入映射：聊天记录优先挂到同名角色，没有同名才新建', () => {
   const existing = {
-    id: 7,
+    id: 'c7',
     name: '星野',
     description: '',
     personality: '',
@@ -76,7 +76,7 @@ test('导入映射：聊天记录优先挂到同名角色，没有同名才新�
     updatedAt: 0,
   };
   const withExisting = chatImportPlan(chat(), [existing]);
-  assert.equal(withExisting.existingCharacter?.id, 7);
+  assert.equal(withExisting.existingCharacter?.id, 'c7');
   assert.equal(withExisting.messages.length, 2);
   assert.equal(withExisting.messages[0]?.createdAt, 1_700_000_000_000);
 
@@ -99,12 +99,9 @@ test('导入落库：聊天记录按原顺序与原时间戳写入，重启后�
   const character = await store.actions.saveCharacter({ name: plan.characterName });
   const session = await store.actions.createSession(character.id, plan.title);
   for (const message of plan.messages) {
-    await store.actions.appendMessage(
-      session.id,
-      message.role,
-      message.content,
-      ...(message.createdAt === undefined ? [] : [message.createdAt]),
-    );
+    await store.actions.appendMessage(session.id, message.role, message.content, {
+      ...(message.createdAt === undefined ? {} : { createdAt: message.createdAt }),
+    });
   }
 
   const messages = await repository.messages.list(session.id);
@@ -130,8 +127,8 @@ test('导入落库：逐条追加后，内存里的会话摘要立刻是最后�
   const session = await store.actions.createSession(character.id, '旅人 与 星野');
   assert.equal(store.getState().sessions[0]?.lastMessage, '', '新会话还没有消息');
 
-  await store.actions.appendMessage(session.id, 'user', '在路上', 1_700_000_000_000);
-  await store.actions.appendMessage(session.id, 'assistant', '灯还亮着', 1_700_000_001_000);
+  await store.actions.appendMessage(session.id, 'user', '在路上', { createdAt: 1_700_000_000_000 });
+  await store.actions.appendMessage(session.id, 'assistant', '灯还亮着', { createdAt: 1_700_000_001_000 });
 
   const summary = store.getState().sessions.find((item) => item.id === session.id);
   assert.equal(summary?.messageCount, 2);

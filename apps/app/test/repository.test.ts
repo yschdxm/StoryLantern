@@ -1,22 +1,21 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import type { TauriBridge } from '../../../packages/wire/src/tauri.ts';
-import { createTauriTransport } from '../../../packages/wire/src/tauri.ts';
-import { createHostRepository } from '../src/data/host-repository.ts';
-import { createLocalRepository, createMemoryKeyValue, loadState } from '../src/data/local-repository.ts';
+import { createLocalOpPorts } from '../src/data/op-ports.ts';
+import { createOpLogRepository } from '../src/data/op-repository.ts';
+import { createLocalRepository, createMemoryKeyValue } from '../src/data/local-repository.ts';
 import { createMemoryRepository } from '../src/data/memory-repository.ts';
 import { DataError, formatTime, isLocalEndpoint, isModelConfigured, previewOf, type Repository } from '../src/data/repository.ts';
 
 /**
- * 同一套契约测试跑**三个实现**：内存（语义参考）、localStorage（持久化）、宿主（wire→Rust）。
+ * 同一套契约测试跑**两个实现**：内存（语义参考）与 op-log（M1 之后的真实路径）。
  *
- * 为什么必须这样测：这三个实现行为一旦分叉，界面就会"在手机上对、在浏览器里错"，
- * 而这类 bug 最难查。契约测试把"行为一致"变成可执行的断言，而不是口头约定。
+ * op-log 那份是 M1 的关键证据：**同样的行为，但读取完全派生自 op 日志**。
+ * 也就是说这些断言通过 ⇒ "日志是唯一事实源"不是口号，而是可执行的事实。
  */
 
 interface ContractContext {
   readonly repo: Repository;
-  /** 重建一个指向同一份数据的仓储（用于验证持久化）。宿主的实现直接返回同一个。 */
+  /** 重建一个指向同一份数据的仓储（用于验证持久化）。 */
   reopen(): Promise<Repository>;
 }
 
@@ -25,7 +24,7 @@ function contract(name: string, make: () => Promise<ContractContext>): void {
     const { repo } = await make();
 
     const created = await repo.characters.save({ name: '  星野  ', description: '夜巡的守望者' });
-    assert.ok(created.id > 0);
+    assert.ok(created.id.length > 0, 'id 应当是非空字符串（跨设备唯一）');
     assert.equal(created.name, '星野', '名字两端空白应被裁掉');
     assert.equal(created.createdAt > 0, true);
     assert.equal(created.createdAt, created.updatedAt);
@@ -76,7 +75,7 @@ function contract(name: string, make: () => Promise<ContractContext>): void {
 
     assert.equal(await repo.sessions.rename(session.id, '隘口之夜'), true);
     assert.equal((await repo.sessions.list())[0]?.title, '隘口之夜');
-    assert.equal(await repo.sessions.rename(9999, '不存在'), false);
+    assert.equal(await repo.sessions.rename('nosuchsession', '不存在'), false);
 
     assert.equal(await repo.sessions.remove(session.id), true);
     assert.deepEqual(await repo.messages.list(session.id), [], '删会话要带走消息');
@@ -103,7 +102,7 @@ function contract(name: string, make: () => Promise<ContractContext>): void {
 
     assert.equal(await repo.messages.remove(third.id), true);
     assert.equal((await repo.messages.list(session.id)).length, 2);
-    assert.equal(await repo.messages.update(9999, 'x'), false);
+    assert.equal(await repo.messages.update('nosuchmessage', 'x'), false);
   });
 
   test(`${name}：设置可读写；角色/会话/消息的校验错误码一致`, async () => {
@@ -126,9 +125,9 @@ function contract(name: string, make: () => Promise<ContractContext>): void {
 
     await capture(() => repo.characters.save({ name: '   ' }));
     await capture(() => repo.characters.save({ name: 'x'.repeat(61) }));
-    await capture(() => repo.characters.save({ id: 4242, name: '存在吗' }));
-    await capture(() => repo.sessions.create(4242));
-    await capture(() => repo.messages.append(1, 'narrator' as never, 'hi'));
+    await capture(() => repo.characters.save({ id: 'nosuchcharacter', name: '存在吗' }));
+    await capture(() => repo.sessions.create('nosuchcharacter'));
+    await capture(() => repo.messages.append('somesession', 'narrator' as never, 'hi'));
 
     assert.deepEqual(codes, [
       'invalid-argument',
@@ -140,156 +139,197 @@ function contract(name: string, make: () => Promise<ContractContext>): void {
   });
 }
 
-// ---------------------------------------------------------------- 三个实现
+// ---------------------------------------------------------------- 两个实现
 
 contract('内存仓储（语义参考）', async () => {
   const repo = createMemoryRepository();
   return { repo, reopen: async () => repo };
 });
 
-contract('localStorage 仓储', async () => {
-  const store = createMemoryKeyValue();
-  const repo = createLocalRepository(store);
+contract('op-log 仓储（日志是唯一事实源）', async () => {
+  const ports = createLocalOpPorts(createMemoryKeyValue());
+  const repo = createOpLogRepository({ ops: ports.ops, settings: ports.settings, deviceId: 'device-a' });
+  await repo.ready;
   return {
     repo,
-    // 从同一份键值再建一个：等价于"关掉页面再打开"
-    reopen: async () => createLocalRepository(store),
+    // 从同一份 op 日志再建一个仓储：等价于"重启应用后重放日志"
+    reopen: async () => {
+      const revived = createOpLogRepository({ ops: ports.ops, settings: ports.settings, deviceId: 'device-a' });
+      await revived.ready;
+      return revived;
+    },
   };
 });
 
-/** 假宿主：按 Rust 侧协议实现同样的语义（委托给内存仓储），用来验证宿主仓储的翻译层。 */
-function createFakeRustHost(): TauriBridge {
-  const backing = createMemoryRepository();
-  const services = [
-    { name: 'characters', description: '', methods: [{ name: 'list', kind: 'call', description: '' }] },
-    { name: 'sessions', description: '', methods: [{ name: 'list', kind: 'call', description: '' }] },
-    { name: 'messages', description: '', methods: [{ name: 'list', kind: 'call', description: '' }] },
-    { name: 'settings', description: '', methods: [{ name: 'list', kind: 'call', description: '' }] },
-    { name: 'store', description: '', methods: [{ name: 'probe', kind: 'call', description: '' }] },
-  ];
+// ---------------------------------------------------------------- op-log 仓储特有的东西
 
-  return {
-    async invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
-      if (command === 'wire_manifest') return { services } as T;
-      if (command === 'wire_stream_close') return null as T;
-      if (command !== 'wire_invoke') throw { code: 'unknown-command', message: command };
+test('op-log：重启后（重放日志）数据还在，且每条写入都进了日志', async () => {
+  const kv = createMemoryKeyValue();
+  const ports = createLocalOpPorts(kv);
+  const first = createOpLogRepository({ ops: ports.ops, settings: ports.settings, deviceId: 'device-a' });
+  await first.ready;
 
-      const service = String(args?.['service'] ?? '');
-      const method = String(args?.['method'] ?? '');
-      const callArgs = (args?.['args'] as unknown[]) ?? [];
-      try {
-        const handler = async (): Promise<unknown> => {
-          if (service === 'characters') {
-            if (method === 'list') return backing.characters.list();
-            if (method === 'get') return (await backing.characters.get(Number(callArgs[0]))) ?? null;
-            if (method === 'save') return backing.characters.save(callArgs[0] as never);
-            if (method === 'delete') return { removed: await backing.characters.remove(Number(callArgs[0])) };
-          }
-          if (service === 'sessions') {
-            if (method === 'list') return backing.sessions.list();
-            if (method === 'create') return backing.sessions.create(Number(callArgs[0]), String(callArgs[1] ?? ''));
-            if (method === 'rename') return { renamed: await backing.sessions.rename(Number(callArgs[0]), String(callArgs[1])) };
-            if (method === 'delete') return { removed: await backing.sessions.remove(Number(callArgs[0])) };
-          }
-          if (service === 'messages') {
-            if (method === 'list') return backing.messages.list(Number(callArgs[0]));
-            if (method === 'append') {
-              return backing.messages.append(Number(callArgs[0]), callArgs[1] as never, String(callArgs[2]), callArgs[3] as never);
-            }
-            if (method === 'update') return { updated: await backing.messages.update(Number(callArgs[0]), String(callArgs[1]), callArgs[2] as never) };
-            if (method === 'delete') return { removed: await backing.messages.remove(Number(callArgs[0])) };
-          }
-          if (service === 'settings') {
-            if (method === 'get') return { value: (await backing.settings.get(String(callArgs[0]))) ?? null };
-            if (method === 'set') {
-              await backing.settings.set(String(callArgs[0]), String(callArgs[1]));
-              return { saved: true };
-            }
-            if (method === 'all') return backing.settings.all();
-          }
-          if (service === 'store' && method === 'probe') return backing.probe?.();
-          throw { code: 'unknown-method', message: `${service}.${method}` };
-        };
-        return (await handler()) as T;
-      } catch (cause) {
-        // Tauri 的 command 语义：失败时 reject，载荷是 {code,message}
-        if (cause instanceof DataError) throw { code: cause.code, message: cause.message };
-        throw cause;
-      }
-    },
-    async listen<T>(event: string, handler: (payload: T) => void): Promise<() => void> {
-      void event;
-      void handler;
-      return () => undefined;
-    },
-  };
-}
-
-contract('宿主仓储（wire→Rust/SQLite 协议）', async () => {
-  const repo = createHostRepository(createTauriTransport({ bridge: createFakeRustHost() }));
-  return { repo, reopen: async () => repo };
-});
-
-// ---------------------------------------------------------------- 各实现特有的东西
-
-test('localStorage 仓储：数据真的落盘，重新打开页面后还在', async () => {
-  const store = createMemoryKeyValue();
-  const first = createLocalRepository(store);
   const character = await first.characters.save({ name: '星野', firstMessage: '「进来吧。」' });
   const session = await first.sessions.create(character.id);
   await first.messages.append(session.id, 'user', '风大吗');
 
-  // 模拟"关掉页面再打开"：同一份 localStorage，全新的仓储实例
-  const reopened = createLocalRepository(store);
-  const characters = await reopened.characters.list();
+  const before = await ports.ops.stats();
+  assert.equal(before.count, 4, '角色 upsert + 会话 create + 开场白 append + 用户消息 append');
+  assert.equal(before.devices, 1, '所有 op 都带着本设备 id');
+
+  // "重启"：同一份 op 日志，全新仓储
+  const revived = createOpLogRepository({ ops: ports.ops, settings: ports.settings, deviceId: 'device-a' });
+  await revived.ready;
+  const characters = await revived.characters.list();
   assert.deepEqual(characters.map((item) => item.name), ['星野']);
 
-  const sessions = await reopened.sessions.list();
+  const sessions = await revived.sessions.list();
   assert.equal(sessions[0]?.messageCount, 2);
   assert.equal(sessions[0]?.lastMessage, '风大吗');
-  const messages = await reopened.messages.list(session.id);
+  const messages = await revived.messages.list(session.id);
   assert.deepEqual(messages.map((message) => message.content), ['「进来吧。」', '风大吗']);
-  assert.equal(await reopened.characters.get(character.id) !== undefined, true);
 });
 
-test('localStorage 仓储：坏数据不把应用卡死（当作空状态）', async () => {
-  const store = createMemoryKeyValue();
-  store.write('storylantern.state.v1', '{ 这不是 JSON');
-  assert.deepEqual(loadState(store), {
-    characters: [],
-    sessions: [],
-    messages: [],
-    settings: {},
-    sequence: 0,
+test('op-log：rebuild() 丢掉内存状态、只靠日志重建出同样的数据', async () => {
+  const ports = createLocalOpPorts(createMemoryKeyValue());
+  const repo = createOpLogRepository({ ops: ports.ops, settings: ports.settings, deviceId: 'device-a' });
+  await repo.ready;
+
+  const character = await repo.characters.save({ name: '星野' });
+  const session = await repo.sessions.create(character.id);
+  await repo.messages.append(session.id, 'assistant', '灯还亮着');
+
+  const rebuilt = await repo.rebuild();
+  assert.equal(rebuilt.characters, 1);
+  assert.equal(rebuilt.sessions, 1);
+  assert.equal(rebuilt.messages, 1, '重放后只剩那条真实写入的消息（这个角色没有开场白）');
+
+  const sessions = await repo.sessions.list();
+  assert.equal(sessions.length, 1);
+  assert.equal(sessions[0]?.characterName, '星野');
+  assert.deepEqual((await repo.messages.list(session.id)).map((message) => message.content), ['灯还亮着']);
+});
+
+test('op-log：重复投递同一条 op 不会写第二遍（幂等）', async () => {
+  const ports = createLocalOpPorts(createMemoryKeyValue());
+  const repo = createOpLogRepository({ ops: ports.ops, settings: ports.settings, deviceId: 'device-a' });
+  await repo.ready;
+
+  await repo.characters.save({ name: '星野' });
+  const stats = await ports.ops.stats();
+  // 把日志里的行原样再追加一次：应当全部判为重复
+  const page = await ports.ops.list(0, 100);
+  const outcome = await ports.ops.append(page.rows.map((row) => row.line));
+  assert.equal(outcome.appended, 0);
+  assert.equal(outcome.duplicates, stats.count);
+
+  const after = await ports.ops.stats();
+  assert.equal(after.count, stats.count, '重复投递不该让日志变长');
+  assert.deepEqual((await repo.characters.list()).map((item) => item.name), ['星野']);
+});
+
+test('op-log：日志里的坏行被隔离，应用仍然起得来（并在统计里可见）', async () => {
+  const ports = createLocalOpPorts(createMemoryKeyValue());
+  const good = createOpLogRepository({ ops: ports.ops, settings: ports.settings, deviceId: 'device-a' });
+  await good.ready;
+  await good.characters.save({ name: '星野' });
+
+  // 手工塞一条坏行：JSON 合法但结构不合法（缺 hlc/entity/payload），
+  // 模拟同步或磁盘问题带来的损坏——解码会被隔离，而不是让应用起不来。
+  const page = await ports.ops.list(0, 100);
+  await ports.ops.append(['{"opId":"broken","deviceId":"x","schema":1,"type":"character.upsert"}']);
+
+  const revived = createOpLogRepository({ ops: ports.ops, settings: ports.settings, deviceId: 'device-a' });
+  await revived.ready;
+  assert.deepEqual((await revived.characters.list()).map((item) => item.name), ['星野'], '好数据不受影响');
+  assert.equal((await revived.logStats()).corrupt, 1, '坏行数量要能被看到');
+  assert.equal(page.rows.length, 1);
+});
+
+test('op-log：旧表数据能一次性迁移成 op，时间戳沿用原记录', async () => {
+  const kv = createMemoryKeyValue();
+  const ports = createLocalOpPorts(kv);
+  const legacy = {
+    characters: [
+      {
+        id: 1,
+        name: '旧角色',
+        description: '来自旧表',
+        personality: '',
+        scenario: '',
+        firstMessage: '「旧开场白」',
+        exampleDialogue: '',
+        createdAt: 1_600_000_000_000,
+        updatedAt: 1_600_000_100_000,
+      },
+    ],
+    sessions: [{ id: 10, title: '旧会话', characterId: 1, createdAt: 1_600_000_200_000, updatedAt: 1_600_000_200_000 }],
+    messages: [
+      { id: 100, sessionId: 10, role: 'user', content: '旧消息', status: 'done', createdAt: 1_600_000_300_000 },
+      { id: 101, sessionId: 10, role: 'assistant', content: '旧回复', status: 'done', createdAt: 1_600_000_400_000 },
+    ],
+  };
+
+  const repo = createOpLogRepository({
+    ops: ports.ops,
+    settings: ports.settings,
+    deviceId: 'device-a',
+    loadLegacy: async () => legacy,
   });
+  await repo.ready;
 
-  store.write('storylantern.state.v1', JSON.stringify({ characters: 'nope' }));
-  assert.deepEqual(loadState(store).characters, []);
-});
+  const characters = await repo.characters.list();
+  assert.deepEqual(characters.map((item) => item.name), ['旧角色']);
+  assert.equal(characters[0]?.createdAt, 1_600_000_000_000, '创建时间沿用旧记录');
 
-test('宿主仓储：宿主拒绝时错误码原样传到界面（不吞、不换码）', async () => {
-  const bridge = createFakeRustHost();
-  const repo = createHostRepository(createTauriTransport({ bridge }));
-  await assert.rejects(() => repo.characters.save({ name: '   ' }), (error: unknown) => {
-    assert.ok(error instanceof DataError);
-    assert.equal(error.code, 'invalid-argument');
-    assert.match(error.message, /角色名不能为空/);
-    return true;
+  const sessions = await repo.sessions.list();
+  assert.equal(sessions[0]?.title, '旧会话');
+  assert.equal(sessions[0]?.characterName, '旧角色');
+  assert.equal(sessions[0]?.messageCount, 2);
+
+  const messages = await repo.messages.list(sessions[0]?.id ?? '');
+  assert.deepEqual(messages.map((message) => message.content), ['旧消息', '旧回复']);
+  assert.equal(messages[0]?.createdAt, 1_600_000_300_000, '历史消息的原始时间要保住');
+
+  // 迁移只做一次：日志非空后再给一份旧表也不会重复导入
+  const again = createOpLogRepository({
+    ops: ports.ops,
+    settings: ports.settings,
+    deviceId: 'device-a',
+    loadLegacy: async () => legacy,
   });
+  await again.ready;
+  assert.equal((await again.characters.list()).length, 1, '不该重复迁移');
 });
 
-test('宿主仓储：probe 暴露宿主存储信息（浏览器实现给的是降级值）', async () => {
-  const bridge = createFakeRustHost();
-  const host = createHostRepository(createTauriTransport({ bridge }));
-  const probe = await host.probe?.();
-  assert.equal(probe?.journalMode, '—', '内存兜底的假宿主没有真 SQLite');
-  assert.equal(probe?.writable, true);
+test('op-log：settings 走宿主配置，不进 op 日志（密钥不参与同步）', async () => {
+  const ports = createLocalOpPorts(createMemoryKeyValue());
+  const repo = createOpLogRepository({ ops: ports.ops, settings: ports.settings, deviceId: 'device-a' });
+  await repo.ready;
 
-  const browser = createMemoryRepository();
-  assert.equal((await browser.probe?.())?.path.includes('没有宿主数据库'), true);
+  await repo.settings.set('model.api_key', 'sk-secret');
+  assert.equal((await repo.settings.get('model.api_key')), 'sk-secret');
+
+  const lines = (await ports.ops.list(0, 100)).rows.map((row) => row.line).join('\n');
+  assert.ok(!lines.includes('sk-secret'), '密钥绝不能出现在 op 日志里');
+  assert.equal((await ports.ops.stats()).count, 0, '设置不产生 op');
 });
 
-// ---------------------------------------------------------------- 模型配置判定
+// ---------------------------------------------------------------- 展示辅助
+
+test('时间与会话预览的展示规则', () => {
+  const now = new Date('2026-10-14T12:00:00').getTime();
+  assert.equal(formatTime(0), '');
+  assert.equal(formatTime(now - 30_000, now), '刚刚');
+  assert.equal(formatTime(now - 5 * 60_000, now), '5 分钟前');
+  assert.equal(formatTime(new Date('2026-10-14T09:05:00').getTime(), now), '09:05');
+  assert.equal(formatTime(new Date('2026-10-13T22:00:00').getTime(), now), '昨天');
+  assert.equal(formatTime(new Date('2026-10-08T10:00:00').getTime(), now), '10 月 8 日');
+
+  assert.equal(previewOf('  '), '还没有消息');
+  assert.equal(previewOf('一\n二  三'), '一 二 三');
+  assert.equal(previewOf('x'.repeat(80)).length, 61);
+});
 
 test('模型配置判定：远端要密钥、本地端点不需要（与 Rust 侧规则一致）', () => {
   assert.equal(isModelConfigured({}), false);
@@ -308,19 +348,4 @@ test('模型配置判定：远端要密钥、本地端点不需要（与 Rust �
     assert.equal(isModelConfigured({ 'model.base_url': local, 'model.name': 'mock' }), true, `${local} 不需要密钥`);
   }
   assert.equal(isLocalEndpoint('https://api.deepseek.com/v1'), false);
-});
-
-// ---------------------------------------------------------------- 展示辅助
-
-test('时间与会话预览的展示规则', () => {  const now = new Date('2026-10-14T12:00:00').getTime();
-  assert.equal(formatTime(0), '');
-  assert.equal(formatTime(now - 30_000, now), '刚刚');
-  assert.equal(formatTime(now - 5 * 60_000, now), '5 分钟前');
-  assert.equal(formatTime(new Date('2026-10-14T09:05:00').getTime(), now), '09:05');
-  assert.equal(formatTime(new Date('2026-10-13T22:00:00').getTime(), now), '昨天');
-  assert.equal(formatTime(new Date('2026-10-08T10:00:00').getTime(), now), '10 月 8 日');
-
-  assert.equal(previewOf('  '), '还没有消息');
-  assert.equal(previewOf('一\n二  三'), '一 二 三');
-  assert.equal(previewOf('x'.repeat(80)).length, 61);
 });

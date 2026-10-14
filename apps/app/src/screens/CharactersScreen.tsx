@@ -22,8 +22,8 @@ import {
 export function CharactersScreen({ store, router }: ScreenProps): ReactNode {
   const t = useT();
   const state = useAppState(store);
-  const [menuFor, setMenuFor] = useState<number | undefined>(undefined);
-  const [confirmDelete, setConfirmDelete] = useState<number | undefined>(undefined);
+  const [menuFor, setMenuFor] = useState<string | undefined>(undefined);
+  const [confirmDelete, setConfirmDelete] = useState<string | undefined>(undefined);
 
   const { visible, hidden, sentinel } = useWindowedList(state.characters, { pageSize: 30 });
 

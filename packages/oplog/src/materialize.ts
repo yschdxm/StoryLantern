@@ -2,6 +2,15 @@ import { compareOpOrder, type Hlc } from './hlc.ts';
 import { freezeSnapshot } from './freeze.ts';
 import { applyCharacterDelete, applyCharacterUpsert, listCharacters } from './character-projection.ts';
 import { applySessionDelete, applySessionUpsert, liveSessions } from './session-projection.ts';
+import {
+  applyCandidateAppend,
+  applyCandidateSelect,
+  applyMessageAppend,
+  applyMessageDelete,
+  applyMessageEdit,
+  applyRevisionSelect,
+  applySettingSet,
+} from './message-projection.ts';
 import { cloneHlc, emptyState, laterThan } from './materialize-support.ts';
 import type { MessageAuthor, Op } from './op.ts';
 import type { SessionSnapshot } from './snapshot.ts';
@@ -132,6 +141,12 @@ export class Materializer {
       if (candidate) return candidate.content;
     }
     return message.revisions.find((item) => item.revisionId === message.activeRevision.revisionId)?.content;
+  }
+
+
+  /** 消息的生成状态（界面显示"失败"用）。 */
+  statusOf(messageId: string): 'done' | 'error' {
+    return this.#state.messages[messageId]?.status ?? 'done';
   }
 
   /**
@@ -279,121 +294,32 @@ export class Materializer {
     return 'applied';
   }
 
+  /** 消息与设置的语义在 `message-projection.ts` 里，这里只转发（保持门禁 400 行以内）。 */
   #messageAppend(op: Op): ApplyResult {
-    const payload = op.payload as { sessionId: string; messageId: string; author: MessageAuthor; content: string };
-    const existing = this.#state.messages[payload.messageId];
-    const revisionId = `${payload.messageId}:r0`;
-
-    if (!existing) {
-      const record: MessageRecord = {
-        id: payload.messageId,
-        sessionId: payload.sessionId,
-        author: payload.author,
-        appendHlc: cloneHlc(op.hlc),
-        appendOpId: op.opId,
-        revisions: [
-          { revisionId, content: payload.content, baseRevisionId: null, hlc: cloneHlc(op.hlc), opId: op.opId, deviceId: op.deviceId },
-        ],
-        activeRevision: { revisionId, hlc: cloneHlc(op.hlc), explicit: false },
-        candidates: [],
-      };
-      this.#state.messages[payload.messageId] = record;
-      return 'applied';
-    }
-
-    // 同一个 messageId 被两个设备各写一次（只可能来自克隆的设备数据）：保留首版语义，补上缺的版本。
-    if (!existing.revisions.some((revision) => revision.revisionId === revisionId)) {
-      existing.revisions.push({
-        revisionId,
-        content: payload.content,
-        baseRevisionId: null,
-        hlc: cloneHlc(op.hlc),
-        opId: op.opId,
-        deviceId: op.deviceId,
-      });
-    }
-    if (compareOpOrder({ hlc: op.hlc, opId: op.opId }, { hlc: existing.appendHlc, opId: existing.appendOpId }) < 0) {
-      existing.appendHlc = cloneHlc(op.hlc);
-      existing.appendOpId = op.opId;
-    }
-    return 'applied';
+    return applyMessageAppend(this.#state, op);
   }
 
   #messageEdit(op: Op): ApplyResult {
-    const payload = op.payload as { messageId: string; revisionId: string; baseRevisionId: string; content: string };
-    const message = this.#state.messages[payload.messageId];
-    if (!message) return 'orphan';
-
-    if (!message.revisions.some((revision) => revision.revisionId === payload.revisionId)) {
-      message.revisions.push({
-        revisionId: payload.revisionId,
-        content: payload.content,
-        baseRevisionId: payload.baseRevisionId,
-        hlc: cloneHlc(op.hlc),
-        opId: op.opId,
-        deviceId: op.deviceId,
-      });
-    }
-
-    const active = message.activeRevision;
-    const newer = laterThan(op.hlc, active.hlc, op.opId, undefined);
-    // 显式选择过的版本可以压过更早的编辑；但更新的编辑一定生效（用户刚改完就该看到）。
-    if (active.explicit && !newer) return 'applied';
-    if (newer) {
-      message.activeRevision = { revisionId: payload.revisionId, hlc: cloneHlc(op.hlc), explicit: false };
-    }
-    return 'applied';
+    return applyMessageEdit(this.#state, op);
   }
 
   #revisionSelect(op: Op): ApplyResult {
-    const payload = op.payload as { messageId: string; revisionId: string };
-    const message = this.#state.messages[payload.messageId];
-    if (!message) return 'orphan';
-    if (!message.revisions.some((revision) => revision.revisionId === payload.revisionId)) return 'orphan';
-    if (!laterThan(op.hlc, message.activeRevision.hlc, op.opId, undefined)) return 'applied';
-    message.activeRevision = { revisionId: payload.revisionId, hlc: cloneHlc(op.hlc), explicit: true };
-    return 'applied';
+    return applyRevisionSelect(this.#state, op);
   }
 
   #candidateAppend(op: Op): ApplyResult {
-    const payload = op.payload as { messageId: string; candidateId: string; content: string };
-    const message = this.#state.messages[payload.messageId];
-    if (!message) return 'orphan';
-    if (message.candidates.some((candidate) => candidate.candidateId === payload.candidateId)) return 'applied';
-    message.candidates.push({
-      candidateId: payload.candidateId,
-      content: payload.content,
-      hlc: cloneHlc(op.hlc),
-      opId: op.opId,
-    });
-    return 'applied';
+    return applyCandidateAppend(this.#state, op);
   }
 
   #candidateSelect(op: Op): ApplyResult {
-    const payload = op.payload as { messageId: string; candidateId: string };
-    const message = this.#state.messages[payload.messageId];
-    if (!message) return 'orphan';
-    if (!message.candidates.some((candidate) => candidate.candidateId === payload.candidateId)) return 'orphan';
-    const current = message.selectedCandidate;
-    if (current && !laterThan(op.hlc, current.hlc, op.opId, undefined)) return 'applied';
-    message.selectedCandidate = { candidateId: payload.candidateId, hlc: cloneHlc(op.hlc) };
-    return 'applied';
+    return applyCandidateSelect(this.#state, op);
   }
 
   #messageDelete(op: Op): ApplyResult {
-    const payload = op.payload as { messageId: string };
-    const message = this.#state.messages[payload.messageId];
-    if (!message) return 'orphan';
-    if (message.deleted && !laterThan(op.hlc, message.deleted.hlc, op.opId, undefined)) return 'applied';
-    message.deleted = { hlc: cloneHlc(op.hlc) };
-    return 'applied';
+    return applyMessageDelete(this.#state, op);
   }
 
   #settingSet(op: Op): ApplyResult {
-    const payload = op.payload as { key: string; value: unknown };
-    const existing = this.#state.settings[payload.key];
-    if (existing && !laterThan(op.hlc, existing.hlc, op.opId, existing.opId)) return 'applied';
-    this.#state.settings[payload.key] = { value: payload.value, hlc: cloneHlc(op.hlc), opId: op.opId };
-    return 'applied';
+    return applySettingSet(this.#state, op);
   }
 }

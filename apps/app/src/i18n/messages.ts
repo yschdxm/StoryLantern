@@ -189,6 +189,11 @@ const zhCN: AppMessages = {
   'dev.chunks.cancelled': '（已取消）',
   'dev.chunks.done': '（已完成）',
   'dev.noHost': '浏览器里没有宿主 IPC，这些诊断项不可用；用 Tauri 壳打开才有真实数据。',
+  'dev.oplog': 'op 日志',
+  'dev.oplog.stats': '{{count}} 条 · {{kb}} KB · {{devices}} 台设备',
+  'dev.oplog.corrupt': '隔离的坏行',
+  'dev.oplog.rebuild': '从 op 日志重建',
+  'dev.oplog.rebuilt': '重建完成：{{ops}} 条 op → {{characters}} 个角色 / {{sessions}} 个会话 / {{messages}} 条消息',
 };
 
 const en: AppMessages = {
@@ -356,6 +361,11 @@ const en: AppMessages = {
   'dev.chunks.cancelled': ' (cancelled)',
   'dev.chunks.done': ' (done)',
   'dev.noHost': 'There is no host IPC in the browser, so these diagnostics are unavailable. Open the Tauri build for real data.',
+  'dev.oplog': 'Op log',
+  'dev.oplog.stats': '{{count}} ops · {{kb}} KB · {{devices}} device(s)',
+  'dev.oplog.corrupt': 'Quarantined lines',
+  'dev.oplog.rebuild': 'Rebuild from op log',
+  'dev.oplog.rebuilt': 'Rebuilt: {{ops}} ops → {{characters}} characters / {{sessions}} chats / {{messages}} messages',
 };
 
 export const APP_MESSAGES: Record<string, AppMessages> = {

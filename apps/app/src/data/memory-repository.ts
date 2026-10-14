@@ -49,13 +49,15 @@ export function createMemoryRepository(
   };
   const now = options.now ?? (() => Date.now());
   const commit = (): void => options.onChange?.(state);
-  const nextId = (): number => (state.sequence += 1);
+  // id 用"前缀 + 自增"的字符串：与宿主侧 ULID 同样是字符串，类型一致；
+  // 内存实现不需要跨设备唯一，因此不必生成 ULID。
+  const nextId = (prefix: string): string => `${prefix}${(state.sequence += 1)}`;
 
-  const findCharacter = (id: number): Character | undefined => state.characters.find((item) => item.id === id);
+  const findCharacter = (id: string): Character | undefined => state.characters.find((item) => item.id === id);
 
   const characters: CharacterStore = {
     async list() {
-      return [...state.characters].sort((a, b) => b.updatedAt - a.updatedAt || b.id - a.id);
+      return [...state.characters].sort((a, b) => b.updatedAt - a.updatedAt || b.id.localeCompare(a.id));
     },
 
     async get(id) {
@@ -73,7 +75,7 @@ export function createMemoryRepository(
         return { ...existing };
       }
       const created: Character = {
-        id: nextId(),
+        id: nextId('c'),
         ...clean,
         createdAt: stamp,
         updatedAt: stamp,
@@ -109,7 +111,7 @@ export function createMemoryRepository(
     };
   };
 
-  const touchSession = (sessionId: number): void => {
+  const touchSession = (sessionId: string): void => {
     const session = state.sessions.find((item) => item.id === sessionId);
     if (session !== undefined) session.updatedAt = now();
   };
@@ -117,7 +119,7 @@ export function createMemoryRepository(
   const sessions: SessionStore = {
     async list() {
       return [...state.sessions]
-        .sort((a, b) => b.updatedAt - a.updatedAt || b.id - a.id)
+        .sort((a, b) => b.updatedAt - a.updatedAt || b.id.localeCompare(a.id))
         .map(buildSession);
     },
 
@@ -126,7 +128,7 @@ export function createMemoryRepository(
       if (character === undefined) throw new DataError('invalid-argument', `角色 ${characterId} 不存在`);
       const stamp = now();
       const session: Session = {
-        id: nextId(),
+        id: nextId('s'),
         title: title === undefined || title.trim() === '' ? character.name : validateSessionTitle(title),
         characterId,
         characterName: character.name,
@@ -138,7 +140,7 @@ export function createMemoryRepository(
       state.sessions.push(session);
       if (character.firstMessage.trim() !== '') {
         state.messages.push({
-          id: nextId(),
+          id: nextId('m'),
           sessionId: session.id,
           role: 'assistant',
           content: character.firstMessage.trim(),
@@ -174,13 +176,14 @@ export function createMemoryRepository(
 
   const messages: MessageStore = {
     async list(sessionId) {
-      return state.messages.filter((message) => message.sessionId === sessionId).sort((a, b) => a.id - b.id);
+      // 数组本身按写入顺序排列，不必再排序（id 是字符串，按字典序排会错）
+      return state.messages.filter((message) => message.sessionId === sessionId);
     },
 
     async append(sessionId, role: MessageRole, content: string, status: MessageStatus = 'done', createdAt?: number) {
       const safeRole = validateMessageRole(role);
       const message: Message = {
-        id: nextId(),
+        id: nextId('m'),
         sessionId,
         role: safeRole,
         content,

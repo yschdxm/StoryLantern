@@ -99,12 +99,9 @@ export function ImportScreen({ store, router }: ScreenProps): ReactNode {
           const session = await store.actions.createSession(characterId, plan.title);
           sessions += 1;
           for (const message of plan.messages) {
-            await store.actions.appendMessage(
-              session.id,
-              message.role,
-              message.content,
-              ...(message.createdAt === undefined ? [] : [message.createdAt]),
-            );
+            await store.actions.appendMessage(session.id, message.role, message.content, {
+              ...(message.createdAt === undefined ? {} : { createdAt: message.createdAt }),
+            });
           }
           // 逐条追加时只做了就地更新；批量结束后对齐一次，列表摘要才是权威值
           await store.actions.refreshSessions();

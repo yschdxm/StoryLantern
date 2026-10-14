@@ -1,6 +1,24 @@
-import { randomBytes } from 'node:crypto';
-
 const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+
+/**
+ * 随机字节：**只用 WebCrypto**（`globalThis.crypto.getRandomValues`）。
+ *
+ * 之前这里 import 了 `node:crypto`，后果是浏览器/WebView 里 ULID 生成直接抛错
+ * （真机上表现为 "(0, We.randomBytes) is not a function"），而且前端产物里
+ * 混进了 Node 内置模块。Node 19+ 也有 `globalThis.crypto`，所以两端一套代码即可。
+ * 需要 Node 专属能力的（gzip/AES 等）在 `node-adapters.ts` 里单独放，不污染这里。
+ */
+function randomBytes(size: number): Uint8Array {
+  const bytes = new Uint8Array(size);
+  const webCrypto = (globalThis as { crypto?: Crypto }).crypto;
+  if (webCrypto !== undefined && typeof webCrypto.getRandomValues === 'function') {
+    webCrypto.getRandomValues(bytes);
+    return bytes;
+  }
+  // 兜底：没有任何 WebCrypto 的环境（极少见）。唯一性主要靠时间戳 + 同毫秒计数器保证。
+  for (let index = 0; index < size; index += 1) bytes[index] = Math.floor(Math.random() * 256);
+  return bytes;
+}
 
 let lastTime = -1;
 let lastRandom = 0n;

@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useT } from './i18n/context.tsx';
+import type { OpLogAdmin } from './screens/screen-props.ts';
 import type { HostClient, HostViewModel, StreamChunk } from './host-panel.ts';
 
 export interface HostPanelProps {
   client: HostClient;
+  /** op 日志统计与重建（M1 之后的事实源）；内存实现没有这个。 */
+  ops?: OpLogAdmin | undefined;
 }
 
 /**
@@ -12,12 +15,23 @@ export interface HostPanelProps {
  * 它**不再出现在主界面**（v0.1 里收进「设置 → 开发者」）。主界面是给人用的，
  * 诊断信息只该在需要排障时出现。
  */
-export function HostPanel({ client }: HostPanelProps) {
+export function HostPanel({ client, ops }: HostPanelProps) {
   const t = useT();
   const [view, setView] = useState<HostViewModel | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [streamed, setStreamed] = useState<{ text: string; chunks: number; cancelled: boolean } | null>(null);
   const [controller, setController] = useState<AbortController | null>(null);
+  const [logStats, setLogStats] = useState<{ count: number; lastSeq: number; devices: number; bytes: number; corrupt: number } | undefined>(undefined);
+  const [rebuilt, setRebuilt] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (ops === undefined) return;
+    void ops
+      .stats()
+      .then(setLogStats)
+      // 开发者面板里最忌讳"点了没反应"：把失败原因摆出来
+      .catch((cause: unknown) => setNotice(`${t('dev.oplog')}: ${cause instanceof Error ? cause.message : String(cause)}`));
+  }, [ops, t]);
 
   const runStreamDemo = async (signal: AbortSignal): Promise<void> => {
     setStreamed({ text: '', chunks: 0, cancelled: false });
@@ -98,6 +112,53 @@ export function HostPanel({ client }: HostPanelProps) {
             </>
           )}
         </div>
+      )}
+
+      {logStats !== undefined && ops !== undefined && (
+        <>
+          <div className="kv-grid">
+            <span>{t('dev.oplog')}</span>
+            <code>
+              {t('dev.oplog.stats', {
+                count: logStats.count,
+                kb: Math.round(logStats.bytes / 1024),
+                devices: logStats.devices,
+              })}
+            </code>
+            {logStats.corrupt > 0 && (
+              <>
+                <span>{t('dev.oplog.corrupt')}</span>
+                <code>{logStats.corrupt}</code>
+              </>
+            )}
+          </div>
+          <div className="row">
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => {
+                // 丢掉内存状态、只靠日志重放：这就是"读模型是派生的"的现场证明
+                void ops
+                  .rebuild()
+                  .then((result) =>
+                    setRebuilt(
+                      t('dev.oplog.rebuilt', {
+                        ops: result.ops,
+                        characters: result.characters,
+                        sessions: result.sessions,
+                        messages: result.messages,
+                      }),
+                    ),
+                  )
+                  .then(() => ops.stats().then(setLogStats))
+                  .catch((cause: unknown) => setNotice(cause instanceof Error ? cause.message : String(cause)));
+              }}
+            >
+              {t('dev.oplog.rebuild')}
+            </button>
+            {rebuilt !== undefined && <span className="muted">{rebuilt}</span>}
+          </div>
+        </>
       )}
 
       <div className="row">

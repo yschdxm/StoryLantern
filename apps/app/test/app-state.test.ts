@@ -11,8 +11,9 @@ test('路由：hash 与 Route 往返一致，脏输入回落到根页面', () =>
     { name: 'sessions' } as const,
     { name: 'characters' } as const,
     { name: 'settings' } as const,
-    { name: 'chat', sessionId: 12 } as const,
-    { name: 'character', characterId: 7 } as const,
+    { name: 'import' } as const,
+    { name: 'chat', sessionId: '01JABCXYZ' } as const,
+    { name: 'character', characterId: '01JABCXYZ' } as const,
     { name: 'character', characterId: 'new' } as const,
   ];
   for (const route of routes) {
@@ -22,22 +23,25 @@ test('路由：hash 与 Route 往返一致，脏输入回落到根页面', () =>
   assert.deepEqual(parseRoute(''), { name: 'sessions' });
   assert.deepEqual(parseRoute('#/'), { name: 'sessions' });
   assert.deepEqual(parseRoute('#/nonsense'), { name: 'sessions' });
-  assert.deepEqual(parseRoute('#/chat/abc'), { name: 'sessions' });
-  assert.deepEqual(parseRoute('#/chat/0'), { name: 'sessions' });
-  assert.deepEqual(parseRoute('#/character/xyz'), { name: 'characters' });
-  assert.deepEqual(parseRoute('#/chat/9?from=x'), { name: 'chat', sessionId: 9 }, '查询串应被忽略');
+  assert.deepEqual(parseRoute('#/import'), { name: 'import' });
+  // 会话/角色 id 是 ULID 字符串：任何非空 token 都是合法 id，空的才回落
+  assert.deepEqual(parseRoute('#/chat/'), { name: 'sessions' });
+  assert.deepEqual(parseRoute('#/character/'), { name: 'characters' });
+  assert.deepEqual(parseRoute('#/chat/01JABC?from=x'), { name: 'chat', sessionId: '01JABC' }, '查询串应被忽略');
 });
 
 test('路由：返回层级与底栏高亮归属', () => {
-  assert.deepEqual(parentOf({ name: 'chat', sessionId: 3 }), { name: 'sessions' });
+  assert.deepEqual(parentOf({ name: 'chat', sessionId: 's1' }), { name: 'sessions' });
   assert.deepEqual(parentOf({ name: 'character', characterId: 'new' }), { name: 'characters' });
+  assert.deepEqual(parentOf({ name: 'import' }), { name: 'characters' });
   assert.equal(parentOf({ name: 'sessions' }), undefined, '根页面没有上一级（交给系统退出）');
 
   assert.equal(isRootRoute({ name: 'sessions' }), true);
-  assert.equal(isRootRoute({ name: 'chat', sessionId: 1 }), false);
+  assert.equal(isRootRoute({ name: 'chat', sessionId: 's1' }), false);
 
-  assert.equal(activeTabName({ name: 'chat', sessionId: 1 }), 'sessions');
-  assert.equal(activeTabName({ name: 'character', characterId: 1 }), 'characters');
+  assert.equal(activeTabName({ name: 'chat', sessionId: 's1' }), 'sessions');
+  assert.equal(activeTabName({ name: 'character', characterId: 'c1' }), 'characters');
+  assert.equal(activeTabName({ name: 'import' }), 'characters');
   assert.equal(activeTabName({ name: 'settings' }), 'settings');
 });
 

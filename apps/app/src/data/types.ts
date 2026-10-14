@@ -12,7 +12,8 @@ export type MessageRole = 'user' | 'assistant' | 'system';
 export type MessageStatus = 'done' | 'streaming' | 'error';
 
 export interface Character {
-  id: number;
+  /** ULID：跨设备唯一，因此同步时不冲突（自增整数做不到这件事）。 */
+  id: string;
   name: string;
   description: string;
   personality: string;
@@ -25,7 +26,7 @@ export interface Character {
 
 /** 新建时 `id` 省略；编辑时带上 id。 */
 export interface CharacterDraft {
-  id?: number;
+  id?: string;
   name: string;
   description?: string;
   personality?: string;
@@ -35,9 +36,9 @@ export interface CharacterDraft {
 }
 
 export interface Session {
-  id: number;
+  id: string;
   title: string;
-  characterId: number;
+  characterId: string;
   characterName: string;
   createdAt: number;
   updatedAt: number;
@@ -46,8 +47,8 @@ export interface Session {
 }
 
 export interface Message {
-  id: number;
-  sessionId: number;
+  id: string;
+  sessionId: string;
   role: MessageRole;
   content: string;
   status: MessageStatus;

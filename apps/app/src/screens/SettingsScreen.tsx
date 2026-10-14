@@ -46,7 +46,7 @@ function Segmented<T extends string>({
  * 文本类改完即存（失焦自动保存），选择类点一下就生效——没有"保存"按钮，
  * 移动端表单里多一个保存按钮就是多一次误操作。
  */
-export function SettingsScreen({ store, router, host, chat, plugins, locales, onLocaleChange }: SettingsScreenProps): ReactNode {
+export function SettingsScreen({ store, router, host, chat, ops, plugins, locales, onLocaleChange }: SettingsScreenProps): ReactNode {
   const t = useT();
   const state = useAppState(store);
   const [local, setLocal] = useState<Record<string, string>>({});
@@ -216,7 +216,7 @@ export function SettingsScreen({ store, router, host, chat, plugins, locales, on
 
       <section className="settings-group">
         <h2 className="settings-group__title">{t('settings.developer')}</h2>
-        <HostPanel client={host} />
+        <HostPanel client={host} ops={ops} />
       </section>
 
       <p className="muted settings__version">{t('settings.version', { stamp: __BUILD_STAMP__ })}</p>

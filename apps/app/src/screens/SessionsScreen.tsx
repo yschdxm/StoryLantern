@@ -26,10 +26,10 @@ import {
 export function SessionsScreen({ store, router }: ScreenProps): ReactNode {
   const t = useT();
   const state = useAppState(store);
-  const [menuFor, setMenuFor] = useState<number | undefined>(undefined);
+  const [menuFor, setMenuFor] = useState<string | undefined>(undefined);
   const [pickCharacter, setPickCharacter] = useState(false);
-  const [renaming, setRenaming] = useState<{ id: number; title: string } | undefined>(undefined);
-  const [confirmDelete, setConfirmDelete] = useState<number | undefined>(undefined);
+  const [renaming, setRenaming] = useState<{ id: string; title: string } | undefined>(undefined);
+  const [confirmDelete, setConfirmDelete] = useState<string | undefined>(undefined);
 
   const { visible, hidden, sentinel } = useWindowedList(state.sessions, { pageSize: 30 });
 
@@ -149,9 +149,9 @@ function RenameSheet({
   onClose,
   onSubmit,
 }: {
-  value: { id: number; title: string } | undefined;
+  value: { id: string; title: string } | undefined;
   onClose: () => void;
-  onSubmit: (id: number, title: string) => void;
+  onSubmit: (id: string, title: string) => void;
 }): ReactNode {
   const t = useT();
   const [draft, setDraft] = useState('');

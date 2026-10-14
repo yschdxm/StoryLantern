@@ -3,10 +3,11 @@ import type { ScreenProps } from './screen-props.ts';
 import { useAppState, useAsync } from './screen-props.ts';
 import { useT } from '../i18n/context.tsx';
 import { formatTime, isModelConfigured } from '../data/repository.ts';
+import { buildChatRequest } from '../data/prompt.ts';
 import { Banner, Button, LoadMore, Sheet, SheetItem, useWindowedList } from '../ui/components.tsx';
 
 export interface ChatScreenProps extends ScreenProps {
-  sessionId: number;
+  sessionId: string;
   onOpenSettings: () => void;
 }
 
@@ -26,7 +27,7 @@ export function ChatScreen({ store, sessionId, chat, onOpenSettings }: ChatScree
   const [draft, setDraft] = useState('');
   const [streaming, setStreaming] = useState<{ text: string } | null>(null);
   const [chatError, setChatError] = useState<string | undefined>(undefined);
-  const [menuFor, setMenuFor] = useState<number | undefined>(undefined);
+  const [menuFor, setMenuFor] = useState<string | undefined>(undefined);
   const [composerOffset, setComposerOffset] = useState(0);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const controllerRef = useRef<AbortController | null>(null);
@@ -74,24 +75,42 @@ export function ChatScreen({ store, sessionId, chat, onOpenSettings }: ChatScree
   }, []);
 
   const runReply = async (): Promise<void> => {
+    // 用 store 里的**最新**状态组上下文：刚发出去的那条消息要进上下文
+    const fresh = store.getState();
+    const current = fresh.sessions.find((item) => item.id === sessionId);
+    const character = fresh.characters.find((item) => item.id === current?.characterId);
+    const request = buildChatRequest({
+      settings: fresh.settings,
+      ...(character === undefined ? {} : { character }),
+      history: fresh.messages.map((message) => ({ role: message.role, content: message.content, status: message.status })),
+    });
+
     const controller = new AbortController();
     controllerRef.current = controller;
     setChatError(undefined);
     setStreaming({ text: '' });
     try {
-      await chat.reply(sessionId, {
+      const result = await chat.reply(request, {
         signal: controller.signal,
         onDelta: (delta) => {
           if (delta.delta === '') return;
-          setStreaming((current) => ({ text: (current?.text ?? '') + delta.delta }));
+          setStreaming((state) => ({ text: (state?.text ?? '') + delta.delta }));
         },
       });
+      // 生成结果落成 op（宿主不再写库：它只负责转发）
+      if (result.text !== '') {
+        await store.actions.appendMessage(sessionId, 'assistant', result.text, result.aborted ? { status: 'error' } : {});
+      }
     } catch (cause) {
-      setChatError(cause instanceof Error ? cause.message : String(cause));
+      const message = cause instanceof Error ? cause.message : String(cause);
+      setChatError(message);
+      // 失败也留痕：写成一条失败消息，用户看得见、也能删
+      await store.actions
+        .appendMessage(sessionId, 'assistant', message, { status: 'error' })
+        .catch(() => undefined);
     } finally {
       controllerRef.current = null;
       setStreaming(null);
-      // 以库里的真实内容为准（宿主已经把分片写进去了）
       await store.actions.loadMessages(sessionId).catch(() => undefined);
       await store.actions.refreshSessions().catch(() => undefined);
     }

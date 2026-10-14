@@ -14,9 +14,10 @@
     "test:watch": "node --test --watch \"packages/**/*.test.ts\" \"plugins/**/*.test.ts\" \"apps/**/*.test.ts\" \"fixtures/**/*.test.ts\" \"eval/**/*.test.ts\"",
     "fixtures": "node fixtures/tools/make-fixtures.mjs",
     "gate": "node scripts/check-boundaries.mjs",
+    "bundle": "node apps/shell/build-frontend.mjs && node scripts/check-bundle.mjs",
     "perf": "node eval/perf/budgets.mjs",
     "typecheck": "tsc -p tsconfig.json",
-    "check": "npm run gate && npm test"
+    "check": "npm run gate && npm run bundle && npm test"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

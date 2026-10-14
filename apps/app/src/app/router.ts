@@ -10,8 +10,8 @@ export type Route =
   | { name: 'characters' }
   | { name: 'settings' }
   | { name: 'import' }
-  | { name: 'chat'; sessionId: number }
-  | { name: 'character'; characterId: number | 'new' };
+  | { name: 'chat'; sessionId: string }
+  | { name: 'character'; characterId: string | 'new' };
 
 export const ROOT_ROUTE: Route = { name: 'sessions' };
 
@@ -32,13 +32,12 @@ export function parseRoute(hash: string): Route {
     case 'import':
       return { name: 'import' };
     case 'chat': {
-      const sessionId = Number(tail);
-      return Number.isInteger(sessionId) && sessionId > 0 ? { name: 'chat', sessionId } : ROOT_ROUTE;
+      // 会话 id 是 ULID 字符串（跨设备唯一），因此只校验"非空"
+      return tail === undefined || tail === '' ? ROOT_ROUTE : { name: 'chat', sessionId: tail };
     }
     case 'character': {
-      if (tail === 'new') return { name: 'character', characterId: 'new' };
-      const characterId = Number(tail);
-      return Number.isInteger(characterId) && characterId > 0 ? { name: 'character', characterId } : { name: 'characters' };
+      if (tail === undefined || tail === '') return { name: 'characters' };
+      return { name: 'character', characterId: tail };
     }
     default:
       return ROOT_ROUTE;

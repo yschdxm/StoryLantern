@@ -47,6 +47,8 @@ export interface MessageAppendPayload {
   messageId: string;
   author: MessageAuthor;
   content: string;
+  /** 生成失败时把错误文本也当成消息内容，并用这个状态标记出来（界面显示"失败"）。 */
+  status?: 'done' | 'error';
 }
 
 export interface MessageEditPayload {
@@ -54,6 +56,7 @@ export interface MessageEditPayload {
   revisionId: string;
   baseRevisionId: string;
   content: string;
+  status?: 'done' | 'error';
 }
 
 export interface RevisionSelectPayload {

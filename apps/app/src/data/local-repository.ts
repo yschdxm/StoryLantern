@@ -70,17 +70,3 @@ export function createLocalRepository(store: KeyValueStore): Repository & { pers
     persist: () => store.write(STORAGE_KEY, JSON.stringify(repository.snapshot())),
   };
 }
-
-/** 当前环境可用的仓储：宿主优先，其次 localStorage，最后纯内存。 */
-export function createBrowserRepository(scope: Record<string, unknown> = globalThis as unknown as Record<string, unknown>): Repository {
-  const storage = scope['localStorage'] as Storage | undefined;
-  if (storage === undefined) return createMemoryRepository();
-  try {
-    const store = createBrowserKeyValue(storage);
-    // 写一次以确认可用（隐私模式下 setItem 会抛）
-    store.write(STORAGE_KEY, store.read(STORAGE_KEY) ?? '');
-    return createLocalRepository(store);
-  } catch {
-    return createMemoryRepository();
-  }
-}

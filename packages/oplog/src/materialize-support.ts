@@ -9,6 +9,9 @@ import type { CharacterRecord, MaterializedState } from './state-types.ts';
  * 二是这些判定（时间线、空状态）是**跨实体共用**的规则，放一处才不会各写一份。
  */
 
+/** 应用一条 op 的结果。`orphan` 表示它依赖的内容还没到（先存着，等依赖到了再试）。 */
+export type ApplyResult = 'applied' | 'duplicate' | 'orphan';
+
 export function emptyState(): MaterializedState {
   return { characters: {}, sessions: {}, messages: {}, settings: {} };
 }

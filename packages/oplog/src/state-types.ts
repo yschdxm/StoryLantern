@@ -31,6 +31,9 @@ export interface MessageRecord {
   activeRevision: { revisionId: string; hlc: Hlc; explicit: boolean };
   candidates: CandidateRecord[];
   selectedCandidate?: { candidateId: string; hlc: Hlc };
+  /** 生成失败等状态（append/edit 都会更新，按 HLC 取最新）。 */
+  status?: 'done' | 'error';
+  statusHlc?: Hlc;
   deleted?: { hlc: Hlc };
 }
 

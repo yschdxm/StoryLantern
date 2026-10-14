@@ -5,11 +5,12 @@ import type { LocaleService } from '../../../packages/plugin-api/src/index.ts';
 import { createAppRuntime, type AppRuntime } from './composition.ts';
 import { createAppStore, type AppStore } from './app/state.ts';
 import { createRouter, isRootRoute, type Route } from './app/router.ts';
-import { createHostRepository } from './data/host-repository.ts';
+import { createOpLogRepository } from './data/op-repository.ts';import { createDefaultLocalOpPorts, createWireOpPorts, resolveDeviceId } from './data/op-ports.ts';
 import { createChatClient } from './data/chat-client.ts';
-import { createBrowserRepository } from './data/local-repository.ts';
 import { SETTING_KEYS } from './data/types.ts';
 import type { Repository } from './data/repository.ts';
+import type { OpLogRepository } from './data/op-repository.ts';
+import type { OpLogAdmin } from './screens/screen-props.ts';
 import { createHostClient, type HostClient } from './host-panel.ts';
 import { I18nProvider } from './i18n/context.tsx';
 import { createAppLocaleService, registerAppMessages, translatorOf } from './i18n/locale.ts';
@@ -31,9 +32,22 @@ import './styles.css';
  */
 const bridge = createTauriBridgeFromGlobal();
 const transport = bridge === undefined ? undefined : createTauriTransport({ bridge });
-const repository: Repository = transport === undefined ? createBrowserRepository() : createHostRepository(transport);
 const host: HostClient = createHostClient(bridge);
+// op 日志：Tauri 里是宿主 SQLite，浏览器里是 localStorage——**同一套 op 语义**（同一份实现之上）
+const ports = transport === undefined ? createDefaultLocalOpPorts() : createWireOpPorts(transport);
+const repository: Repository = createOpLogRepository({
+  ops: ports.ops,
+  settings: ports.settings,
+  deviceId: () => resolveDeviceId(ports.settings),
+  ...(ports.loadLegacy === undefined ? {} : { loadLegacy: ports.loadLegacy }),
+});
 const chat = createChatClient(transport);
+// op 日志管理入口（只有 op 仓储有）：设置 → 开发者里能看统计、点"从 op 日志重建"
+const opLogRepository = repository as Partial<OpLogRepository>;
+const opAdmin: OpLogAdmin | undefined =
+  typeof opLogRepository.logStats === 'function' && typeof opLogRepository.rebuild === 'function'
+    ? { stats: () => opLogRepository.logStats!(), rebuild: () => opLogRepository.rebuild!() }
+    : undefined;
 const store: AppStore = createAppStore(repository);
 const router = createRouter();
 
@@ -115,6 +129,7 @@ function Root(): ReturnType<typeof AppShell> {
             router={router}
             host={host}
             chat={chat}
+            {...(opAdmin === undefined ? {} : { ops: opAdmin })}
             plugins={boot.runtime?.tracker.list().map((outcome) => ({ id: outcome.id, status: outcome.status })) ?? []}
             locales={boot.locale.locales()}
             onLocaleChange={(next) => {

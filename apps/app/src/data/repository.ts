@@ -21,24 +21,24 @@ export interface Repository {
 
 export interface CharacterStore {
   list(): Promise<Character[]>;
-  get(id: number): Promise<Character | undefined>;
+  get(id: string): Promise<Character | undefined>;
   save(draft: CharacterDraft): Promise<Character>;
-  remove(id: number): Promise<boolean>;
+  remove(id: string): Promise<boolean>;
 }
 
 export interface SessionStore {
   list(): Promise<Session[]>;
-  create(characterId: number, title?: string): Promise<Session>;
-  rename(id: number, title: string): Promise<boolean>;
-  remove(id: number): Promise<boolean>;
+  create(characterId: string, title?: string): Promise<Session>;
+  rename(id: string, title: string): Promise<boolean>;
+  remove(id: string): Promise<boolean>;
 }
 
 export interface MessageStore {
-  list(sessionId: number): Promise<Message[]>;
+  list(sessionId: string): Promise<Message[]>;
   /** `createdAt` 用于导入历史记录：不传就用当前时间。 */
-  append(sessionId: number, role: MessageRole, content: string, status?: MessageStatus, createdAt?: number): Promise<Message>;
-  update(id: number, content: string, status?: MessageStatus): Promise<boolean>;
-  remove(id: number): Promise<boolean>;
+  append(sessionId: string, role: MessageRole, content: string, status?: MessageStatus, createdAt?: number): Promise<Message>;
+  update(id: string, content: string, status?: MessageStatus): Promise<boolean>;
+  remove(id: string): Promise<boolean>;
 }
 
 export interface SettingsStore {

@@ -5,8 +5,8 @@ import { useT } from '../i18n/context.tsx';
 import { Button, ConfirmDialog, Field, TextArea, TextInput } from '../ui/components.tsx';
 
 export interface CharacterEditScreenProps extends ScreenProps {
-  characterId: number | 'new';
-  onDone: (characterId: number) => void;
+  characterId: string | 'new';
+  onDone: (characterId: string) => void;
 }
 
 /**
@@ -29,7 +29,7 @@ export function CharacterEditScreen({ store, characterId, onDone }: CharacterEdi
   const [firstMessage, setFirstMessage] = useState('');
   const [exampleDialogue, setExampleDialogue] = useState('');
   const [error, setError] = useState<string | undefined>(undefined);
-  const [loadedId, setLoadedId] = useState<number | undefined>(undefined);
+  const [loadedId, setLoadedId] = useState<string | undefined>(undefined);
   const [pendingDelete, setPendingDelete] = useState(false);
 
   // 角色是异步读出来的：到达后填充一次；用 loadedId 防止覆盖用户正在输入的内容
@@ -131,7 +131,7 @@ export function CharacterEditScreen({ store, characterId, onDone }: CharacterEdi
         onConfirm={() => {
           setPendingDelete(false);
           if (!isNew) void store.actions.deleteCharacter(characterId);
-          onDone(-1);
+          onDone('');
         }}
       />
     </div>

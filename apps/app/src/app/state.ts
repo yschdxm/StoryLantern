@@ -17,7 +17,7 @@ export interface AppState {
   characters: Character[];
   sessions: Session[];
   messages: Message[];
-  activeSessionId?: number;
+  activeSessionId?: string;
   settings: SettingsMap;
   /** 正在写库的操作名（用于按钮禁用/局部 loading）。 */
   busy?: string;
@@ -27,17 +27,22 @@ export interface AppActions {
   refresh(): Promise<void>;
   refreshCharacters(): Promise<void>;
   refreshSessions(): Promise<void>;
-  loadMessages(sessionId: number): Promise<void>;
+  loadMessages(sessionId: string): Promise<void>;
   saveCharacter(draft: CharacterDraft): Promise<Character>;
-  deleteCharacter(id: number): Promise<void>;
-  createSession(characterId: number, title?: string): Promise<Session>;
-  renameSession(id: number, title: string): Promise<void>;
-  deleteSession(id: number): Promise<void>;
-  send(sessionId: number, text: string): Promise<void>;
-  /** 追加一条已存在的消息（导入历史记录用；`createdAt` 保留原始时间）。 */
-  appendMessage(sessionId: number, role: Message['role'], content: string, createdAt?: number): Promise<void>;
-  updateMessage(id: number, content: string, status?: Message['status']): Promise<void>;
-  removeMessage(id: number): Promise<void>;
+  deleteCharacter(id: string): Promise<void>;
+  createSession(characterId: string, title?: string): Promise<Session>;
+  renameSession(id: string, title: string): Promise<void>;
+  deleteSession(id: string): Promise<void>;
+  send(sessionId: string, text: string): Promise<void>;
+  /** 追加一条消息（导入历史、或把生成结果落库都用它）。 */
+  appendMessage(
+    sessionId: string,
+    role: Message['role'],
+    content: string,
+    options?: { createdAt?: number; status?: Message['status'] },
+  ): Promise<void>;
+  updateMessage(id: string, content: string, status?: Message['status']): Promise<void>;
+  removeMessage(id: string): Promise<void>;
   setSetting(key: string, value: string): Promise<void>;
 }
 
@@ -179,13 +184,13 @@ export function createAppStore(repository: Repository): AppStore {
       });
     },
 
-    async appendMessage(sessionId, role, content, createdAt) {
+    async appendMessage(sessionId, role, content, options = {}) {
       const message = await repository.messages.append(
         sessionId,
         role,
         content,
-        'done',
-        ...(createdAt === undefined ? [] : [createdAt]),
+        options.status ?? 'done',
+        ...(options.createdAt === undefined ? [] : [options.createdAt]),
       );
       if (state.activeSessionId === sessionId) await actions.loadMessages(sessionId);
       // 就地更新会话摘要（条数/最后一条/时间）。
