@@ -24,6 +24,7 @@ $env:ANDROID_HOME    = "$env:LOCALAPPDATA\Android\Sdk"
 $env:ANDROID_SDK_ROOT= $env:ANDROID_HOME
 $env:NDK_HOME        = "$env:ANDROID_HOME\ndk\android-ndk-r27d"
 $env:GRADLE_USER_HOME= "F:\dev\StoryForge\.gradle-home"   # 见下：避开失效代理
+$env:RUSTFLAGS       = '-C link-arg=-Wl,-z,max-page-size=16384'   # 见下：16KB 页
 
 # 1) 前端产物
 node apps/shell/build-frontend.mjs
@@ -60,6 +61,11 @@ cd gen/android
 .\gradlew.bat assembleArm64Debug  --no-daemon --no-configuration-cache -x rustBuildArm64Debug
 .\gradlew.bat assembleX86_64Debug --no-daemon --no-configuration-cache -x rustBuildX86_64Debug
 # 产物：app/build/outputs/apk/<flavor>/debug/app-<flavor>-debug.apk
+
+# 5) 校验（两道，都值得跑）
+$zipalign = "$env:ANDROID_HOME\build-tools\<最新版本>\zipalign.exe"
+& $zipalign -c -P 16 -v 4 app\build\outputs\apk\x86_64\debug\app-x86_64-debug.apk   # 16KB 对齐
+& "$ndkBin\llvm-readelf.exe" -l ..\..\target\x86_64-linux-android\release\libstorylantern_shell_lib.so | Select-String LOAD  # 0x4000
 ```
 
 > 任务命名的坑：Rust 插件的任务名由 `archList` 与 `targetList` **按下标配对**决定。
@@ -67,7 +73,36 @@ cd gen/android
 > 去编 x86_64 —— 任务名仍是 `rustBuildArm64Debug`。所以**别传** `-PtargetList`，
 > 只排除与目标 flavor 同名的那一个 rust 任务即可。
 
-## 四个限制与应对（都是本机环境问题，不是项目缺陷）
+## 在模拟器里跑起来（本机已实测）
+
+```powershell
+# 1) 模拟器：端口必须避开 Windows/Hyper-V 保留段（5554/5555 都在里面！），图形后端用 -gpu off
+#    （swiftshader 在本机会卡在 Vulkan 初始化）
+& "$env:ANDROID_HOME\emulator\emulator.exe" -avd Pixel_9 -no-window -no-audio -no-boot-anim `
+    -no-snapshot -gpu off -port 6554 -no-metrics
+
+# 2) adb 连非默认端口
+adb connect 127.0.0.1:6555
+adb -s 127.0.0.1:6555 wait-for-device
+
+# 3) 安装 + 启动
+adb -s 127.0.0.1:6555 install -r app-x86_64-debug.apk
+adb -s 127.0.0.1:6555 shell am start -n app.storylantern/.MainActivity
+
+# 4) **debug 构建走 devUrl**（WebView 请求 http://127.0.0.1:15199/），
+#    而模拟器里的 127.0.0.1 是它自己 —— 必须把端口反向映射到宿主机：
+#    （宿主机先起 dev/preview：apps/app 里 `vite --port 15199`）
+adb -s 127.0.0.1:6555 reverse tcp:15199 tcp:15199
+
+# 5) 截图取证
+adb -s 127.0.0.1:6555 shell screencap -p /sdcard/s.png; adb -s 127.0.0.1:6555 pull /sdcard/s.png shot.png
+```
+
+实测结果（Android 17 / SDK 37 / x86_64 / 16KB 页 / WebView 145）：
+`Status: ok`、`Displayed app.storylantern/.MainActivity +801ms`、界面渲染出
+`7 PLUGINS ACTIVE` 与 `CONTEXT GRAPH`（截图见 `docs/assets/android-ui.png` 与 `android-promptgraph.png`）。
+
+## 四个坑与应对（本机环境，不是项目缺陷）
 
 1. **符号链接被禁**：`tauri android build` 要把 `.so` 软链进 `jniLibs`，Windows 未开"开发者模式"时
    报 `Creation symbolic link is not allowed for this system`。两条路：开开发者模式（系统设置），
@@ -82,17 +117,26 @@ cd gen/android
 4. **Gradle 插件还会自己调 CLI 编 Rust**：`:app:rustBuild*` 任务会执行 `node tauri android
    android-studio-script`。我们已经自己编好 `.so`，因此用 `-x` 排除该任务，让 Gradle 只做打包。
 
+### 另外两个容易误判成"权限问题"的坑
+
+5. **`EACCES` 通常是端口保留段，不是权限**：`vite preview`、模拟器 console/adb 端口如果落在
+   Windows/Hyper-V 的动态保留段里，`listen` 会直接 `EACCES`（本机保留段含 5141–5240、
+   5458–5557、5558–5657…）。查：`netsh interface ipv4 show excludedportrange protocol=tcp`；
+   换到段外端口即可（本项目界面用 **15199**，模拟器用 **6554/6555**）。
+   注意 **Vite 默认的 5173 在本机也在保留段内**。
+6. **16KB 页镜像要求原生库 16KB 对齐**：否则系统弹 "This app isn't 16 KB compatible" 并以兼容模式运行。
+   需要 Rust 侧 `-C link-arg=-Wl,-z,max-page-size=16384`（`LOAD` 段对齐 `0x4000`）
+   与 APK 内 `zipalign -P 16`（AGP 新版默认满足）。
+
 ## 已验证 / 未验证
 
-- 已验证（可复现）：
-  - `tauri android init` 成功；Rust 侧 **aarch64 与 x86_64 交叉编译都成功**（各约 1–2 分钟）；
-  - **两个 ABI 的 debug APK 都打包成功**并逐项核对：
-    `app-arm64-debug.apk` 16.10 MB（`lib/arm64-v8a/libstorylantern_shell_lib.so` 9.18 MB）、
-    `app-x86_64-debug.apk` 16.57 MB（`lib/x86_64/…so` 9.66 MB）；
-    `aapt2 dump badging` 显示 `package=app.storylantern`、`versionName=0.0.1`、
-    `label='Story Lantern'`、`launchable-activity=app.storylantern.MainActivity`、`native-code='arm64-v8a'`。
-- 未验证：**安装到设备并在界面里跑起来**。原因是本机沙箱禁止子进程监听端口
-  （`vite preview` 报 `EACCES`；模拟器进程活着但 5554/5555 始终无监听，`adb devices` 为空），
-  因此模拟器无法在本会话内完成 adb 连接。要完成这一步需要：
-  在不受该限制的环境里跑本节命令，或接一台真机（`adb install -r app-arm64-debug.apk`）。
-- 未验证：SQLite + SSE + WebView 版本矩阵（M0 移动端 spike 的验收项，需要上一步先成立）。
+- **已验证（可复现）**：
+  - Rust 侧 aarch64 与 x86_64 交叉编译；
+  - 双 ABI debug APK 打包（arm64 16.10 MB / x86_64 16.57 MB），`aapt2 dump badging`
+    显示 `package=app.storylantern`、`versionName=0.0.1`、`label='Story Lantern'`、
+    `launchable-activity=app.storylantern.MainActivity`、`native-code=arm64-v8a`；
+  - **在 Android 17 模拟器上安装、启动、渲染出界面**（`7 PLUGINS ACTIVE` 由 bundle patch 组合而来，
+    `CONTEXT GRAPH` 显示每块的纳入/裁掉与理由）；
+  - `zipalign -c -P 16` 通过。
+- **未验证**：SSE 流式与 SQLite 在设备上的专项验证；release 签名 APK（当前 debug 依赖
+  `adb reverse` 连 dev server；release 会把 `frontendDist` 打进包里，但需要签名配置）。

@@ -11,6 +11,14 @@ import react from '@vitejs/plugin-react';
  *
  * 踩过的坑：在块注释里写 `bundles/*​/...` 这类 glob 会因为里面的 `*​/` 提前终结注释。
  */
+
+/**
+ * 端口必须避开 Windows/Hyper-V 的动态保留段，否则 `listen` 直接返回 `EACCES`
+ * （本机保留段包含 5141–5240，因此 **Vite 默认的 5173 与之前的 5199 都绑不上**）。
+ * 查保留段：`netsh interface ipv4 show excludedportrange protocol=tcp`
+ */
+const PORT = 15199;
+
 export default defineConfig({
   plugins: [react()],
   build: {
@@ -21,6 +29,13 @@ export default defineConfig({
     sourcemap: true,
   },
   server: {
-    port: 5199,
+    port: PORT,
+    strictPort: true,
+    host: '127.0.0.1',
+  },
+  preview: {
+    port: PORT,
+    strictPort: true,
+    host: '127.0.0.1',
   },
 });

@@ -5,7 +5,7 @@
   "identifier": "app.storylantern",
   "build": {
     "frontendDist": "../../app/dist",
-    "devUrl": "http://127.0.0.1:5199",
+    "devUrl": "http://127.0.0.1:15199",
     "beforeDevCommand": "node build-frontend.mjs --watch",
     "beforeBuildCommand": "node build-frontend.mjs"
   },
