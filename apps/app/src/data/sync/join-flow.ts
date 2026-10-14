@@ -16,6 +16,11 @@ import {
   type Keyring,
 } from '../../../../../packages/sync-core/src/keyring.ts';
 import type { DeviceStore } from '../op-ports.ts';
+import {
+  verifyRecoverySignature,
+  type RecoveryFile,
+  type RecoveryProofPort,
+} from '../../../../../packages/sync-core/src/recovery.ts';
 
 /**
  * 加入流程（"输密码进来"这条路）。
@@ -42,6 +47,8 @@ export interface PublishJoinInput {
   publicKey: string;
   agreementKey: string;
   joinProof: JoinProofPort;
+  /** 忘记口令时：用恢复私钥签一份恢复证明带在请求里（没有就走口令那条路）。 */
+  recoveryProof?: string;
   now?: () => number;
 }
 
@@ -51,6 +58,7 @@ export async function publishJoinRequest(input: PublishJoinInput): Promise<void>
     deviceId: input.deviceId,
     publicKey: input.publicKey,
     agreementKey: input.agreementKey,
+    ...(input.recoveryProof === undefined ? {} : { recoveryProof: input.recoveryProof }),
     ...(input.now === undefined ? {} : { at: input.now() }),
   });
   await input.backend.put(joinPath(input.deviceId), new TextEncoder().encode(serializeJoinRequest(request)));
@@ -66,6 +74,9 @@ export interface AcceptJoinInput {
   banned: ReadonlySet<string>;
   joinProof: JoinProofPort;
   selfId: string;
+  /** 恢复密钥实现 + 共享目录里公布的恢复公钥：给了就允许「没口令但有恢复证明」的设备加入。 */
+  recoveryProof?: RecoveryProofPort;
+  recoveryPublicKey?: string;
   now?: () => number;
 }
 
@@ -119,6 +130,20 @@ export async function acceptJoinRequests(input: AcceptJoinInput): Promise<Accept
   const seen = await loadSeen(input.device);
   let seenChanged = false;
 
+  // 恢复公钥公布在共享目录里（明文，公钥不是秘密）：谁都能验，但谁也拿不到私钥
+  const recoveryPort = input.recoveryProof;
+  const recoveryPublicKey = input.recoveryPublicKey ?? "";
+  const recoveryFile: RecoveryFile = { v: 1, publicKey: recoveryPublicKey, createdAt: 0 };
+  const recoveryVerifier =
+    recoveryPort === undefined || recoveryPublicKey === ""
+      ? undefined
+      : (item: { deviceId: string; at: number; recoveryProof?: string }) =>
+          verifyRecoverySignature(recoveryPort, recoveryFile, {
+            deviceId: item.deviceId,
+            at: item.at,
+            signature: item.recoveryProof ?? "",
+          });
+
   for (const entry of listing.entries) {
     if (!entry.path.startsWith(JOIN_PREFIX)) continue;
     let request;
@@ -137,6 +162,7 @@ export async function acceptJoinRequests(input: AcceptJoinInput): Promise<Accept
     const decision = await verifyJoinRequest(input.joinProof, request, {
       revoked: input.banned,
       knownSince: (deviceId) => seen[deviceId],
+      ...(recoveryVerifier === undefined ? {} : { verifyRecovery: recoveryVerifier }),
     });
     if (!decision.ok) {
       outcome.refused.push({ deviceId: request.deviceId, reason: decision.reason ?? '不接受' });
