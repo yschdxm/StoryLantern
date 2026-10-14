@@ -24,6 +24,9 @@ export function parseChatText(text: string, source: string): ImportedChat {
   const messages: ImportedChat['messages'] = [];
   let swipes = 0;
   let broken = 0;
+  // 行内名字（有的导出没有表头，只在每行写 character_name / user_name）
+  let rowCharacterName = '';
+  let rowUserName = '';
 
   for (let index = startIndex; index < lines.length; index += 1) {
     const parsed = tryJson(lines[index] ?? '');
@@ -41,6 +44,10 @@ export function parseChatText(text: string, source: string): ImportedChat {
     const allSwipes = asStringArray(parsed['swipes']).map((item) => item.trim()).filter((item) => item !== '');
     const others = allSwipes.filter((item) => item !== content.trim());
     if (allSwipes.length > 1) swipes += 1;
+    // 有些导出把 character_name / user_name 写在**每一行**上（没有表头），这里顺手记一份
+    if (rowCharacterName === '' && !isUser) rowCharacterName = asString(parsed['character_name']);
+    if (rowUserName === '' && isUser) rowUserName = asString(parsed['user_name']);
+
     messages.push({
       role: isSystem ? 'system' : isUser ? 'user' : 'assistant',
       content,
@@ -59,8 +66,9 @@ export function parseChatText(text: string, source: string): ImportedChat {
     );
   if (broken > 0) notes.push(`${broken} 行无法解析，已跳过`);
 
-  const characterName = asString(header['character_name']) || dominantAssistantName(text) || '导入的角色';
-  const userName = asString(header['user_name']);
+  const characterName =
+    asString(header['character_name']) || rowCharacterName || dominantAssistantName(text) || '导入的角色';
+  const userName = asString(header['user_name']) || rowUserName;
   const title = userName === '' ? `${characterName} 的历史记录` : `${userName} 与 ${characterName}`;
 
   return { kind: 'chat', source, characterName, title, messages, notes };

@@ -164,3 +164,14 @@ test('导入：无法识别的 JSON → unknown，并说明原因', () => {
   assert.equal(imported.kind, 'unknown');
   assert.ok(imported.kind === 'unknown' && imported.reason.length > 0);
 });
+
+test('聊天导入：名字只写在每行上（没有表头）时，也要采用行内的 character_name', () => {
+  const lines = [
+    JSON.stringify({ user_name: 'You', character_name: 'Rin', mes: 'hello', is_user: true }),
+    JSON.stringify({ user_name: 'You', character_name: 'Rin', mes: 'hi', is_user: false, swipes: ['hi', 'hey'] }),
+  ].join("\n");
+  const result = importText('chat.jsonl', lines);
+  assert.equal(result.kind, 'chat');
+  if (result.kind !== 'chat') return;
+  assert.equal(result.characterName, 'Rin', '行内的 character_name 应当被采用，而不是落到默认名');
+});
