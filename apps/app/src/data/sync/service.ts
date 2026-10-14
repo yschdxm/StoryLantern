@@ -10,6 +10,7 @@ import type { SyncDevice } from '../../screens/screen-props.ts';
 import type { DeviceStore } from '../op-ports.ts';
 import type { OpLogRepository } from '../op-repository.ts';
 import { createWebCryptoPorts, deriveSyncKeys, webCryptoAvailable } from './crypto.ts';
+import { createDeviceSigner } from './signer.ts';
 import { describeDevice, loadRoster, mergeRoster, saveRoster } from './roster-store.ts';
 
 /**
@@ -107,6 +108,33 @@ export function sanitizeSyncState(state: LocalSyncState | undefined): LocalSyncS
   };
 }
 
+/**
+ * 从引擎状态里收集对端公钥写进名单。
+ *
+ * 为什么要落盘：验签发生在**收段**的时候，那时不一定刚好有清单在手边；
+ * 而且名单本来就要跨重启保持（吊销状态同理）。
+ */
+function learnPublicKeys(roster: DeviceRosterList, selfId: string, state: LocalSyncState): number {
+  let changed = 0;
+  for (const [owner, publicKey] of Object.entries(state.peerPublicKeys ?? {})) {
+    if (owner === selfId) continue;
+    {
+      if (publicKey === '') continue;
+      const existing = roster.get(owner);
+      if (existing?.publicKey === publicKey) continue;
+      roster.add({
+        deviceId: owner,
+        publicKey,
+        addedAt: existing?.addedAt ?? Date.now(),
+        ...(existing?.name === undefined ? {} : { name: existing.name }),
+        ...(existing?.revokedAt === undefined ? {} : { revokedAt: existing.revokedAt }),
+      });
+      changed += 1;
+    }
+  }
+  return changed;
+}
+
 export async function createSyncService(options: SyncServiceOptions): Promise<SyncService> {
   const now = options.now ?? (() => Date.now());
   const keys = await deriveSyncKeys(options.secret);
@@ -152,6 +180,9 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
     const { roster } = mergeRoster(persisted, discovered, { selfId: options.deviceId, now: now() });
     await saveRoster(options.device, roster);
 
+    // 每台设备自己的"锁和钥匙"：公钥随设备清单发布，供对端验签
+    const signer = await createDeviceSigner({ deviceId: options.deviceId, device: options.device, secret: options.secret });
+
     const engineOptions: SyncEngineOptions = {
       deviceId: options.deviceId,
       backend: options.backend,
@@ -163,6 +194,7 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
       snapshotThreshold: 0,
     };
     if (restored !== undefined) engineOptions.state = restored;
+    if (signer.publicKeyHex !== '') engineOptions.publicKey = signer.publicKeyHex;
     if (onOps !== undefined) engineOptions.onOps = onOps;
     const engine = new SyncEngine(engineOptions);
 
@@ -172,7 +204,7 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
   return {
     async sync(): Promise<SyncSummary> {
       let imported = 0;
-      const { engine, baseCursor } = await prepare(async (ops) => {
+      const { engine, roster, baseCursor } = await prepare(async (ops) => {
         // 拉到的 op 必须先落进本地日志，再应用到内存状态
         const outcome = await options.repository.importOps(ops);
         imported += outcome.appended;
@@ -195,7 +227,11 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
 
       // 游标推进到日志末尾：刚拉进来的远端 op 不该再被推回去
       const stats = await options.repository.logStats();
-      await store.save({ state: engine.exportState(), enqueuedSeq: stats.lastSeq });
+      const state = engine.exportState();
+      await store.save({ state, enqueuedSeq: stats.lastSeq });
+
+      // 对端清单里带着它们的公钥：收进名单并落盘，供以后验签
+      if (learnPublicKeys(roster, options.deviceId, state) > 0) await saveRoster(options.device, roster);
 
       return summarize(result, enqueued, imported);
     },

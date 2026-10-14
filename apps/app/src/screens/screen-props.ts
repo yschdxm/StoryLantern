@@ -62,6 +62,8 @@ export interface SyncDevice {
   revoked: boolean;
   /** 加入时间（毫秒）。 */
   addedAt: number;
+  /** 本机签名公钥（十六进制）；空串 = 还没公布（老版本或弱模式）。 */
+  publicKey: string;
 }
 
 export interface OpLogAdmin {

@@ -73,12 +73,16 @@ export function mergeRoster(
   return { roster: merged, added };
 }
 
-export function describeDevice(record: DeviceRecord, selfId: string): { deviceId: string; name: string; self: boolean; revoked: boolean; addedAt: number } {
+export function describeDevice(
+  record: DeviceRecord,
+  selfId: string,
+): { deviceId: string; name: string; self: boolean; revoked: boolean; addedAt: number; publicKey: string } {
   return {
     deviceId: record.deviceId,
     name: record.name ?? (record.deviceId === selfId ? '本机' : `设备 ${record.deviceId.slice(-4)}`),
     self: record.deviceId === selfId,
     revoked: record.revokedAt !== undefined,
     addedAt: record.addedAt,
+    publicKey: record.publicKey,
   };
 }

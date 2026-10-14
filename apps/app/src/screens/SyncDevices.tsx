@@ -68,7 +68,12 @@ export function SyncDevices({ sync }: { sync: SyncAdmin }): ReactNode {
               key={device.deviceId}
               title={device.name}
               subtitle={device.deviceId}
-              meta={[device.self ? t('sync.devices.self') : '', device.revoked ? t('sync.devices.revoked') : '']
+              meta={[
+                device.self ? t('sync.devices.self') : '',
+                device.revoked ? t('sync.devices.revoked') : '',
+                // 公钥指纹：两台设备对一下就能确认"配对的是不是这台"
+                device.publicKey === '' ? t('sync.devices.noKey') : t('sync.devices.fingerprint', { fp: device.publicKey.slice(0, 16) }),
+              ]
                 .filter((part) => part !== '')
                 .join(' · ')}
               {...(device.self || device.revoked ? {} : { onClick: () => setMenuFor(device.deviceId) })}

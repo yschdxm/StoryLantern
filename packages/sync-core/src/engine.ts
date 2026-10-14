@@ -38,6 +38,11 @@ export interface SyncEngineOptions {
   /** 懒加载：返回 false 的会话本轮不拉（例如用户还没打开过的会话）。 */
   shouldPull?: (blindSessionId: string) => boolean;
   /**
+   * 本机签名公钥（十六进制）。发布在设备清单里，供对端**验签**。
+   * 不给就等于"暂时不参与验签"：别人收到你的段会因拿不到公钥而拒绝（强模式下的正确行为）。
+   */
+  publicKey?: string;
+  /**
    * 拉到远端 op 后的回调（落进调用方自己的日志）。
    * "日志是唯一事实源"的客户端必须实现它，否则重启后按日志重建会丢掉同步来的数据。
    */
@@ -263,9 +268,12 @@ export class SyncEngine {
 
   async #publishManifest(warnings: string[]): Promise<void> {
     const { deviceId, ports } = this.#options;
+    const publicKey = this.#options.publicKey;
     const manifest: Manifest = {
       v: 1,
       deviceId,
+      // 有公钥就发布：对端要拿它验签
+      ...(publicKey === undefined || publicKey === '' ? {} : { publicKey }),
       seq: this.#state.manifestSeq,
       epoch: 0,
       updatedAt: this.#options.now?.() ?? Date.now(),

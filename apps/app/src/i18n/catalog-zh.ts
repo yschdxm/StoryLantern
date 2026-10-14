@@ -381,4 +381,6 @@ export const zhCN: AppMessages = {
   'chat.candidates.title': '选一条回复',
   'sync.signing.strong': '签名模式：强（每台设备一对密钥，别人伪造不了你写的内容）。',
   'sync.signing.weak': '签名模式：弱（这台设备的 WebView 不支持 Ed25519，只能用组内共享密钥）。此时**能防组外伪造，但防不了组内成员互相冒充**。',
+  'sync.devices.fingerprint': '指纹 {{fp}}',
+  'sync.devices.noKey': '还没有公钥（老版本或弱模式）',
 };

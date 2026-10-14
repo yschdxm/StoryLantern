@@ -30,6 +30,13 @@ export interface Manifest {
   sessions: Record<string, SessionRef>;
   /** 本设备声明"我已并入 deviceId 的第几号段"，GC 判定依赖它。 */
   ack: Record<string, number>;
+  /**
+   * 本机签名公钥（十六进制）。
+   *
+   * 放在清单里是因为对端需要它才能**验签**——没有它就只能拒绝（强模式下绝不退化成"自己签自己验"）。
+   * 清单本身是加密的（只有组内能读），所以公钥放这儿是安全的；而它本来就是要公开的东西。
+   */
+  publicKey?: string;
 }
 
 export interface EncodedManifest {

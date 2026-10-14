@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createLocalOpPorts } from '../src/data/op-ports.ts';
 import { createOpLogRepository, type OpLogRepository } from '../src/data/op-repository.ts';
 import { createMemoryKeyValue } from '../src/data/local-repository.ts';
-import { createSyncService, syncAvailable, type SyncStorePort } from '../src/data/sync/service.ts';
+import { createSyncService, type SyncService, syncAvailable, type SyncStorePort } from '../src/data/sync/service.ts';
 import { deviceSyncStore } from '../src/data/sync/app-sync.ts';
 import { emptyState } from '../../../packages/sync-core/src/state.ts';
 import type { SyncBackend, BackendEntry, ListResult, PutResult } from '../../../packages/sync-core/src/backend.ts';
@@ -63,6 +63,8 @@ interface Device {
   name: string;
   repository: OpLogRepository;
   store: SyncStorePort;
+  /** 需要看"对端公钥有没有收到"时用它。 */
+  service: SyncService;
   sync: () => Promise<{ uploaded: number; downloaded: number; appliedOps: number }>;
 }
 
@@ -76,6 +78,7 @@ async function createDevice(name: string, backend: SyncBackend, secret: string):
     name,
     repository,
     store,
+    service,
     sync: async () => {
       const summary = await service.sync();
       return { uploaded: summary.uploaded, downloaded: summary.downloaded, appliedOps: summary.appliedOps };
@@ -286,4 +289,33 @@ test('同步：世界书与条目也会跟着过去（两设备读到的书完�
     await a.repository.lorebooks.forCharacter(character.id).then((books) => books.map((item) => item.name)),
     '两台设备按角色筛出来的书必须一样',
   );
+});
+
+/**
+ * 公钥互换：每台设备把自己的签名公钥发布在设备清单里，对端读到并存进名单。
+ *
+ * 这是"确知这段是谁写的"的前提——拿不到对方公钥，强模式就只能拒绝（有测试盯着这条）。
+ */
+test('同步：两台设备互换签名公钥（各自名单里都能看到对方的公钥）', async () => {
+  const backend = createMemoryBackend();
+  const alice = await createDevice('alice', backend, 'shared-secret');
+  const bob = await createDevice('bob', backend, 'shared-secret');
+
+  await alice.repository.characters.save({ name: '星野' });
+  await alice.sync();
+  await bob.sync();
+  // 第二轮：双方各自发布一次带公钥的清单，再从对方那里读回来
+  await alice.sync();
+  await bob.sync();
+  await alice.sync();
+
+  const aliceSees = await alice.service.devices();
+  const bobSees = await bob.service.devices();
+  const bobInAlice = aliceSees.find((device: { deviceId: string }) => device.deviceId === 'bob');
+  const aliceInBob = bobSees.find((device: { deviceId: string }) => device.deviceId === 'alice');
+  assert.ok(bobInAlice !== undefined, "alice 的名单里应当有 bob");
+  assert.ok(aliceInBob !== undefined, "bob 的名单里应当有 alice");
+  assert.equal(bobInAlice.publicKey.length > 0, true, "alice 应当收到 bob 的公钥");
+  assert.equal(aliceInBob.publicKey.length > 0, true, "bob 应当收到 alice 的公钥");
+  assert.notEqual(bobInAlice.publicKey, aliceInBob.publicKey, "两台设备的公钥必须不同");
 });
