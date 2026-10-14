@@ -17,14 +17,17 @@ export interface SignerPort {
   readonly algorithm: SigningAlgorithm;
   /** 本机身份（写进签名记录，验签时用来挑公钥）。 */
   readonly deviceId: string;
+  /** 本机公钥（十六进制）；弱模式下为空——弱模式没有可发布的逐设备公钥。 */
+  readonly publicKeyHex: string;
   sign(message: Uint8Array): Promise<Uint8Array>;
   /**
-   * 验签。`deviceId` 是"这段自称是谁写的"。
+   * 验签。**必须用"被声称那台设备"的公钥**，而不是拿自己的密钥再签一遍——
+   * 后者只能证明"我签过"，证明不了"这段是它写的"。
    *
-   * 弱的 HMAC 模式下无法区分成员，因此实现会在 `deviceId` 不在名单里时直接拒绝——
-   * 这正是"黑名单/名单"起作用的地方（名单本身另有盖章，见 `roster`）。
+   * 弱模式（HMAC）下没有逐设备公钥，实现会在 `publicKeyHex` 为空时退回"组内密钥验证"，
+   * 并因此**无法区分是哪台设备**——这正是界面上要明说弱模式的原因。
    */
-  verify(deviceId: string, message: Uint8Array): Promise<boolean>;
+  verify(publicKeyHex: string, message: Uint8Array, signature: Uint8Array): Promise<boolean>;
 }
 
 /** 待签数据规范化：把"这是什么、属于谁、内容是什么"拼成一段确定性的字节。 */
@@ -80,7 +83,7 @@ export async function verifySigned(
   signer: SignerPort,
   envelope: SignedEnvelope,
   payload: Uint8Array,
-  roster: { active: ReadonlySet<string>; revoked: ReadonlySet<string> },
+  roster: { active: ReadonlySet<string>; revoked: ReadonlySet<string>; publicKeyOf?: (deviceId: string) => string | undefined },
 ): Promise<VerifyOutcome> {
   if (envelope.signature === '') return { ok: false, reason: '没有签名' };
   if (roster.revoked.has(envelope.deviceId)) {
@@ -92,6 +95,16 @@ export async function verifySigned(
   if (envelope.algorithm !== signer.algorithm) {
     return { ok: false, reason: `签名算法不一致（收到 ${envelope.algorithm}）` };
   }
-  const ok = await signer.verify(envelope.deviceId, payload);
-  return ok ? { ok: true } : { ok: false, reason: '签名验证失败（内容可能被改过）' };
+  const signature = fromHex(envelope.signature);
+  if (signature === undefined) return { ok: false, reason: '签名不是合法的十六进制' };
+
+  const publicKeyHex = roster.publicKeyOf?.(envelope.deviceId) ?? '';
+  // 强模式必须能拿到对方公钥：拿不到就说明"这台设备还没公布公钥"，
+  // 此时宁可拒绝，也不能退化成"自己签自己验"（那样等于没验）。
+  if (signer.algorithm === 'ed25519' && publicKeyHex === '') {
+    return { ok: false, reason: `名单里没有设备 ${envelope.deviceId} 的公钥，无法验签` };
+  }
+
+  const ok = await signer.verify(publicKeyHex, payload, signature);
+  return ok ? { ok: true } : { ok: false, reason: '签名验证失败（内容可能被改过，或不是它写的）' };
 }

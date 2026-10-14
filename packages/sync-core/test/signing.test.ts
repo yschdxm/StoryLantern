@@ -15,20 +15,27 @@ import {
  *  2. **先看人再看签**——被移出名单的设备即使签得没问题也必须被拒绝。
  */
 
-/** 假签名器：把"密钥"当异或，够用来验证流程与名单逻辑。 */
-function fakeSigner(deviceId: string, algorithm: SignerPort['algorithm'] = 'ed25519'): SignerPort {
+/** 假签名器：确定性异或，够用来验证流程与名单逻辑（真算法在 app 侧的 signer 测试里跑）。 */
+function fakeSigner(deviceId: string): SignerPort {
   const key = Array.from(new TextEncoder().encode(deviceId)).reduce((sum, byte) => sum + byte, 7);
   const transform = (bytes: Uint8Array): Uint8Array => Uint8Array.from(bytes, (byte) => byte ^ key);
+  const publicKeyHex = `pub-${deviceId}`;
   return {
-    algorithm,
+    algorithm: 'ed25519',
     deviceId,
+    publicKeyHex,
     async sign(message) {
       return transform(message).slice(0, 32);
     },
-    async verify(claimed, message) {
-      // 真实实现里这里挑公钥；假实现只认"签名能对上自己的密钥"
-      if (algorithm === 'hmac-sha256') return true; // 弱：不分成员
-      return claimed === deviceId;
+    // 必须用"被声称那台设备"的公钥：拿错公钥就验不过
+    async verify(claimedPublicKey, message, signature) {
+      if (claimedPublicKey !== publicKeyHex) return false;
+      const expected = transform(message).slice(0, 32);
+      if (expected.length !== signature.length) return false;
+      for (let index = 0; index < expected.length; index += 1) {
+        if (expected[index] !== signature[index]) return false;
+      }
+      return true;
     },
   };
 }
@@ -57,26 +64,27 @@ test('验签：先看名单——被移出的设备签得对也不认', async ()
   const envelope: SignedEnvelope = { deviceId: 'device-a', algorithm: 'ed25519', signature: toHex(await signer.sign(payload)) };
 
   const active = new Set(['device-a', 'device-b']);
-  assert.equal((await verifySigned(signer, envelope, payload, { active, revoked: new Set() })).ok, true);
+  assert.equal((await verifySigned(signer, envelope, payload, { active, revoked: new Set(), publicKeyOf: (id: string) => (id === 'device-a' ? 'pub-device-a' : 'pub-device-b') })).ok, true);
 
-  const afterKick = await verifySigned(signer, envelope, payload, { active: new Set(['device-b']), revoked: new Set(['device-a']) });
+  const afterKick = await verifySigned(signer, envelope, payload, { active: new Set(['device-b']), revoked: new Set(['device-a']), publicKeyOf: () => 'pub-device-a' });
   assert.equal(afterKick.ok, false, '被踢之后旧签名不再被接受');
   assert.match(afterKick.reason ?? '', /移出名单/);
 
   const unknown = await verifySigned(signer, { ...envelope, deviceId: 'device-x' }, payload, {
     active,
     revoked: new Set(),
+    publicKeyOf: () => 'pub-device-x',
   });
   assert.equal(unknown.ok, false);
   assert.match(unknown.reason ?? '', /不在名单里/);
 
-  const foreign = await verifySigned(signer, { ...envelope, deviceId: 'device-b' }, payload, { active, revoked: new Set() });
+  const foreign = await verifySigned(signer, { ...envelope, deviceId: 'device-b' }, payload, { active, revoked: new Set(), publicKeyOf: (id: string) => (id === 'device-a' ? 'pub-device-a' : 'pub-device-b') });
   assert.equal(foreign.ok, false, '别的设备冒充签名要被拒');
   assert.match(foreign.reason ?? '', /签名验证失败/);
 
-  assert.equal((await verifySigned(signer, { ...envelope, signature: '' }, payload, { active, revoked: new Set() })).ok, false);
+  assert.equal((await verifySigned(signer, { ...envelope, signature: '' }, payload, { active, revoked: new Set(), publicKeyOf: (id: string) => (id === 'device-a' ? 'pub-device-a' : 'pub-device-b') })).ok, false);
   assert.equal(
-    (await verifySigned(signer, { ...envelope, algorithm: 'hmac-sha256' }, payload, { active, revoked: new Set() })).ok,
+    (await verifySigned(signer, { ...envelope, algorithm: 'hmac-sha256' }, payload, { active, revoked: new Set(), publicKeyOf: (id: string) => (id === 'device-a' ? 'pub-device-a' : 'pub-device-b') })).ok,
     false,
     '算法不一致要拒绝，避免"降级攻击"',
   );

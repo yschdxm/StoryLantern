@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { detectSigningAlgorithm } from '../data/sync/signer.ts';
 import { useT } from '../i18n/context.tsx';
 import type { SyncAdmin, SyncDevice } from './screen-props.ts';
 import { Banner, Button, ConfirmDialog, ListRow, Sheet, SheetItem } from '../ui/components.tsx';
@@ -23,6 +24,8 @@ export function SyncDevices({ sync }: { sync: SyncAdmin }): ReactNode {
   const [confirmCollect, setConfirmCollect] = useState(false);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | undefined>(undefined);
+  /** 签名强度：老设备上 WebCrypto 没有 Ed25519，只能退到组内共享密钥（弱模式）。 */
+  const [signing, setSigning] = useState<'ed25519' | 'hmac-sha256' | undefined>(undefined);
 
   const reload = async (): Promise<void> => {
     try {
@@ -34,6 +37,7 @@ export function SyncDevices({ sync }: { sync: SyncAdmin }): ReactNode {
 
   useEffect(() => {
     void reload();
+    void detectSigningAlgorithm().then(setSigning);
     // 只在挂载时拉一次：名单变化要么来自同步，要么来自本页的吊销操作
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -45,6 +49,12 @@ export function SyncDevices({ sync }: { sync: SyncAdmin }): ReactNode {
     <>
       {error !== undefined && <Banner tone="error">{error}</Banner>}
       {note !== undefined && <Banner tone="info">{note}</Banner>}
+
+      {signing !== undefined && (
+        <p className={signing === 'ed25519' ? 'muted' : 'notice notice--warn'}>
+          {signing === 'ed25519' ? t('sync.signing.strong') : t('sync.signing.weak')}
+        </p>
+      )}
 
       <h3 className="settings-group__title">{t('sync.devices')}</h3>
       <p className="muted">{t('sync.devices.hint')}</p>

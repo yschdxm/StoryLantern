@@ -368,4 +368,6 @@ export const en: AppMessages = {
   'character.greetings.placeholder': 'one per line',
   'chat.candidates.action': 'Alternate replies ({{count}})',
   'chat.candidates.title': 'Pick a reply',
+  'sync.signing.strong': 'Signing: strong (each device has its own key pair; nobody can forge what you write).',
+  'sync.signing.weak': 'Signing: weak (this WebView lacks Ed25519, so a shared group key is used). Outsiders cannot forge, but **members can impersonate each other**.',
 };

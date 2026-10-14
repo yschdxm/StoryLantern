@@ -379,4 +379,6 @@ export const zhCN: AppMessages = {
   'character.greetings.placeholder': '一行一条',
   'chat.candidates.action': '备选回复（{{count}}）',
   'chat.candidates.title': '选一条回复',
+  'sync.signing.strong': '签名模式：强（每台设备一对密钥，别人伪造不了你写的内容）。',
+  'sync.signing.weak': '签名模式：弱（这台设备的 WebView 不支持 Ed25519，只能用组内共享密钥）。此时**能防组外伪造，但防不了组内成员互相冒充**。',
 };
