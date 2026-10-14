@@ -14,6 +14,8 @@ apps/shell/src-tauri/target/
 apps/shell/src-tauri/gen/
 # 仓库内的 Gradle 影子目录（复用 ~/.gradle 的 wrapper 与 caches，但不继承失效的代理配置）
 .gradle-home/
+# 构建出来供安装的 APK（可随时重建）
+.apk-out/
 
 # fixtures generated on demand
 fixtures/chats/large.jsonl
