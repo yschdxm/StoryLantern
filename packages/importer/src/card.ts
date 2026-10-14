@@ -100,7 +100,10 @@ export function parseCharacterJson(value: unknown, source: string): ImportedChar
     alternateGreetings: alternates,
     spec: spec === '' ? 'legacy' : spec,
     ...(lorebook === undefined ? {} : { lorebook }),
-    notes,
+    notes:
+      regexScriptCount(data) === 0
+        ? notes
+        : [...notes, `${regexScriptCount(data)} 条正则脚本没有导入：当前版本不执行正则（要么接进生成链路，要么不导，不做半支持）`],
   };
 }
 
@@ -109,4 +112,21 @@ function withCreatorNotes(description: string, data: Record<string, unknown>): s
   if (description.trim() !== '') return description;
   const notes = asString(data['creator_notes']).trim();
   return notes === '' ? description : notes;
+}
+
+/**
+ * 卡片里的正则脚本条数（SillyTavern 放在 extensions.regex_scripts，也有放在根上的）。
+ *
+ * 我们**不导入也不假装支持**：正则要么真接进生成链路，要么明确不导——只把条数报给用户，
+ * 免得"导入成功"却少了一块行为。
+ */
+function regexScriptCount(data: Record<string, unknown>): number {
+  const extensions = data['extensions'];
+  const fromExtensions =
+    extensions !== null && typeof extensions === 'object'
+      ? (extensions as Record<string, unknown>)['regex_scripts']
+      : undefined;
+  const direct = data['regex_scripts'];
+  const list = Array.isArray(fromExtensions) ? fromExtensions : Array.isArray(direct) ? direct : [];
+  return list.length;
 }

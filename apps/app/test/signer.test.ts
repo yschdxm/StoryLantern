@@ -100,3 +100,17 @@ test('验签 + 名单：走完整流程（含"名单里没有公钥就拒绝"）
   const forgedOutcome = await verifySigned(b.port, forged, payload, roster);
   assert.equal(forgedOutcome.ok, false, 'b 冒充 a：用 a 的公钥验 b 的签，必然失败');
 });
+
+test('设备密钥与口令无关：改了口令，身份不变（这就是「永久且唯一」的含义）', async () => {
+  const device = deviceStore();
+  const first = await createDeviceSigner({ deviceId: 'device-a', device, secret: 'old-secret' });
+  const second = await createDeviceSigner({ deviceId: 'device-a', device, secret: 'new-secret' });
+  // 强模式（Ed25519）下设备密钥存在本机 kv 里，**不是**从口令派生的：
+  // 换同步口令不该换掉这台机器的身份，否则它在别人眼里就成了另一台设备。
+  if (first.algorithm === 'ed25519') {
+    assert.equal(second.publicKeyHex, first.publicKeyHex);
+  } else {
+    // 弱模式是组内共享密钥，没有逐设备身份可用（界面上也如实这么写）
+    assert.equal(first.publicKeyHex, '');
+  }
+});

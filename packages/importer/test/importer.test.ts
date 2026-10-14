@@ -175,3 +175,17 @@ test('聊天导入：名字只写在每行上（没有表头）时，也要采�
   if (result.kind !== 'chat') return;
   assert.equal(result.characterName, 'Rin', '行内的 character_name 应当被采用，而不是落到默认名');
 });
+test('角色卡：带正则脚本时明确告知「没有导入」，不做半支持', () => {
+  const card = {
+    spec: 'chara_card_v2',
+    data: {
+      name: 'Rin',
+      description: 'd',
+      extensions: { regex_scripts: [{ scriptName: 'a' }, { scriptName: 'b' }] },
+    },
+  };
+  const result = importText('card.json', JSON.stringify(card));
+  assert.equal(result.kind, 'character');
+  assert.equal(result.notes.some((note) => note.includes('正则')), true, '要说清正则没导入');
+  assert.equal(result.notes.some((note) => note.includes('2 条')), true, '要报条数');
+});
