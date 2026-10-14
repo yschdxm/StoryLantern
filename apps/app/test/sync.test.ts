@@ -69,25 +69,44 @@ interface Device {
   sync: () => Promise<{ uploaded: number; downloaded: number; appliedOps: number }>;
 }
 
+/**
+ * 同一后端（= 同一个共享目录）里的设备登记表。
+ *
+ * 为什么要它：按设计，**新设备加入需要一台已授权设备接纳一轮**
+ * （它先写 join 请求，对方验过密码证明后把数据钥匙包给它）。
+ * 测试里让 `sync()` 自动补这一轮：发现自己在等待接纳时，先让同目录的其它设备同步一次。
+ */
+const JOIN_PEERS = new WeakMap<SyncBackend, Device[]>();
+
 async function createDevice(name: string, backend: SyncBackend, secret: string): Promise<Device> {
   const ports = createLocalOpPorts(createMemoryKeyValue());
   const repository = createOpLogRepository({ ops: ports.ops, settings: ports.settings, deviceId: name });
   await repository.ready;
   const store = createMemorySyncStore();
   const service = await createSyncService({ repository, backend, deviceId: name, secret, store, device: ports.device });
-  return {
+  const device: Device = {
     name,
     repository,
     store,
     service,
     sync: async () => {
-      const summary = await service.sync();
+      let summary = await service.sync();
+      if (summary.warnings.some((warning) => warning.includes('加入请求'))) {
+        for (const peer of JOIN_PEERS.get(backend) ?? []) {
+          if (peer.name !== name) await peer.sync();
+        }
+        summary = await service.sync();
+      }
       return { uploaded: summary.uploaded, downloaded: summary.downloaded, appliedOps: summary.appliedOps };
     },
   };
-}
+  const peers = JOIN_PEERS.get(backend) ?? [];
+  peers.push(device);
+  JOIN_PEERS.set(backend, peers);
+  return device;
+};
 
-/** 两个设备"最终一致"的判据：角色/会话/消息逐字段相同。 */
+
 async function fingerprint(repository: OpLogRepository): Promise<string> {
   const characters = await repository.characters.list();
   const sessions = await repository.sessions.list();
