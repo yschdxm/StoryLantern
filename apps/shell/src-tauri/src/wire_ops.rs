@@ -149,9 +149,18 @@ static HTTP_METHODS: &[StateMethodDef] = &[StateMethodDef {
     call: crate::http::http_request,
 }];
 
+static FILES_METHODS: &[StateMethodDef] = &[
+    StateMethodDef { name: "root", description: "读/设置同步文件夹的根目录（传参即设置）", call: crate::files::files_root },
+    StateMethodDef { name: "list", description: "按前缀递归列出文件（相对根目录）", call: crate::files::files_list },
+    StateMethodDef { name: "read", description: "读文件（base64）", call: crate::files::files_read },
+    StateMethodDef { name: "write", description: "写文件（base64；可要求「不存在才写」）", call: crate::files::files_write },
+    StateMethodDef { name: "delete", description: "删文件", call: crate::files::files_delete },
+];
+
 pub static STATE_SERVICES: &[StateServiceDef] = &[
     StateServiceDef { name: "oplog", description: "op 追加日志（唯一事实源；宿主不理解语义）", methods: OPLOG_METHODS },
     StateServiceDef { name: "kv", description: "投影缓存（键值；语义在 TS 侧）", methods: KV_METHODS },
     StateServiceDef { name: "legacy", description: "M1 之前的直写表（只用于迁移）", methods: LEGACY_METHODS },
     StateServiceDef { name: "http", description: "通用 HTTP 转发（给同步后端用）", methods: HTTP_METHODS },
+    StateServiceDef { name: "files", description: "受限文件读写（给「同步到本地文件夹」用）", methods: FILES_METHODS },
 ];

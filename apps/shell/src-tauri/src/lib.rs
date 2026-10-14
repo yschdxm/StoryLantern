@@ -7,6 +7,7 @@
 //!  - 都通过 `wire` 服务暴露给界面。
 
 mod chat;
+mod files;
 mod http;
 mod oplog_store;
 mod store;
@@ -34,7 +35,8 @@ pub fn run() {
             let store = Store::open(&database).map_err(|error| format!("初始化 SQLite 失败：{error}"))?;
             // op 日志与投影缓存共用同一个库文件（同一个连接池的两个句柄，WAL 下安全）
             let ops = OpStore::open(&database).map_err(|error| format!("初始化 op 日志失败：{error}"))?;
-            app.manage(WireState::new(store, ops));
+            // 应用数据目录也传给宿主：同步文件夹的默认根目录从它派生
+            app.manage(WireState::new(store, ops, directory.clone()));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

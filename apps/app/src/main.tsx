@@ -1,6 +1,6 @@
 import { StrictMode, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { createTauriBridgeFromGlobal, createTauriTransport } from '../../../packages/wire/src/index.ts';
+import { createTauriBridgeFromGlobal, createTauriTransport, WireClient } from '../../../packages/wire/src/index.ts';
 import type { LocaleService } from '../../../packages/plugin-api/src/index.ts';
 import { createAppRuntime, type AppRuntime } from './composition.ts';
 import { createAppStore, type AppStore } from './app/state.ts';
@@ -11,9 +11,10 @@ import { SETTING_KEYS } from './data/types.ts';
 import type { Repository } from './data/repository.ts';
 import type { OpLogRepository } from './data/op-repository.ts';
 import type { OpLogAdmin, SyncAdmin } from './screens/screen-props.ts';
-import { describeSyncProblem, readSyncConfig, runSync, SYNC_SECRET_KEY, type SyncBackendFactory } from './data/sync/app-sync.ts';
+import { describeSyncProblem, readSyncConfig, runSync, SYNC_SECRET_KEY, type FolderBackendProvider, type SyncBackendFactory } from './data/sync/app-sync.ts';
 import { syncAvailable } from './data/sync/service.ts';
 import { createHostFetch } from './data/sync/host-fetch.ts';
+import { createHostFolderBackend } from './data/sync/folder-backend.ts';
 import { createHostClient, type HostClient } from './host-panel.ts';
 import { I18nProvider } from './i18n/context.tsx';
 import { createAppLocaleService, registerAppMessages, translatorOf } from './i18n/locale.ts';
@@ -100,8 +101,18 @@ function Root(): ReturnType<typeof AppShell> {
 
   const t = useMemo(() => translatorOf(boot.locale), [boot.locale]);
 
-  // 同步：后端工厂来自组合出来的插件注册表（关掉 bundle 那行就拿不到 = 功能真的消失）
+  // 同步：WebDAV 后端来自组合出来的插件注册表（关掉那行就拿不到）；本地文件夹后端由宿主提供文件读写
   const backendFactory = boot.runtime?.ctx.get<SyncBackendFactory>('sync.backend.webdav');
+  const folderProvider: FolderBackendProvider | undefined =
+    transport === undefined
+      ? undefined
+      : {
+          backend: createHostFolderBackend(transport),
+          setRoot: async (path: string) => {
+            const result = await new WireClient(transport).call<{ path: string }>('files', 'root', path);
+            return result.path;
+          },
+        };
   const [hasSyncSecret, setHasSyncSecret] = useState(false);
   const syncAdmin: SyncAdmin | undefined =
     opAdmin === undefined
@@ -109,8 +120,14 @@ function Root(): ReturnType<typeof AppShell> {
       : {
           available: syncAvailable(),
           backendAvailable: backendFactory !== undefined,
+          folderAvailable: folderProvider !== undefined,
           hasSecret: hasSyncSecret,
           problem: async () => describeSyncProblem(await readSyncConfig(store.getState().settings, ports.device), syncAvailable()),
+          folderRoot: async () => {
+            if (transport === undefined) return '';
+            const result = await new WireClient(transport).call<{ path: string }>('files', 'root');
+            return result.path;
+          },
           run: async (secret?: string) => {
             // 口令是**只写**的：存在设备本地 kv 里（宿主对 secret 类设置键只回掩码，
             // 放设置里会出现"写回掩码覆盖真口令"的事故——真机踩过）
@@ -122,6 +139,7 @@ function Root(): ReturnType<typeof AppShell> {
               device: ports.device,
               config,
               backendFactory,
+              folderBackend: folderProvider,
               // 同步请求由宿主发出：WebView 里对 NAS 的跨源请求会被 CORS 拦
               ...(transport === undefined ? {} : { hostFetch: createHostFetch(transport) }),
             });

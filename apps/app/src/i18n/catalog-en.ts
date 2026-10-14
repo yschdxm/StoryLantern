@@ -239,4 +239,10 @@ export const en: AppMessages = {
   'lore.entry.recursive': 'Can be triggered by other entries',
   'lore.entry.delete.title': 'Delete entry',
   'lore.entry.delete.message': 'Delete this entry?',
+  'settings.sync.folder': 'Local folder (this machine / a mounted drive)',
+  'settings.sync.folder.path': 'Sync folder',
+  'settings.sync.folder.hint': 'Leave empty to use sync/ inside the app data directory. On desktop you can point it at a cloud-synced folder (OneDrive / Dropbox / a NAS mount); both devices use the same directory.',
+  'settings.sync.folder.default': '(empty = app data directory)',
+  'settings.sync.folder.root': 'Files live in: {{path}}',
+  'settings.sync.noFolder': 'This environment has no host file access (not in a browser), so local-folder sync is unavailable',
 };

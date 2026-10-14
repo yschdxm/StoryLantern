@@ -4,6 +4,8 @@ import { createLocalOpPorts } from '../src/data/op-ports.ts';
 import { createOpLogRepository, type OpLogRepository } from '../src/data/op-repository.ts';
 import { createMemoryKeyValue } from '../src/data/local-repository.ts';
 import { createSyncService, syncAvailable, type SyncStorePort } from '../src/data/sync/service.ts';
+import { deviceSyncStore } from '../src/data/sync/app-sync.ts';
+import { emptyState } from '../../../packages/sync-core/src/state.ts';
 import type { SyncBackend, BackendEntry, ListResult, PutResult } from '../../../packages/sync-core/src/backend.ts';
 import type { LocalSyncState } from '../../../packages/sync-core/src/state.ts';
 
@@ -218,6 +220,34 @@ test('同步：重复同步是幂等的（第二次不产生新的本地 op）',
   await b.sync();
   await b.sync();
   assert.equal((await b.repository.logStats()).count, afterFirst, '重复拉取不会重复写日志（按 opId 幂等）');
+});
+
+test('同步：换远端时进度按远端分桶，且清单序号继续递增（真机上踩过）', async () => {
+  const ports = createLocalOpPorts(createMemoryKeyValue());
+  const store = deviceSyncStore(ports.device, 'webdav:https://nas/a');
+
+  // 先在远端 A 上同步过：有段清单与游标
+  const hosted = { B1: { lastSeq: 3, segments: { 1: 'aa', 2: 'bb', 3: 'cc' }, bytes: 100, epoch: 0, segmentsSinceSnapshot: 0 } };
+  await store.save({
+    state: { ...emptyState(), manifestSeq: 7, hosted, cursors: { 'me|B1': 3 }, outbox: [] },
+    enqueuedSeq: 42,
+  });
+  const same = await store.load();
+  assert.equal(same.enqueuedSeq, 42);
+  assert.equal(same.state?.manifestSeq, 7);
+
+  // 换到远端 B（例如从 WebDAV 换成文件夹）：内容进度必须从零开始，
+  // 否则会发一份"引用了 A 上段"的清单出去，对端每次都报"缺少第 N 号段"。
+  const other = deviceSyncStore(ports.device, 'folder:/tmp/storylantern');
+  const fresh = await other.load();
+  assert.equal(fresh.enqueuedSeq, 0, '换远端要重新推送本地内容');
+  assert.deepEqual(fresh.state?.hosted, {}, '不能沿用旧远端的段清单');
+  assert.equal(fresh.state?.manifestSeq, 7, '清单序号是设备级的，必须继续递增（对端据此判断是否被还原）');
+
+  // 换回远端 A：原来的进度还在
+  const back = await store.load();
+  assert.equal(back.enqueuedSeq, 42);
+  assert.deepEqual(back.state?.hosted, hosted);
 });
 
 test('同步：世界书与条目也会跟着过去（两设备读到的书完全一致）', async () => {

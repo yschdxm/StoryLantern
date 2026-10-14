@@ -250,4 +250,10 @@ export const zhCN: AppMessages = {
   'lore.entry.recursive': '允许被其它条目触发',
   'lore.entry.delete.title': '删除条目',
   'lore.entry.delete.message': '删除这条设定？',
+  'settings.sync.folder': '本地文件夹（本机 / 已挂载的网盘目录）',
+  'settings.sync.folder.path': '同步文件夹',
+  'settings.sync.folder.hint': '留空就用应用私有目录下的 sync/。桌面端可以填一个网盘同步目录（OneDrive / Dropbox / NAS 挂载点），两台设备指向同一个目录即可。',
+  'settings.sync.folder.default': '（留空 = 应用私有目录）',
+  'settings.sync.folder.root': '文件放在：{{path}}',
+  'settings.sync.noFolder': '这个环境没有宿主文件读写（浏览器里没有），本地文件夹同步不可用',
 };

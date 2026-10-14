@@ -16,8 +16,61 @@ import { createLocalOpPorts } from '../../apps/app/src/data/op-ports.ts';
 import { createMemoryKeyValue } from '../../apps/app/src/data/local-repository.ts';
 import { createOpLogRepository, type OpLogRepository } from '../../apps/app/src/data/op-repository.ts';
 import { deviceSyncStore, type SyncBackendFactory } from '../../apps/app/src/data/sync/app-sync.ts';
+import { createFolderBackend, type FilePort } from '../../apps/app/src/data/sync/folder-backend.ts';
 import { createSyncService } from '../../apps/app/src/data/sync/service.ts';
 import { createWebDavBackend } from '../../plugins/sync-webdav/src/index.ts';
+import type { SyncBackend } from '../../packages/sync-core/src/backend.ts';
+import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+
+/**
+ * 本地文件夹的文件端口（Node 版）。
+ *
+ * 工具侧直接用 fs：这里的 `root` 由使用者给出，且只在开发机上跑。
+ * 应用里那份走宿主的 `files.*`（见文件夹后端的实现与 docs/M1-SYNC.md）。
+ */
+function createNodeFiles(root: string): FilePort {
+  const resolve = (relative: string): string => {
+    const full = path.resolve(root, relative);
+    if (full !== root && !full.startsWith(root + path.sep)) throw new Error(`路径越界：${relative}`);
+    return full;
+  };
+
+  const walk = async (dir: string, out: string[]): Promise<void> => {
+    for (const name of await readdir(dir).catch(() => [])) {
+      const full = path.join(dir, name);
+      const info = await stat(full);
+      if (info.isDirectory()) await walk(full, out);
+      else out.push(full);
+    }
+  };
+
+  return {
+    async list(prefix) {
+      const files: string[] = [];
+      await walk(prefix === '' ? root : resolve(prefix.replace(/\/+$/, '')), files);
+      return Promise.all(
+        files.map(async (full) => {
+          const info = await stat(full);
+          return { path: path.relative(root, full).replace(/\\/g, '/'), size: info.size, mtime: info.mtimeMs };
+        }),
+      );
+    },
+    read: (relative) => readFile(resolve(relative)),
+    async write(relative, bytes, options) {
+      const full = resolve(relative);
+      const exists = await stat(full).then(() => true).catch(() => false);
+      if (exists && options?.ifNoneMatch === true) return { ok: true, exists: true };
+      await mkdir(path.dirname(full), { recursive: true });
+      await writeFile(full, bytes);
+      return { ok: true, exists };
+    },
+    async delete(relative) {
+      await rm(resolve(relative), { force: true });
+    },
+  };
+}
 
 interface Args {
   url: string;
@@ -68,19 +121,30 @@ const ports = createLocalOpPorts(createMemoryKeyValue());
 const repository = createOpLogRepository({ ops: ports.ops, settings: ports.settings, deviceId: args.device });
 await repository.ready;
 
-const factory: SyncBackendFactory = { kind: 'webdav', create: (options) => createWebDavBackend(options) };
-const backend = factory.create({
-  baseUrl: args.url,
-  ...(args.user === undefined ? {} : { username: args.user }),
-  ...(args.pass === undefined ? {} : { password: args.pass }),
-});
+// 远端可以是 WebDAV，也可以是本地文件夹（`file:///path` 或直接给目录路径）。
+// 后者让"文件夹同步"也能用这个工具验证：App 写到某个目录，这里读同一个目录。
+let backend: SyncBackend;
+if (args.url.startsWith('file://') || !/^https?:\/\//i.test(args.url)) {
+  // `file:///F:/x` 这种 URL 要用 fileURLToPath 还原，否则 Windows 上会拼成 `F:\F:\x`
+  const root = args.url.startsWith('file://') ? fileURLToPath(args.url) : path.resolve(args.url);
+  await mkdir(root, { recursive: true });
+  backend = createFolderBackend(createNodeFiles(root));
+  console.log(`[peer] 远端＝本地文件夹 ${root}`);
+} else {
+  const factory: SyncBackendFactory = { kind: 'webdav', create: (options) => createWebDavBackend(options) };
+  backend = factory.create({
+    baseUrl: args.url,
+    ...(args.user === undefined ? {} : { username: args.user }),
+    ...(args.pass === undefined ? {} : { password: args.pass }),
+  });
+}
 
 const service = await createSyncService({
   repository,
   backend,
   deviceId: args.device,
   secret: args.secret,
-  store: deviceSyncStore(ports.device),
+  store: deviceSyncStore(ports.device, `peer:${args.url}`),
 });
 
 console.log(`[peer] 设备 ${args.device} → ${args.url}`);

@@ -135,6 +135,8 @@ export const SETTING_KEYS = {
   syncUrl: 'sync.url',
   syncUsername: 'sync.username',
   syncPassword: 'sync.password',
+  /** 本地文件夹同步的根目录（留空 = 宿主默认）。 */
+  syncFolder: 'sync.folder',
   syncLastAt: 'sync.last_at',
 } as const;
 

@@ -29,6 +29,11 @@ coverage/
 .data/
 *.local.json
 *.local.yaml
+# 本地文件夹同步的临时测试目录（把设备上的 sync 拉下来时用）
+.tmp-folder-sync/
+.tmp-folder-sync.tar
+# WebDAV 假 NAS 的落盘目录
+.webdav-out/
 
 # editor / os
 .vscode/*

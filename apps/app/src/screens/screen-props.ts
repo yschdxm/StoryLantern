@@ -19,14 +19,18 @@ export interface ScreenProps {
 export interface SyncAdmin {
   /** 环境是否支持（WebCrypto 需要安全上下文）。 */
   available: boolean;
-  /** 后端插件是否被组合进来（关掉 bundle 那行就没有）。 */
+  /** WebDAV 后端插件是否被组合进来（关掉 bundle 那行就没有）。 */
   backendAvailable: boolean;
+  /** 本地文件夹同步是否可用（需要宿主提供文件读写）。 */
+  folderAvailable: boolean;
   /** 已经存过同步口令（口令只写：界面不回显明文，也不回显掩码）。 */
   hasSecret: boolean;
   /** 配置是否有问题（缺地址/口令等）。 */
   problem(): Promise<string | undefined>;
+  /** 当前本地文件夹根目录（宿主解析出来的绝对路径）。 */
+  folderRoot(): Promise<string>;
   /** 跑一次同步；`secret` 非空时先存进设备本地 kv。 */
-  run(secret?: string): Promise<{ uploaded: number; downloaded: number; appliedOps: number; warnings: string[] }>;
+  run(secret?: string): Promise<{ uploaded: number; downloaded: number; appliedOps: number; warnings: string[]; root?: string }>;
 }
 
 export interface OpLogAdmin {

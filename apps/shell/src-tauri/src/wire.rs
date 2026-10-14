@@ -380,16 +380,24 @@ pub struct WireState {
     ops: Mutex<crate::oplog_store::OpStore>,
     streams: Mutex<HashMap<String, Arc<AtomicBool>>>,
     next_stream: AtomicU64,
+    /// 应用私有数据目录：同步文件夹的默认根目录从这里派生。
+    data_dir: std::path::PathBuf,
 }
 
 impl WireState {
-    pub fn new(store: Store, ops: crate::oplog_store::OpStore) -> Self {
+    pub fn new(store: Store, ops: crate::oplog_store::OpStore, data_dir: std::path::PathBuf) -> Self {
         Self {
             store,
             ops: Mutex::new(ops),
             streams: Mutex::new(HashMap::new()),
             next_stream: AtomicU64::new(1),
+            data_dir,
         }
+    }
+
+    /// 应用私有数据目录（宿主解析，界面不必知道平台差异）。
+    pub(crate) fn data_dir(&self) -> &std::path::Path {
+        &self.data_dir
     }
 
     /// op 日志与投影缓存：都是"哑存储"，语义在 TS 侧。

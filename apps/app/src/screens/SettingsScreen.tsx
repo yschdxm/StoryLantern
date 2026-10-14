@@ -57,6 +57,23 @@ export function SettingsScreen({ store, router, host, chat, ops, sync, plugins, 
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<{ ok: boolean; text: string } | undefined>(undefined);
   const [secretDraft, setSecretDraft] = useState('');
+  /** 宿主解析出来的同步文件夹根目录（"文件到底放哪了"要看得见）。 */
+  const [folderRoot, setFolderRoot] = useState('');
+  const syncKind = state.settings[SETTING_KEYS.syncKind] ?? 'off';
+
+  useEffect(() => {
+    if (syncKind !== 'folder' || sync === undefined || sync.folderAvailable === false) return;
+    let alive = true;
+    void sync
+      .folderRoot()
+      .then((path) => {
+        if (alive) setFolderRoot(path);
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [syncKind, sync]);
 
   const value = (key: string): string => local[key] ?? state.settings[key] ?? '';
 
@@ -197,6 +214,7 @@ export function SettingsScreen({ store, router, host, chat, ops, sync, plugins, 
           <select className="input" value={value(SETTING_KEYS.syncKind) || 'off'} onChange={(event) => saveNow(SETTING_KEYS.syncKind, event.target.value)}>
             <option value="off">{t('settings.sync.off')}</option>
             <option value="webdav">{t('settings.sync.webdav')}</option>
+            <option value="folder">{t('settings.sync.folder')}</option>
           </select>
         </Field>
         {(value(SETTING_KEYS.syncKind) || 'off') === 'webdav' && (
@@ -225,6 +243,27 @@ export function SettingsScreen({ store, router, host, chat, ops, sync, plugins, 
                 onBlur={() => commit(SETTING_KEYS.syncPassword)}
               />
             </Field>
+          </>
+        )}
+        {(value(SETTING_KEYS.syncKind) || 'off') === 'folder' && (
+          <>
+            <Field label={t('settings.sync.folder.path')} hint={t('settings.sync.folder.hint')}>
+              <TextInput
+                value={value(SETTING_KEYS.syncFolder)}
+                placeholder={folderRoot === '' ? t('settings.sync.folder.default') : folderRoot}
+                onChange={(next) => update(SETTING_KEYS.syncFolder, next)}
+                onBlur={() => {
+                  commit(SETTING_KEYS.syncFolder);
+                  // 改完立刻把宿主的根目录换过去，界面就能显示最终落点
+                  void sync?.folderRoot().then(setFolderRoot).catch(() => undefined);
+                }}
+              />
+            </Field>
+            {folderRoot !== '' && <p className="muted">{t('settings.sync.folder.root', { path: folderRoot })}</p>}
+          </>
+        )}
+        {(value(SETTING_KEYS.syncKind) || 'off') !== 'off' && (
+          <>
             <Field label={t('settings.sync.secret')} hint={t('settings.sync.secret.hint')}>
               {/* 口令**只写**：界面既不回显明文也不回显掩码（掩码写回去会覆盖真口令） */}
               <TextInput
@@ -237,7 +276,12 @@ export function SettingsScreen({ store, router, host, chat, ops, sync, plugins, 
             <p className="muted">{t('settings.sync.note')}</p>
             <div className="row">
               <Button
-                disabled={sync === undefined || syncing || sync.available === false || sync.backendAvailable === false}
+                disabled={
+                  sync === undefined ||
+                  syncing ||
+                  sync.available === false ||
+                  ((value(SETTING_KEYS.syncKind) || 'off') === 'webdav' ? sync.backendAvailable === false : sync.folderAvailable === false)
+                }
                 onClick={() => {
                   if (sync === undefined) return;
                   setSyncing(true);
@@ -245,7 +289,7 @@ export function SettingsScreen({ store, router, host, chat, ops, sync, plugins, 
                   void (async () => {
                     // 先把还在输入框里的非机密值**落库**（await），再同步：
                     // 否则"填完地址立刻点同步"会读到旧设置——真机上踩过。
-                    for (const key of [SETTING_KEYS.syncUrl, SETTING_KEYS.syncUsername, SETTING_KEYS.syncPassword]) {
+                    for (const key of [SETTING_KEYS.syncUrl, SETTING_KEYS.syncUsername, SETTING_KEYS.syncPassword, SETTING_KEYS.syncFolder]) {
                       await store.actions.setSetting(key, value(key));
                     }
                     const draft = secretDraft.trim();
@@ -253,6 +297,7 @@ export function SettingsScreen({ store, router, host, chat, ops, sync, plugins, 
                   })()
                     .then((summary) => {
                       setSecretDraft('');
+                      if (summary.root !== undefined) setFolderRoot(summary.root);
                       setSyncResult({
                         ok: true,
                         text: t('settings.sync.done', {
@@ -280,7 +325,12 @@ export function SettingsScreen({ store, router, host, chat, ops, sync, plugins, 
               </span>
             </div>
             {sync !== undefined && !sync.available && <p className="notice notice--warn">{t('settings.sync.noCrypto')}</p>}
-            {sync !== undefined && !sync.backendAvailable && <p className="notice notice--warn">{t('settings.sync.noBackend')}</p>}
+            {sync !== undefined && syncKind === 'webdav' && !sync.backendAvailable && (
+              <p className="notice notice--warn">{t('settings.sync.noBackend')}</p>
+            )}
+            {sync !== undefined && syncKind === 'folder' && !sync.folderAvailable && (
+              <p className="notice notice--warn">{t('settings.sync.noFolder')}</p>
+            )}
             {syncResult !== undefined && <p className={`notice notice--${syncResult.ok ? 'ok' : 'warn'}`}>{syncResult.text}</p>}
           </>
         )}
