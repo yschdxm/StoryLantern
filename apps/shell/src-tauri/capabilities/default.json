@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/mobile-schema.json",
   "identifier": "default",
-  "description": "Story Lantern 的默认能力集：允许界面使用事件通道（流式 IPC 需要 listen/unlisten）。注意 saf 插件目前**拿不到权限**（见 docs/M2-STATUS.md：Kotlin 插件在运行时注册，构建期不生成权限定义），所以 JS 调用会被 ACL 拦住。",
+  "description": "Story Lantern 的默认能力集：事件通道（流式 IPC 需要 listen/unlisten）与系统目录选择器（SAF，只在 Android 壳里有；它的权限由 build.rs 的 inlined plugin 生成）。",
   "windows": [
     "main"
   ],
@@ -9,6 +9,7 @@
     "core:default",
     "core:event:allow-listen",
     "core:event:allow-unlisten",
-    "core:event:allow-emit"
+    "core:event:allow-emit",
+    "saf:default"
   ]
 }
