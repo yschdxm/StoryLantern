@@ -3,6 +3,7 @@ import type { ScreenProps } from './screen-props.ts';
 import { useAppState } from './screen-props.ts';
 import { useT } from '../i18n/context.tsx';
 import { SETTING_KEYS } from '../data/types.ts';
+import { formatTime } from '../data/repository.ts';
 import { HostPanel } from '../HostPanel.tsx';
 import { Button, Field, TextInput } from '../ui/components.tsx';
 
@@ -46,13 +47,16 @@ function Segmented<T extends string>({
  * 文本类改完即存（失焦自动保存），选择类点一下就生效——没有"保存"按钮，
  * 移动端表单里多一个保存按钮就是多一次误操作。
  */
-export function SettingsScreen({ store, router, host, chat, ops, plugins, locales, onLocaleChange }: SettingsScreenProps): ReactNode {
+export function SettingsScreen({ store, router, host, chat, ops, sync, plugins, locales, onLocaleChange }: SettingsScreenProps): ReactNode {
   const t = useT();
   const state = useAppState(store);
   const [local, setLocal] = useState<Record<string, string>>({});
   const [showKey, setShowKey] = useState(false);
   const [probeResult, setProbeResult] = useState<{ ok: boolean; text: string } | undefined>(undefined);
   const [probing, setProbing] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<{ ok: boolean; text: string } | undefined>(undefined);
+  const [secretDraft, setSecretDraft] = useState('');
 
   const value = (key: string): string => local[key] ?? state.settings[key] ?? '';
 
@@ -184,6 +188,101 @@ export function SettingsScreen({ store, router, host, chat, ops, plugins, locale
               ))}
             </select>
           </Field>
+        )}
+      </section>
+
+      <section className="settings-group">
+        <h2 className="settings-group__title">{t('settings.sync')}</h2>
+        <Field label={t('settings.sync.kind')}>
+          <select className="input" value={value(SETTING_KEYS.syncKind) || 'off'} onChange={(event) => saveNow(SETTING_KEYS.syncKind, event.target.value)}>
+            <option value="off">{t('settings.sync.off')}</option>
+            <option value="webdav">{t('settings.sync.webdav')}</option>
+          </select>
+        </Field>
+        {(value(SETTING_KEYS.syncKind) || 'off') === 'webdav' && (
+          <>
+            <Field label={t('settings.sync.url')} hint={t('settings.sync.url.hint')}>
+              <TextInput
+                type="url"
+                value={value(SETTING_KEYS.syncUrl)}
+                placeholder="https://nas.local:5006/storylantern/"
+                onChange={(next) => update(SETTING_KEYS.syncUrl, next)}
+                onBlur={() => commit(SETTING_KEYS.syncUrl)}
+              />
+            </Field>
+            <Field label={t('settings.sync.username')}>
+              <TextInput
+                value={value(SETTING_KEYS.syncUsername)}
+                onChange={(next) => update(SETTING_KEYS.syncUsername, next)}
+                onBlur={() => commit(SETTING_KEYS.syncUsername)}
+              />
+            </Field>
+            <Field label={t('settings.sync.password')}>
+              <TextInput
+                type="password"
+                value={value(SETTING_KEYS.syncPassword)}
+                onChange={(next) => update(SETTING_KEYS.syncPassword, next)}
+                onBlur={() => commit(SETTING_KEYS.syncPassword)}
+              />
+            </Field>
+            <Field label={t('settings.sync.secret')} hint={t('settings.sync.secret.hint')}>
+              {/* 口令**只写**：界面既不回显明文也不回显掩码（掩码写回去会覆盖真口令） */}
+              <TextInput
+                type="password"
+                value={secretDraft}
+                placeholder={sync?.hasSecret === true ? t('settings.sync.secret.saved') : t('settings.sync.secret.placeholder')}
+                onChange={setSecretDraft}
+              />
+            </Field>
+            <p className="muted">{t('settings.sync.note')}</p>
+            <div className="row">
+              <Button
+                disabled={sync === undefined || syncing || sync.available === false || sync.backendAvailable === false}
+                onClick={() => {
+                  if (sync === undefined) return;
+                  setSyncing(true);
+                  setSyncResult(undefined);
+                  void (async () => {
+                    // 先把还在输入框里的非机密值**落库**（await），再同步：
+                    // 否则"填完地址立刻点同步"会读到旧设置——真机上踩过。
+                    for (const key of [SETTING_KEYS.syncUrl, SETTING_KEYS.syncUsername, SETTING_KEYS.syncPassword]) {
+                      await store.actions.setSetting(key, value(key));
+                    }
+                    const draft = secretDraft.trim();
+                    return sync.run(draft === '' ? undefined : draft);
+                  })()
+                    .then((summary) => {
+                      setSecretDraft('');
+                      setSyncResult({
+                        ok: true,
+                        text: t('settings.sync.done', {
+                          uploaded: summary.uploaded,
+                          downloaded: summary.downloaded,
+                          applied: summary.appliedOps,
+                        }),
+                      });
+                    })
+                    .catch((cause: unknown) =>
+                      setSyncResult({
+                        ok: false,
+                        text: t('settings.sync.failed', { message: cause instanceof Error ? cause.message : String(cause) }),
+                      }),
+                    )
+                    .finally(() => setSyncing(false));
+                }}
+              >
+                {syncing ? t('settings.sync.running') : t('settings.sync.run')}
+              </Button>
+              <span className="muted">
+                {state.settings[SETTING_KEYS.syncLastAt] === undefined
+                  ? t('settings.sync.never')
+                  : t('settings.sync.lastAt', { time: formatTime(Number(state.settings[SETTING_KEYS.syncLastAt])) })}
+              </span>
+            </div>
+            {sync !== undefined && !sync.available && <p className="notice notice--warn">{t('settings.sync.noCrypto')}</p>}
+            {sync !== undefined && !sync.backendAvailable && <p className="notice notice--warn">{t('settings.sync.noBackend')}</p>}
+            {syncResult !== undefined && <p className={`notice notice--${syncResult.ok ? 'ok' : 'warn'}`}>{syncResult.text}</p>}
+          </>
         )}
       </section>
 

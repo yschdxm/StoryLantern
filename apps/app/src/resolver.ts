@@ -19,6 +19,9 @@ export const resolver: CompositionHost = {
         return import('../../../plugins/writing-pipeline/src/index.ts');
       case '@storylantern/plugin-sync-memory':
         return import('../../../plugins/sync-memory/src/index.ts');
+      case '@storylantern/plugin-sync-webdav':
+        // 只依赖全局 fetch：NAS / Nextcloud / 坚果云都自带的协议，移动端也只需填一个 URL
+        return import('../../../plugins/sync-webdav/src/index.ts');
       // 注意：`plugin-sync-folder`（以及将来的 SMB/FTP 后端）依赖 node:fs / node:path，
       // 属于**桌面/移动壳**的能力，浏览器产物里刻意不提供。core bundle 把它标成 disabled，
       // 因此不会被解析；哪天真的在浏览器里启用它，激活会明确失败而不是静默降级。

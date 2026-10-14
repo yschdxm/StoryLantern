@@ -12,6 +12,21 @@ export interface ScreenProps {
   chat: ChatClient;
   /** 只有 op-log 仓储才有：日志统计与"从日志重建"。浏览器/内存实现没有。 */
   ops?: OpLogAdmin;
+  /** 同步：只有 op-log 仓储 + 配置齐全时才有。 */
+  sync?: SyncAdmin;
+}
+
+export interface SyncAdmin {
+  /** 环境是否支持（WebCrypto 需要安全上下文）。 */
+  available: boolean;
+  /** 后端插件是否被组合进来（关掉 bundle 那行就没有）。 */
+  backendAvailable: boolean;
+  /** 已经存过同步口令（口令只写：界面不回显明文，也不回显掩码）。 */
+  hasSecret: boolean;
+  /** 配置是否有问题（缺地址/口令等）。 */
+  problem(): Promise<string | undefined>;
+  /** 跑一次同步；`secret` 非空时先存进设备本地 kv。 */
+  run(secret?: string): Promise<{ uploaded: number; downloaded: number; appliedOps: number; warnings: string[] }>;
 }
 
 export interface OpLogAdmin {

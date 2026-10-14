@@ -49,6 +49,15 @@ export interface OpLogRepository extends Repository {
   rebuild(): Promise<{ ops: number; characters: number; sessions: number; messages: number }>;
   /** 日志与隔离统计（开发者面板用）。 */
   logStats(): Promise<OpLogStats>;
+  /** 同步推送用：读本地日志里 `seq > after` 的 op。 */
+  exportOps(after: number): Promise<{ ops: Op[]; lastSeq: number }>;
+  /** 同步拉取用：把远端 op 并进本地日志与物化状态（按 opId 幂等）。 */
+  importOps(ops: readonly Op[]): Promise<{ appended: number; duplicates: number }>;
+  /**
+   * 同步引擎需要**同一份**物化状态（它会把拉到的 op 应用进来）。
+   * 用函数而不是属性：`rebuild()` 会换成新的物化器，属性会拿到过期引用。
+   */
+  currentMaterializer(): Materializer;
 }
 
 export interface OpLogRepositoryOptions {
@@ -326,6 +335,37 @@ export function createOpLogRepository(options: OpLogRepositoryOptions): OpLogRep
       await ready;
       return { ...(await options.ops.stats()), corrupt: corrupt.length };
     },
+
+    async exportOps(after) {
+      await ready;
+      const ops: Op[] = [];
+      let cursor = after;
+      for (;;) {
+        const page = await options.ops.list(cursor, 1_000);
+        if (page.rows.length === 0) break;
+        for (const row of page.rows) {
+          try {
+            ops.push(decodeOp(row.line));
+          } catch {
+            // 坏行在启动时已经记过一次，这里跳过即可
+          }
+        }
+        cursor = page.lastSeq;
+        if (page.rows.length < 1_000) break;
+      }
+      return { ops, lastSeq: cursor };
+    },
+
+    async importOps(ops) {
+      await ready;
+      if (ops.length === 0) return { appended: 0, duplicates: 0 };
+      // 先落盘再改内存：与本地写入同一条规则
+      const outcome = await options.ops.append(ops.map((op) => encodeOp(op)));
+      materializer.applyAll(ops);
+      return { appended: outcome.appended, duplicates: outcome.duplicates };
+    },
+
+    currentMaterializer: () => materializer,
 
     async probe(): Promise<ProbeInfo> {
       await ready;

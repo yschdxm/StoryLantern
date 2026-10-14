@@ -1,0 +1,25 @@
+feat(sync): op 段同步到 WebDAV，两台设备无冲突收敛（真机验证）
+
+同步链路
+- 共享口令 + HKDF-SHA256 派生盲化密钥与加密密钥；段与清单都是 gzip + AES-GCM
+- 宿主新增 http.request 服务：同步请求由 Rust 发出（WebView 跨源会被 CORS 拦，实测 Failed to fetch）
+- 同步引擎新增 onOps 回调：远端 op 先落本地日志再改内存（否则重启按日志重建会丢数据）
+- App 侧：设置里的「同步」分组（WebDAV 地址/账号/只写口令）、立即同步与结果、上次同步时间
+
+安全语义
+- 口令存**设备本地 kv**，不进设置：宿主对含 secret 的设置键只回掩码，写回掩码会覆盖真口令（真机踩过）
+- 界面口令**只写**：不回显明文也不回显掩码
+- 设备名单从 devices/ 清单自动发现；AEAD 保证内容不被篡改也读不出，每设备签名留待配对流程
+
+真机抓到的两个真 bug（都已修 + 加回归测试）
+- 段号用了设备全局计数器，而接收方按每会话 1..lastSeq 找段 → 每次同步都报缺段、水位永不推进
+  → 段号改为每会话编号；packages/sync-core/test/segment-numbering.test.ts（已确认旧代码下失败）
+- 点同步时读到的是「输入框还没提交」的旧设置 → 先 await 落库再同步
+
+工具
+- scripts/mock-webdav.mjs：本地假 NAS（PROPFIND/GET/PUT/DELETE，数据落磁盘）
+- eval/sync/dev-peer.ts：命令行「第二台设备」，可读远端内容、也能 --say 写一句
+
+验证：门禁 149 源文件 / 类型检查零错误 / 测试 242 通过 0 失败 / 产物体检通过
+真机：App 推 4 段 → 另一台设备零告警读出 2 角色 3 会话 16 消息 → 反向写入后 App 拉回并显示
+（详见 docs/M1-SYNC.md）

@@ -10,7 +10,10 @@ import { createChatClient } from './data/chat-client.ts';
 import { SETTING_KEYS } from './data/types.ts';
 import type { Repository } from './data/repository.ts';
 import type { OpLogRepository } from './data/op-repository.ts';
-import type { OpLogAdmin } from './screens/screen-props.ts';
+import type { OpLogAdmin, SyncAdmin } from './screens/screen-props.ts';
+import { describeSyncProblem, readSyncConfig, runSync, SYNC_SECRET_KEY, type SyncBackendFactory } from './data/sync/app-sync.ts';
+import { syncAvailable } from './data/sync/service.ts';
+import { createHostFetch } from './data/sync/host-fetch.ts';
 import { createHostClient, type HostClient } from './host-panel.ts';
 import { I18nProvider } from './i18n/context.tsx';
 import { createAppLocaleService, registerAppMessages, translatorOf } from './i18n/locale.ts';
@@ -48,6 +51,7 @@ const opAdmin: OpLogAdmin | undefined =
   typeof opLogRepository.logStats === 'function' && typeof opLogRepository.rebuild === 'function'
     ? { stats: () => opLogRepository.logStats!(), rebuild: () => opLogRepository.rebuild!() }
     : undefined;
+const opRepositoryForSync = opLogRepository as OpLogRepository;
 const store: AppStore = createAppStore(repository);
 const router = createRouter();
 
@@ -94,6 +98,42 @@ function Root(): ReturnType<typeof AppShell> {
 
   const t = useMemo(() => translatorOf(boot.locale), [boot.locale]);
 
+  // 同步：后端工厂来自组合出来的插件注册表（关掉 bundle 那行就拿不到 = 功能真的消失）
+  const backendFactory = boot.runtime?.ctx.get<SyncBackendFactory>('sync.backend.webdav');
+  const [hasSyncSecret, setHasSyncSecret] = useState(false);
+  const syncAdmin: SyncAdmin | undefined =
+    opAdmin === undefined
+      ? undefined
+      : {
+          available: syncAvailable(),
+          backendAvailable: backendFactory !== undefined,
+          hasSecret: hasSyncSecret,
+          problem: async () => describeSyncProblem(await readSyncConfig(store.getState().settings, ports.device), syncAvailable()),
+          run: async (secret?: string) => {
+            // 口令是**只写**的：存在设备本地 kv 里（宿主对 secret 类设置键只回掩码，
+            // 放设置里会出现"写回掩码覆盖真口令"的事故——真机踩过）
+            if (secret !== undefined && secret !== '') await ports.device.set(SYNC_SECRET_KEY, secret);
+            const config = await readSyncConfig(store.getState().settings, ports.device);
+            const summary = await runSync({
+              repository: opRepositoryForSync,
+              settings: ports.settings,
+              device: ports.device,
+              config,
+              backendFactory,
+              // 同步请求由宿主发出：WebView 里对 NAS 的跨源请求会被 CORS 拦
+              ...(transport === undefined ? {} : { hostFetch: createHostFetch(transport) }),
+            });
+            // 拉到的 op 已经进了本地日志与物化状态；界面的列表要刷新一次才看得到
+            await store.actions.refresh();
+            await store.actions.setSetting(SETTING_KEYS.syncLastAt, String(Date.now()));
+            setHasSyncSecret(((await ports.device.get(SYNC_SECRET_KEY)) ?? '') !== '');
+            return summary;
+          },
+        };
+  useEffect(() => {
+    void ports.device.get(SYNC_SECRET_KEY).then((value) => setHasSyncSecret((value ?? '') !== ''));
+  }, []);
+
   const session = route.name === 'chat' ? state.sessions.find((item) => item.id === route.sessionId) : undefined;
   const title =
     route.name === 'chat'
@@ -130,6 +170,7 @@ function Root(): ReturnType<typeof AppShell> {
             host={host}
             chat={chat}
             {...(opAdmin === undefined ? {} : { ops: opAdmin })}
+            {...(syncAdmin === undefined ? {} : { sync: syncAdmin })}
             plugins={boot.runtime?.tracker.list().map((outcome) => ({ id: outcome.id, status: outcome.status })) ?? []}
             locales={boot.locale.locales()}
             onLocaleChange={(next) => {

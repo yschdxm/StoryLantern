@@ -51,10 +51,10 @@ test('bundle 清单：从 package.json 读出 patch 路径', async () => {
   assert.equal(bundlePatchOf({ name: 'x' }), undefined);
 });
 
-test('组合：core bundle 铺出 7 行，依赖驱动激活，禁用行不加载', async () => {
+test('组合：core bundle 铺出 8 行，依赖驱动激活，禁用行不加载', async () => {
   const patch = parseYaml(await readText('bundles/core/storylantern.patch.yml'));
   const composition = composeProfile([{ source: '@storylantern/bundle-core', rows: patch }]);
-  assert.equal(composition.size, 7);
+  assert.equal(composition.size, 8);
   assert.deepEqual(composition.warnings, []);
 
   const ctx = createContext();
@@ -69,6 +69,7 @@ test('组合：core bundle 铺出 7 行，依赖驱动激活，禁用行不加�
     blocks: 'active',
     pipeline: 'active',
     'sync-memory': 'active',
+    'sync-webdav': 'active',
     'sync-folder': 'disabled',
   });
 

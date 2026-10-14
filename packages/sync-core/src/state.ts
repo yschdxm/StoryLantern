@@ -19,6 +19,10 @@ export interface HostedSession {
 /** 引擎的持久化状态：整块可序列化，因此"同步进度"本身也能被备份/迁移。 */
 export interface LocalSyncState {
   v: 1;
+  /**
+   * 历史字段：段号已经改成**每会话**从 1 编号（见 `HostedSession.lastSeq`），
+   * 这个设备级计数器不再使用，保留只是让旧状态能被安全读入。
+   */
   seq: number;
   manifestSeq: number;
   outbox: Op[];

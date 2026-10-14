@@ -143,8 +143,15 @@ static LEGACY_METHODS: &[StateMethodDef] = &[
     StateMethodDef { name: "export", description: "导出 M1 之前的直写表（一次性迁移）", call: legacy_export },
 ];
 
+static HTTP_METHODS: &[StateMethodDef] = &[StateMethodDef {
+    name: "request",
+    description: "宿主侧通用 HTTP 转发（同步后端用：WebView 里跨源会被 CORS 拦）",
+    call: crate::http::http_request,
+}];
+
 pub static STATE_SERVICES: &[StateServiceDef] = &[
     StateServiceDef { name: "oplog", description: "op 追加日志（唯一事实源；宿主不理解语义）", methods: OPLOG_METHODS },
     StateServiceDef { name: "kv", description: "投影缓存（键值；语义在 TS 侧）", methods: KV_METHODS },
     StateServiceDef { name: "legacy", description: "M1 之前的直写表（只用于迁移）", methods: LEGACY_METHODS },
+    StateServiceDef { name: "http", description: "通用 HTTP 转发（给同步后端用）", methods: HTTP_METHODS },
 ];

@@ -37,6 +37,11 @@ export interface SyncEngineOptions {
   snapshotThreshold?: number;
   /** 懒加载：返回 false 的会话本轮不拉（例如用户还没打开过的会话）。 */
   shouldPull?: (blindSessionId: string) => boolean;
+  /**
+   * 拉到远端 op 后的回调（落进调用方自己的日志）。
+   * "日志是唯一事实源"的客户端必须实现它，否则重启后按日志重建会丢掉同步来的数据。
+   */
+  onOps?: (ops: readonly Op[]) => void | Promise<void>;
   state?: LocalSyncState;
 }
 
@@ -160,10 +165,6 @@ export class SyncEngine {
 
     for (const group of groups.values()) {
       for (const chunk of chunkOps(group.ops)) {
-        // 序号无论成败都推进：失败重试若复用同名，会撞上"已存在的坏文件"而永远卡住。
-        const seq = this.#state.seq;
-        this.#state.seq += 1;
-
         const hosted = this.#state.hosted[group.blind] ?? {
           lastSeq: 0,
           segments: {},
@@ -171,6 +172,10 @@ export class SyncEngine {
           epoch: 0,
           segmentsSinceSnapshot: 0,
         };
+        // 段号必须**按会话**从 1 连续编号：接收方是按 `1..lastSeq` 逐个找段的，
+        // 用"设备全局计数器"会让第二个会话的首段号变成 2，于是接收方永远认为
+        // 第 1 号段缺失（实测：数据能同步过去，但每次同步都报警告、水位永远不推进）。
+        const seq = hosted.lastSeq + 1;
         const packed = await packSegment({
           ops: chunk,
           deviceId,
@@ -321,6 +326,7 @@ export class SyncEngine {
       deviceId: this.#options.deviceId,
       activeDevices: new Set(this.#options.roster.activeIds()),
       state: this.#state,
+      ...(this.#options.onOps === undefined ? {} : { onOps: this.#options.onOps }),
       ...(this.#options.shouldPull === undefined ? {} : { shouldPull: this.#options.shouldPull }),
     };
   }

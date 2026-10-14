@@ -7,6 +7,7 @@
 //!  - 都通过 `wire` 服务暴露给界面。
 
 mod chat;
+mod http;
 mod oplog_store;
 mod store;
 mod wire;

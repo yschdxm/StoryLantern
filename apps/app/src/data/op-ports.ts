@@ -14,7 +14,21 @@ import { createBrowserKeyValue, createLocalRepository, createMemoryKeyValue, typ
 export interface OpPorts {
   ops: OpLogPort;
   settings: SettingsStore;
+  /**
+   * 设备本地的小块存储（宿主 kv 表 / 浏览器 kv）。
+   *
+   * 为什么必须有它：宿主对含 `api_key` / `token` / `secret` 的设置键**只回掩码**，
+   * 所以"同步口令"这类**应用需要读回明文**的凭据不能走 settings——
+   * 否则界面拿到的是 `••••••`，再写回去就把真口令覆盖掉了（真机上踩过）。
+   */
+  device: DeviceStore;
   loadLegacy?: () => Promise<LegacyDump | undefined>;
+}
+
+/** 设备本地的键值存储（异步，两种实现语义一致）。 */
+export interface DeviceStore {
+  get(key: string): Promise<string | undefined>;
+  set(key: string, value: string): Promise<void>;
 }
 
 /** 设备 id：第一次运行时生成并持久化，之后所有 op 都带着它（同步时才知道谁写的）。 */
@@ -56,6 +70,15 @@ export function createWireOpPorts(transport: WireTransport): OpPorts {
       },
     },
     loadLegacy: () => client.call<LegacyDump | undefined>('legacy', 'export'),
+    device: {
+      async get(key) {
+        const result = await client.call<{ value: string | null }>('kv', 'get', key);
+        return result.value ?? undefined;
+      },
+      async set(key, value) {
+        await client.call<{ saved: boolean }>('kv', 'set', key, value);
+      },
+    },
   };
 }
 
@@ -126,6 +149,14 @@ export function createLocalOpPorts(store: KeyValueStore = createMemoryKeyValue()
       },
     },
     settings: settingsRepository.settings,
+    device: {
+      async get(key) {
+        return store.read(key);
+      },
+      async set(key, value) {
+        store.write(key, value);
+      },
+    },
   };
 }
 

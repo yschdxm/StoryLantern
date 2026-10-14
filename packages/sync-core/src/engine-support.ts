@@ -25,6 +25,11 @@ export interface PullContext {
   deviceId: string;
   activeDevices: Set<string>;
   state: LocalSyncState;
+  /**
+   * 拉到远端 op 后的回调。**给"日志是唯一事实源"的客户端用**：
+   * 它需要把这些 op 追加进自己的日志（否则重启后按日志重建会丢掉这批数据）。
+   */
+  onOps?: (ops: readonly Op[]) => void | Promise<void>;
   /** 懒加载：返回 false 的会话本轮不拉（例如用户没打开过的会话）。 */
   shouldPull?: (blindSessionId: string) => boolean;
 }
@@ -160,6 +165,9 @@ async function pullSession(
     }
 
     for (const op of ops) ctx.clock.merge(op.hlc, owner);
+    // 先把 op 交给调用方落进它自己的日志，再应用到内存状态。
+    // 顺序反了的话，中间崩溃会留下"状态有、日志没有"的裂缝（重启重建就丢数据）。
+    if (ctx.onOps !== undefined) await ctx.onOps(ops);
     const applied = materializer.applyAll(ops);
     outcome.appliedOps += applied.applied;
     outcome.orphans += applied.orphans;

@@ -70,6 +70,12 @@ export const SETTING_KEYS = {
   theme: 'app.theme',
   fontScale: 'app.font_scale',
   developerMode: 'app.developer_mode',
+  // 同步：**非机密**配置进设置；同步口令与进度在设备本地 kv（见 app-sync.ts 的说明）
+  syncKind: 'sync.kind',
+  syncUrl: 'sync.url',
+  syncUsername: 'sync.username',
+  syncPassword: 'sync.password',
+  syncLastAt: 'sync.last_at',
 } as const;
 
 export type SettingKey = (typeof SETTING_KEYS)[keyof typeof SETTING_KEYS];

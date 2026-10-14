@@ -37,6 +37,11 @@
     - id: sync-memory
       name: '@storylantern/plugin-sync-memory'
 
+    # WebDAV：移动端"填个 URL 就能用"的同步方式（NAS / Nextcloud / 坚果云都自带）。
+    # 只依赖全局 fetch，因此浏览器产物里也能跑。
+    - id: sync-webdav
+      name: '@storylantern/plugin-sync-webdav'
+
     # 文件夹后端默认关闭：单机用户不需要，启用方式是在自己的 patch 里
     # 覆盖这一行为 disabled: false。
     - id: sync-folder

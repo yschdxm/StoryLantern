@@ -17,6 +17,8 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+# base64：宿主侧通用 HTTP 转发要在 JSON 里搬运二进制请求体/响应体
+base64 = "0.22"
 # bundled：把 SQLite 源码一起编进来，不依赖系统 sqlite（Android 上没有可链接的系统 sqlite）
 rusqlite = { version = "0.37", features = ["bundled"] }
 # 模型调用在宿主侧进行：密钥只落在宿主数据库里，前端拿不到也进不了日志
