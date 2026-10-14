@@ -141,6 +141,7 @@ export function parseRoster(text: string): DeviceRosterList {
     const result: DeviceRecord = { deviceId: entry.deviceId, publicKey: entry.publicKey, addedAt: entry.addedAt };
     if (entry.name !== undefined) result.name = entry.name;
     if (entry.revokedAt !== undefined) result.revokedAt = entry.revokedAt;
+    if (entry.bannedAt !== undefined) result.bannedAt = entry.bannedAt;
     return result;
   });
 
