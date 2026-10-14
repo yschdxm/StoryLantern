@@ -78,7 +78,43 @@ export interface MaterializedState {
   characters: Record<string, CharacterRecord>;
   sessions: Record<string, SessionRecord>;
   messages: Record<string, MessageRecord>;
+  lorebooks: Record<string, LorebookRecord>;
   settings: Record<string, { value: unknown; hlc: Hlc; opId: string }>;
+}
+
+/**
+ * 世界书条目。与角色卡同样是 LWW + 墓碑，但**条目独立**：
+ * "自动维护"这类功能会逐条增改，整本覆盖写会让并发编辑互相覆盖。
+ */
+export interface LoreEntryRecord {
+  id: string;
+  keys: string[];
+  secondaryKeys: string[];
+  content: string;
+  enabled: boolean;
+  order: number;
+  caseSensitive: boolean;
+  recursive: boolean;
+  depth: number;
+  constant: boolean;
+  createdHlc: Hlc;
+  updatedHlc: Hlc;
+  opId: string;
+  deleted?: { hlc: Hlc; opId: string };
+}
+
+export interface LorebookRecord {
+  id: string;
+  name: string;
+  description: string;
+  /** 绑定到哪些角色；空数组表示全局（所有角色共用）。 */
+  characterIds: string[];
+  enabled: boolean;
+  entries: Record<string, LoreEntryRecord>;
+  createdHlc: Hlc;
+  updatedHlc: Hlc;
+  opId: string;
+  deleted?: { hlc: Hlc; opId: string };
 }
 
 export interface Snapshot {

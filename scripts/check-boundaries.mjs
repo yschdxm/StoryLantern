@@ -27,13 +27,14 @@ const ALLOWED_DEPS = {
   i18n: ['plugin-api'],
   kernel: ['plugin-api'],
   oplog: [],
+  lore: [],
   'sync-core': ['kernel', 'oplog'],
   domain: ['kernel', 'plugin-api'],
   sqlstore: ['kernel', 'plugin-api', 'domain', 'oplog'],
   'ui-kit': ['kernel', 'plugin-api', 'i18n'],
 };
 
-const FORBID_ANY = new Set(['oplog', 'sync-core']);
+const FORBID_ANY = new Set(['oplog', 'sync-core', 'lore']);
 
 const violations = [];
 

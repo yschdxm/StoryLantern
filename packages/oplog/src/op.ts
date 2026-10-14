@@ -16,7 +16,11 @@ export type OpType =
   | 'message.candidate.append'
   | 'message.candidate.select'
   | 'message.delete'
-  | 'setting.set';
+  | 'setting.set'
+  | 'lorebook.upsert'
+  | 'lorebook.delete'
+  | 'lore.entry.upsert'
+  | 'lore.entry.delete';
 
 /** 角色卡字段：整体覆盖写入（LWW 由 op 的 HLC 决定）。id 放在 entity 里，不重复进 payload。 */
 export interface CharacterUpsertPayload {
@@ -316,6 +320,19 @@ export function messageDelete(
 export function settingSet(
   base: { deviceId: string; clock: HlcClock },
   payload: SettingSetPayload,
+  stamp: StampOptions = {},
 ): Op<SettingSetPayload> {
-  return createOp({ ...base, type: 'setting.set', entity: { type: 'setting', id: payload.key }, payload });
+  return createOp({ ...base, ...stamp, type: 'setting.set', entity: { type: 'setting', id: payload.key }, payload });
 }
+
+// ---- 世界书 ----
+
+// 世界书的 payload 类型与构造器放在 `lore-ops.ts`（字段多、还会长大），这里只做转发，
+// 让调用方仍然可以只 import `op.ts`。
+export type {
+  LoreEntryDeletePayload,
+  LoreEntryUpsertPayload,
+  LorebookDeletePayload,
+  LorebookUpsertPayload,
+} from './lore-ops.ts';
+export { loreEntryDelete, loreEntryUpsert, lorebookDelete, lorebookUpsert } from './lore-ops.ts';

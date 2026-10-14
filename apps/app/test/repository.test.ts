@@ -137,6 +137,71 @@ function contract(name: string, make: () => Promise<ContractContext>): void {
       'invalid-argument',
     ]);
   });
+
+  test(`${name}：世界书与条目能保存、按角色筛选、删书带走条目，并且能重启后仍在`, async () => {
+    const { repo, reopen } = await make();
+    const character = await repo.characters.save({ name: '星野' });
+
+    const shared = await repo.lorebooks.save({ name: '世界常识', description: '所有角色共用' });
+    const bound = await repo.lorebooks.save({ name: '星野的书', characterIds: [character.id] });
+    await repo.lorebooks.save({ name: '别人的书', characterIds: ['nobody'] });
+    await repo.lorebooks.save({ name: '关掉的书', enabled: false });
+
+    assert.equal(shared.characterIds.length, 0, '不绑定角色 = 全局');
+    // 列表顺序不在契约里（两个实现各自按自己的更新时间排），因此两边都排序后比较
+    assert.deepEqual(
+      (await repo.lorebooks.list()).map((book) => book.name).sort(),
+      ['世界常识', '别人的书', '关掉的书', '星野的书'].sort(),
+    );
+
+    // 按角色筛选：绑定的 + 全局的（顺序不重要，按名字比较）
+    const forCharacter = (await repo.lorebooks.forCharacter(character.id)).map((book) => book.name).sort();
+    assert.deepEqual(forCharacter, ['世界常识', '星野的书']);
+    assert.deepEqual((await repo.lorebooks.forCharacter(undefined)).map((book) => book.name), ['世界常识']);
+
+    // 条目：关键词会去空白、去重
+    const withEntry = await repo.lorebooks.saveEntry({
+      lorebookId: bound.id,
+      keys: ['  铜铃 ', '铜铃', '隘口'],
+      content: '铜铃是隘口的报信之物。',
+      order: 5,
+    });
+    assert.deepEqual(withEntry.entries[0]?.keys, ['铜铃', '隘口'], '关键词去重且裁掉空白');
+    assert.equal(withEntry.entries[0]?.order, 5);
+    assert.equal(withEntry.entries[0]?.enabled, true);
+    assert.equal(withEntry.entries[0]?.recursive, true, '默认允许递归');
+
+    const entryId = withEntry.entries[0]?.id ?? '';
+    const edited = await repo.lorebooks.saveEntry({ lorebookId: bound.id, id: entryId, content: '改过的正文', constant: true });
+    assert.equal(edited.entries[0]?.content, '改过的正文');
+    assert.equal(edited.entries[0]?.id, entryId, '更新保持同一个 id');
+
+    // 校验：没有关键词又不是常量条目 → 无效
+    await assert.rejects(
+      () => repo.lorebooks.saveEntry({ lorebookId: bound.id, keys: [], content: '无关键词' }),
+      (error: unknown) => (error as DataError).code === 'invalid-argument',
+    );
+    await assert.rejects(
+      () => repo.lorebooks.save({ name: '   ' }),
+      (error: unknown) => (error as DataError).code === 'invalid-argument',
+    );
+
+    // 重启（重放日志）后世界书与条目都还在
+    const revived = await reopen();
+    const revivedBook = await revived.lorebooks.get(bound.id);
+    assert.equal(revivedBook?.entries.length, 1);
+    assert.equal(revivedBook?.entries[0]?.content, '改过的正文');
+
+    // 删除条目：书还在，条目没了
+    const afterEntryRemoval = await repo.lorebooks.removeEntry(bound.id, entryId);
+    assert.equal(afterEntryRemoval?.entries.length, 0);
+    assert.equal(await repo.lorebooks.removeEntry(bound.id, entryId), undefined, '重复删除返回 undefined');
+
+    // 删除世界书：条目一并不可见
+    assert.equal(await repo.lorebooks.remove(bound.id), true);
+    assert.equal(await repo.lorebooks.get(bound.id), undefined);
+    assert.equal(await repo.lorebooks.remove(bound.id), false, '重复删除返回 false');
+  });
 }
 
 // ---------------------------------------------------------------- 两个实现
@@ -313,39 +378,4 @@ test('op-log：settings 走宿主配置，不进 op 日志（密钥不参与同�
   const lines = (await ports.ops.list(0, 100)).rows.map((row) => row.line).join('\n');
   assert.ok(!lines.includes('sk-secret'), '密钥绝不能出现在 op 日志里');
   assert.equal((await ports.ops.stats()).count, 0, '设置不产生 op');
-});
-
-// ---------------------------------------------------------------- 展示辅助
-
-test('时间与会话预览的展示规则', () => {
-  const now = new Date('2026-10-14T12:00:00').getTime();
-  assert.equal(formatTime(0), '');
-  assert.equal(formatTime(now - 30_000, now), '刚刚');
-  assert.equal(formatTime(now - 5 * 60_000, now), '5 分钟前');
-  assert.equal(formatTime(new Date('2026-10-14T09:05:00').getTime(), now), '09:05');
-  assert.equal(formatTime(new Date('2026-10-13T22:00:00').getTime(), now), '昨天');
-  assert.equal(formatTime(new Date('2026-10-08T10:00:00').getTime(), now), '10 月 8 日');
-
-  assert.equal(previewOf('  '), '还没有消息');
-  assert.equal(previewOf('一\n二  三'), '一 二 三');
-  assert.equal(previewOf('x'.repeat(80)).length, 61);
-});
-
-test('模型配置判定：远端要密钥、本地端点不需要（与 Rust 侧规则一致）', () => {
-  assert.equal(isModelConfigured({}), false);
-  assert.equal(isModelConfigured({ 'model.base_url': 'https://api.deepseek.com/v1' }), false, '缺模型名不算配置好');
-  assert.equal(
-    isModelConfigured({ 'model.base_url': 'https://api.deepseek.com/v1', 'model.name': 'deepseek-chat' }),
-    false,
-    '远端没有密钥不能发话',
-  );
-  assert.equal(
-    isModelConfigured({ 'model.base_url': 'https://api.deepseek.com/v1', 'model.name': 'deepseek-chat', 'model.api_key': 'sk-x' }),
-    true,
-  );
-  for (const local of ['http://127.0.0.1:8080/v1', 'http://localhost:1234/v1', 'http://10.0.2.2:15198/v1', 'http://192.168.1.9:5000/v1']) {
-    assert.equal(isLocalEndpoint(local), true, local);
-    assert.equal(isModelConfigured({ 'model.base_url': local, 'model.name': 'mock' }), true, `${local} 不需要密钥`);
-  }
-  assert.equal(isLocalEndpoint('https://api.deepseek.com/v1'), false);
 });

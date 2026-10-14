@@ -353,7 +353,7 @@ export function TextInput({
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
-  type?: 'text' | 'password' | 'url';
+  type?: 'text' | 'password' | 'url' | 'number';
   autoFocus?: boolean;
   /** 失焦时提交（设置页靠它做到"改完立即生效"，不必再放保存按钮）。 */
   onBlur?: () => void;

@@ -166,7 +166,8 @@ button {
 
 .tabbar {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  /* 标签数量写死为 4（会话/角色/世界书/设置）：少一列或指定成 3 列都会让最后一个换行 */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   height: calc(var(--tabbar-h) + var(--safe-bottom));
   padding-bottom: var(--safe-bottom);
   border-top: 1px solid var(--border);
@@ -194,6 +195,11 @@ button {
 
 .tab__label {
   font-size: 0.69rem;
+  /* 4 个标签在窄屏上必须不换行、不溢出，否则最后一个会被挤到第二行 */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 /* ------------------------------------------------------------------ 通用控件 */
@@ -792,6 +798,36 @@ select.input {
 
 .chip--disabled {
   opacity: 0.55;
+}
+
+/* 世界书绑定：可点的角色标签，选中态要一眼看得出 */
+button.chip {
+  cursor: pointer;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  min-height: 32px;
+}
+
+.chip--on {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--text);
+}
+
+/* 条目表单里的开关：整行可点，触控目标足够大 */
+.switch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  font-size: 0.9375rem;
+}
+
+.switch input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent);
 }
 
 .kv-grid {

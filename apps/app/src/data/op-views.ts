@@ -1,7 +1,7 @@
 import { HlcClock } from '../../../../packages/oplog/src/index.ts';
-import type { CharacterRecord, Materializer } from '../../../../packages/oplog/src/index.ts';
+import type { CharacterRecord, LoreEntryRecord, LorebookRecord, Materializer } from '../../../../packages/oplog/src/index.ts';
 import type { MessageAuthor } from '../../../../packages/oplog/src/op.ts';
-import type { Character, Message, MessageRole, Session } from './types.ts';
+import type { Character, Lorebook, Message, MessageRole, Session } from './types.ts';
 
 /**
  * 物化状态 → 界面用的领域对象。
@@ -67,6 +67,40 @@ export function messageView(materializer: Materializer, messageId: string): Mess
     content: materializer.textOf(messageId) ?? '',
     status: materializer.statusOf(messageId) === 'error' ? 'error' : 'done',
     createdAt: record.appendHlc.t,
+  };
+}
+
+/** 世界书条目：墓碑不出现，顺序按 order 升序（与注入顺序一致）。 */
+export function loreEntryView(record: LoreEntryRecord): Lorebook['entries'][number] {
+  return {
+    id: record.id,
+    keys: [...record.keys],
+    secondaryKeys: [...record.secondaryKeys],
+    content: record.content,
+    enabled: record.enabled,
+    order: record.order,
+    caseSensitive: record.caseSensitive,
+    recursive: record.recursive,
+    depth: record.depth,
+    constant: record.constant,
+    createdAt: record.createdHlc.t,
+    updatedAt: record.updatedHlc.t,
+  };
+}
+
+export function lorebookView(record: LorebookRecord): Lorebook {
+  return {
+    id: record.id,
+    name: record.name,
+    description: record.description,
+    characterIds: [...record.characterIds],
+    enabled: record.enabled,
+    entries: Object.values(record.entries)
+      .filter((entry) => entry.deleted === undefined)
+      .sort((a, b) => a.order - b.order || a.id.localeCompare(b.id))
+      .map(loreEntryView),
+    createdAt: record.createdHlc.t,
+    updatedAt: record.updatedHlc.t,
   };
 }
 

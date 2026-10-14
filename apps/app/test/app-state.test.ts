@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { activeTabName, isRootRoute, parentOf, parseRoute, routeToHash, TABS } from '../src/app/router.ts';
+import { activeTabName, isRootRoute, parentOf, parseRoute, routeToHash, TABS, type Route } from '../src/app/router.ts';
 import { createAppStore } from '../src/app/state.ts';
 import { createMemoryRepository } from '../src/data/memory-repository.ts';
 
@@ -45,12 +45,32 @@ test('路由：返回层级与底栏高亮归属', () => {
   assert.equal(activeTabName({ name: 'settings' }), 'settings');
 });
 
-test('路由：底栏正好三个根标签（标签名是 i18n key，不是硬编码文案）', () => {
+test('路由：底栏正好四个根标签（标签名是 i18n key，不是硬编码文案）', () => {
   assert.deepEqual(
     TABS.map((tab) => tab.label),
-    ['tab.sessions', 'tab.characters', 'tab.settings'],
+    ['tab.sessions', 'tab.characters', 'tab.lore', 'tab.settings'],
   );
   for (const tab of TABS) assert.equal(isRootRoute(tab.route), true);
+});
+
+test('路由：每个路由的 hash 都能解析回自己（新增路由漏写 parseRoute 会立刻失败）', () => {
+  // 真机上踩过：`#/lore` 没进 parseRoute，于是点"世界书"标签时 URL 变了、界面却回到根路由，
+  // 而且因为 hash 已经等于目标值，之后再点同一个标签会被"原地不动"判据直接跳过。
+  const routes: Route[] = [
+    { name: 'sessions' },
+    { name: 'characters' },
+    { name: 'lore' },
+    { name: 'settings' },
+    { name: 'import' },
+    { name: 'chat', sessionId: '01ABC' },
+    { name: 'character', characterId: '01DEF' },
+    { name: 'character', characterId: 'new' },
+    { name: 'lorebook', lorebookId: '01GHI' },
+  ];
+  for (const route of routes) {
+    const hash = routeToHash(route);
+    assert.deepEqual(parseRoute(hash), route, `${hash} 应当解析回 ${route.name}`);
+  }
 });
 
 // ---------------------------------------------------------------- 应用状态

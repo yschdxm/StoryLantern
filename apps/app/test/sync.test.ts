@@ -219,3 +219,41 @@ test('同步：重复同步是幂等的（第二次不产生新的本地 op）',
   await b.sync();
   assert.equal((await b.repository.logStats()).count, afterFirst, '重复拉取不会重复写日志（按 opId 幂等）');
 });
+
+test('同步：世界书与条目也会跟着过去（两设备读到的书完全一致）', async () => {
+  const backend = createMemoryBackend();
+  const a = await createDevice('device-a', backend, 'secret');
+  const b = await createDevice('device-b', backend, 'secret');
+
+  const character = await a.repository.characters.save({ name: '星野' });
+  const book = await a.repository.lorebooks.save({ name: '隘口的设定', characterIds: [character.id] });
+  await a.repository.lorebooks.saveEntry({
+    lorebookId: book.id,
+    keys: ['铜铃'],
+    content: '铜铃是隘口的报信之物。',
+    order: 5,
+  });
+  await a.sync();
+
+  await b.sync();
+  const onB = await b.repository.lorebooks.list();
+  assert.equal(onB.length, 1);
+  assert.equal(onB[0]?.name, '隘口的设定');
+  assert.equal(onB[0]?.entries.length, 1);
+  assert.deepEqual(onB[0]?.entries[0]?.keys, ['铜铃']);
+  assert.equal(onB[0]?.entries[0]?.order, 5);
+  assert.deepEqual(onB[0]?.characterIds, [character.id], '角色绑定关系也要一致');
+
+  // B 改条目 → A 收得到（条目级 LWW，不整本覆盖）
+  const entryId = onB[0]?.entries[0]?.id ?? '';
+  await b.repository.lorebooks.saveEntry({ lorebookId: book.id, id: entryId, content: '改过的正文' });
+  await b.sync();
+  await a.sync();
+  const onA = await a.repository.lorebooks.get(book.id);
+  assert.equal(onA?.entries[0]?.content, '改过的正文');
+  assert.deepEqual(
+    await b.repository.lorebooks.forCharacter(character.id).then((books) => books.map((item) => item.name)),
+    await a.repository.lorebooks.forCharacter(character.id).then((books) => books.map((item) => item.name)),
+    '两台设备按角色筛出来的书必须一样',
+  );
+});

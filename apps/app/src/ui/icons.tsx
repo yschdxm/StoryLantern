@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 /** 内联 SVG 图标：不引图标库，避免多一个依赖与字体加载抖动。全部 24×24、stroke 描边。 */
 export type IconName =
   | 'chat'
+  | 'book'
   | 'user'
   | 'gear'
   | 'back'
@@ -19,6 +20,8 @@ export type IconName =
 
 const PATHS: Record<IconName, ReactNode> = {
   chat: <path d="M4 5h16v11H8l-4 3z" />,
+  // 世界书：一本翻开的书
+  book: <path d="M12 6c-2-1.4-4.2-1.6-6-1.2V17c1.8-.4 4-.2 6 1.2 2-1.4 4.2-1.6 6-1.2V4.8c-1.8-.4-4-.2-6 1.2zM12 6v12" />,
   user: (
     <>
       <circle cx="12" cy="8" r="3.5" />

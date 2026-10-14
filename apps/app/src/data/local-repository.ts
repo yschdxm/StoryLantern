@@ -48,6 +48,8 @@ export function loadState(store: KeyValueStore): RepositoryState {
       characters: parsed.characters,
       sessions: parsed.sessions,
       messages: parsed.messages,
+      // 旧版本没有世界书：缺字段时按空数组读，不给用户报错
+      lorebooks: Array.isArray(parsed.lorebooks) ? parsed.lorebooks : [],
       settings: typeof parsed.settings === 'object' && parsed.settings !== null ? parsed.settings : {},
       sequence: typeof parsed.sequence === 'number' ? parsed.sequence : 0,
     };
@@ -65,6 +67,7 @@ export function createLocalRepository(store: KeyValueStore): Repository & { pers
     characters: repository.characters,
     sessions: repository.sessions,
     messages: repository.messages,
+    lorebooks: repository.lorebooks,
     settings: repository.settings,
     ...(repository.probe === undefined ? {} : { probe: repository.probe }),
     persist: () => store.write(STORAGE_KEY, JSON.stringify(repository.snapshot())),

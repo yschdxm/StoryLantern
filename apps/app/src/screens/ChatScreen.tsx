@@ -4,6 +4,7 @@ import { useAppState, useAsync } from './screen-props.ts';
 import { useT } from '../i18n/context.tsx';
 import { formatTime, isModelConfigured } from '../data/repository.ts';
 import { buildChatRequest } from '../data/prompt.ts';
+import type { ScoredEntry } from '../../../../packages/lore/src/index.ts';
 import { Banner, Button, LoadMore, Sheet, SheetItem, useWindowedList } from '../ui/components.tsx';
 
 export interface ChatScreenProps extends ScreenProps {
@@ -27,6 +28,8 @@ export function ChatScreen({ store, sessionId, chat, onOpenSettings }: ChatScree
   const [draft, setDraft] = useState('');
   const [streaming, setStreaming] = useState<{ text: string } | null>(null);
   const [chatError, setChatError] = useState<string | undefined>(undefined);
+  /** 上一次请求实际注入的世界书条目（空 = 没命中）。 */
+  const [injectedLore, setInjectedLore] = useState<ScoredEntry[]>([]);
   const [menuFor, setMenuFor] = useState<string | undefined>(undefined);
   const [composerOffset, setComposerOffset] = useState(0);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -83,7 +86,13 @@ export function ChatScreen({ store, sessionId, chat, onOpenSettings }: ChatScree
       settings: fresh.settings,
       ...(character === undefined ? {} : { character }),
       history: fresh.messages.map((message) => ({ role: message.role, content: message.content, status: message.status })),
+      // 世界书：全局的 + 绑定到这个角色的（按角色筛完再交给扫描器）
+      lorebooks: fresh.lorebooks.filter(
+        (book) => book.enabled && (book.characterIds.length === 0 || (character !== undefined && book.characterIds.includes(character.id))),
+      ),
     });
+    // 注入痕迹：用户随时能看到"这次模型多看了哪几条设定"（可解释性的最小一步）
+    setInjectedLore(request.lore);
 
     const controller = new AbortController();
     controllerRef.current = controller;
@@ -151,6 +160,18 @@ export function ChatScreen({ store, sessionId, chat, onOpenSettings }: ChatScree
         </Banner>
       )}
       {chatError !== undefined && <Banner tone="error">{chatError}</Banner>}
+      {injectedLore.length > 0 && (
+        <Banner tone="info">
+          {t('chat.lore', {
+            count: injectedLore.length,
+            keys: injectedLore
+              .map((entry) => entry.matchedKeys.join('、'))
+              .filter((keys) => keys !== '')
+              .slice(0, 3)
+              .join(' / '),
+          })}
+        </Banner>
+      )}
 
       <div className="chat__scroll" ref={scrollRef}>
         {state.messages.length === 0 && streaming === null ? (

@@ -57,6 +57,66 @@ export interface Message {
 
 export type SettingsMap = Record<string, string>;
 
+// ---------------------------------------------------------------- 世界书（lorebook）
+
+/**
+ * 世界书条目：一条"关键词 → 设定"。
+ *
+ * 字段与 SillyTavern 的世界书一一对应（用户已经熟悉那套心智模型），
+ * 因此从角色卡导入时不需要猜。扫描语义见 `packages/lore`。
+ */
+export interface LoreEntry {
+  id: string;
+  keys: string[];
+  secondaryKeys: string[];
+  content: string;
+  enabled: boolean;
+  /** 越小越先注入。 */
+  order: number;
+  caseSensitive: boolean;
+  recursive: boolean;
+  /** 只看最近 N 条消息；0 = 用默认深度。 */
+  depth: number;
+  /** 常量条目：不问关键词，书激活就注入。 */
+  constant: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface Lorebook {
+  id: string;
+  name: string;
+  description: string;
+  /** 绑定到哪些角色；空表示全局。 */
+  characterIds: string[];
+  enabled: boolean;
+  entries: LoreEntry[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface LorebookDraft {
+  id?: string;
+  name: string;
+  description?: string;
+  characterIds?: string[];
+  enabled?: boolean;
+}
+
+export interface LoreEntryDraft {
+  lorebookId: string;
+  id?: string;
+  keys?: string[];
+  secondaryKeys?: string[];
+  content?: string;
+  enabled?: boolean;
+  order?: number;
+  caseSensitive?: boolean;
+  recursive?: boolean;
+  depth?: number;
+  constant?: boolean;
+}
+
 /** 设置键集中在这里，避免界面各处写字符串。 */
 export const SETTING_KEYS = {
   providerKind: 'model.provider',

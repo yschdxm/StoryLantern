@@ -58,10 +58,23 @@ export {
   type StampOptions,
 } from './op.ts';
 export {
+  loreEntryDelete,
+  loreEntryUpsert,
+  lorebookDelete,
+  lorebookUpsert,
+  type LoreEntryDeletePayload,
+  type LoreEntryUpsertPayload,
+  type LorebookDeletePayload,
+  type LorebookUpsertPayload,
+} from './lore-ops.ts';
+export { listLorebooks, listLoreEntries } from './lorebook-projection.ts';
+export {
   Materializer,
   type CandidateRecord,
   type CharacterRecord,
   type ForkGroup,
+  type LoreEntryRecord,
+  type LorebookRecord,
   type MaterializedState,
   type MessageRecord,
   type RevisionRecord,

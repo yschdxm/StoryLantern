@@ -13,13 +13,15 @@ import {
   ulid,
   type Op,
 } from '../../../../packages/oplog/src/index.ts';
+import { createLoreStore } from './op-lore-store.ts';
 import { opsFromLegacy } from './op-migration.ts';
 import type { LegacyDump, OpLogPort, OpLogStats } from './op-types.ts';
-import { authorOf, characterView, messageView, sessionView } from './op-views.ts';
+import { authorOf, characterView, lorebookView, messageView, sessionView } from './op-views.ts';
 import {
   DataError,
   validateMessageRole,
   type CharacterStore,
+  type LorebookStore,
   type MessageStore,
   type ProbeInfo,
   type Repository,
@@ -306,6 +308,13 @@ export function createOpLogRepository(options: OpLogRepositoryOptions): OpLogRep
       }),
   };
 
+  const lorebooks: LorebookStore = createLoreStore({
+    withReady,
+    materializer: () => materializer,
+    appendAndApply,
+    base,
+  });
+
   const liveMessageCount = (): number =>
     Object.values(materializer.state.messages).filter((message) => message.deleted === undefined).length;
 
@@ -315,6 +324,7 @@ export function createOpLogRepository(options: OpLogRepositoryOptions): OpLogRep
     characters,
     sessions,
     messages,
+    lorebooks,
     // 设备配置不进 op 日志：密钥不该离开本机，主题/语言属于设备偏好
     settings: options.settings,
 

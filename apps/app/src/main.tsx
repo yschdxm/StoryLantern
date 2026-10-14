@@ -22,6 +22,8 @@ import { ScreenMenu } from './ui/ScreenMenu.tsx';
 import { SessionsScreen } from './screens/SessionsScreen.tsx';
 import { ChatScreen } from './screens/ChatScreen.tsx';
 import { CharactersScreen } from './screens/CharactersScreen.tsx';
+import { LoreScreen } from './screens/LoreScreen.tsx';
+import { LorebookScreen } from './screens/LorebookScreen.tsx';
 import { CharacterEditScreen } from './screens/CharacterEditScreen.tsx';
 import { SettingsScreen } from './screens/SettingsScreen.tsx';
 import { ImportScreen } from './screens/ImportScreen.tsx';
@@ -135,6 +137,7 @@ function Root(): ReturnType<typeof AppShell> {
   }, []);
 
   const session = route.name === 'chat' ? state.sessions.find((item) => item.id === route.sessionId) : undefined;
+  const openBook = route.name === 'lorebook' ? state.lorebooks.find((item) => item.id === route.lorebookId) : undefined;
   const title =
     route.name === 'chat'
       ? (session?.title ?? t('tab.sessions'))
@@ -144,7 +147,10 @@ function Root(): ReturnType<typeof AppShell> {
           : t('character.edit.title')
         : route.name === 'import'
           ? t('import.title')
-          : t(`tab.${route.name}`);
+          : route.name === 'lorebook'
+            // 世界书详情直接用书名做标题：`tab.lorebook` 这种 key 不该出现在界面上
+            ? (openBook?.name ?? t('tab.lore'))
+            : t(`tab.${route.name}`);
 
   return (
     <I18nProvider t={t}>
@@ -158,10 +164,14 @@ function Root(): ReturnType<typeof AppShell> {
         actions={<ScreenMenu route={route} store={store} onDeleted={() => router.navigate({ name: 'sessions' })} />}
         onNavigate={(next) => router.navigate(next)}
         layout={route.name === 'chat' ? 'fill' : 'scroll'}
-        hideTabs={route.name === 'chat' || route.name === 'character' || route.name === 'import'}
+        hideTabs={route.name === 'chat' || route.name === 'character' || route.name === 'import' || route.name === 'lorebook'}
       >
         {route.name === 'sessions' && <SessionsScreen store={store} router={router} host={host} chat={chat} />}
         {route.name === 'characters' && <CharactersScreen store={store} router={router} host={host} chat={chat} />}
+        {route.name === 'lore' && <LoreScreen store={store} router={router} host={host} chat={chat} />}
+        {route.name === 'lorebook' && (
+          <LorebookScreen store={store} router={router} host={host} chat={chat} lorebookId={route.lorebookId} />
+        )}
         {route.name === 'import' && <ImportScreen store={store} router={router} host={host} chat={chat} />}
         {route.name === 'settings' && (
           <SettingsScreen

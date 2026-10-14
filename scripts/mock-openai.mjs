@@ -33,6 +33,19 @@ const server = http.createServer((request, response) => {
     }
     console.log(`[mock-openai] ${request.method} ${request.url} model=${payload.model ?? '?'} stream=${payload.stream ?? false}`);
 
+    // 上下文是否真的变了，在假服务这一侧也要看得见：
+    // 世界书注入、自定义系统提示这些"组装"结果，光看界面是看不出的。
+    const system = payload.messages?.find((message) => message.role === 'system')?.content ?? '';
+    if (system !== '') {
+      const flags = [];
+      if (system.includes('【相关设定】')) flags.push('world-info');
+      if (system.includes('【设定】')) flags.push('character');
+      console.log(
+        `[mock-openai]   system ${system.length} 字${flags.length === 0 ? '' : `（${flags.join(' + ')}）`}` +
+          `｜末尾：${system.slice(-60).replace(/\n/g, ' / ')}`,
+      );
+    }
+
     if (payload.stream !== true) {
       response.writeHead(200, { 'content-type': 'application/json' });
       response.end(

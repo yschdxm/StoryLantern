@@ -1,6 +1,15 @@
 import type { Repository } from '../data/repository.ts';
 import { DataError } from '../data/repository.ts';
-import type { Character, CharacterDraft, Message, Session, SettingsMap } from '../data/types.ts';
+import type {
+  Character,
+  CharacterDraft,
+  Lorebook,
+  LorebookDraft,
+  LoreEntryDraft,
+  Message,
+  Session,
+  SettingsMap,
+} from '../data/types.ts';
 
 /**
  * 应用状态：一个极小的可订阅 store。
@@ -17,6 +26,8 @@ export interface AppState {
   characters: Character[];
   sessions: Session[];
   messages: Message[];
+  /** 所有世界书（含未绑定的）；按角色筛选交给 `forCharacter` 这类工具函数。 */
+  lorebooks: Lorebook[];
   activeSessionId?: string;
   settings: SettingsMap;
   /** 正在写库的操作名（用于按钮禁用/局部 loading）。 */
@@ -44,6 +55,12 @@ export interface AppActions {
   updateMessage(id: string, content: string, status?: Message['status']): Promise<void>;
   removeMessage(id: string): Promise<void>;
   setSetting(key: string, value: string): Promise<void>;
+  // ---- 世界书 ----
+  refreshLorebooks(): Promise<void>;
+  saveLorebook(draft: LorebookDraft): Promise<Lorebook>;
+  deleteLorebook(id: string): Promise<void>;
+  saveLoreEntry(draft: LoreEntryDraft): Promise<Lorebook>;
+  removeLoreEntry(lorebookId: string, entryId: string): Promise<void>;
 }
 
 export interface AppStore {
@@ -57,6 +74,7 @@ const INITIAL: AppState = {
   characters: [],
   sessions: [],
   messages: [],
+  lorebooks: [],
   settings: {},
 };
 
@@ -110,12 +128,13 @@ export function createAppStore(repository: Repository): AppStore {
     async refresh() {
       set({ status: 'loading', error: undefined });
       try {
-        const [characters, sessions, settings] = await Promise.all([
+        const [characters, sessions, lorebooks, settings] = await Promise.all([
           repository.characters.list(),
           repository.sessions.list(),
+          repository.lorebooks.list(),
           repository.settings.all(),
         ]);
-        set({ characters, sessions, settings, status: 'ready' });
+        set({ characters, sessions, lorebooks, settings, status: 'ready' });
       } catch (cause) {
         set({ status: 'error', error: messageOf(cause) });
       }
@@ -123,6 +142,36 @@ export function createAppStore(repository: Repository): AppStore {
 
     refreshCharacters,
     refreshSessions,
+
+    async refreshLorebooks() {
+      set({ lorebooks: await repository.lorebooks.list() });
+    },
+
+    async saveLorebook(draft) {
+      const book = await run('saveLorebook', () => repository.lorebooks.save(draft));
+      await actions.refreshLorebooks();
+      return book;
+    },
+
+    async deleteLorebook(id) {
+      await run('deleteLorebook', async () => {
+        await repository.lorebooks.remove(id);
+      });
+      await actions.refreshLorebooks();
+    },
+
+    async saveLoreEntry(draft) {
+      const book = await run('saveLoreEntry', () => repository.lorebooks.saveEntry(draft));
+      await actions.refreshLorebooks();
+      return book;
+    },
+
+    async removeLoreEntry(lorebookId, entryId) {
+      await run('removeLoreEntry', async () => {
+        await repository.lorebooks.removeEntry(lorebookId, entryId);
+      });
+      await actions.refreshLorebooks();
+    },
 
     async loadMessages(sessionId) {
       const messages = await repository.messages.list(sessionId);

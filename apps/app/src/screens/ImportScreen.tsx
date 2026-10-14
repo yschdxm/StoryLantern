@@ -2,7 +2,7 @@ import { useRef, useState, type ReactNode } from 'react';
 import type { ScreenProps } from './screen-props.ts';
 import { useT } from '../i18n/context.tsx';
 import { importFile, importText, type Imported } from '../../../../packages/importer/src/index.ts';
-import { characterDraftFrom, chatImportPlan } from '../data/import-bridge.ts';
+import { characterDraftFrom, chatImportPlan, loreEntryDraftsFrom, lorebookDraftFrom } from '../data/import-bridge.ts';
 import { Banner, Button, EmptyState, Icon } from '../ui/components.tsx';
 
 /**
@@ -73,6 +73,8 @@ export function ImportScreen({ store, router }: ScreenProps): ReactNode {
     let characters = 0;
     let sessions = 0;
     let skipped = 0;
+    let lorebooks = 0;
+    let entries = 0;
     try {
       for (const item of items) {
         const result = item.result;
@@ -84,6 +86,15 @@ export function ImportScreen({ store, router }: ScreenProps): ReactNode {
           }
           const saved = await store.actions.saveCharacter(characterDraftFrom(result));
           characters += 1;
+          // 卡片里的内嵌世界书 → 一本真正绑定了该角色的世界书（条目按卡片顺序编号）
+          if (result.lorebook !== undefined && result.lorebook.entries.length > 0) {
+            const book = await store.actions.saveLorebook(lorebookDraftFrom(result.lorebook, saved.id));
+            for (const entry of loreEntryDraftsFrom(book.id, result.lorebook)) {
+              await store.actions.saveLoreEntry(entry);
+              entries += 1;
+            }
+            lorebooks += 1;
+          }
           // 有开场白就顺手建一个会话，导入完能立刻开聊——不然用户还得自己找一遍
           if (result.firstMessage.trim() !== '') {
             await store.actions.createSession(saved.id);
@@ -112,6 +123,8 @@ export function ImportScreen({ store, router }: ScreenProps): ReactNode {
         t('import.done', {
           characters: t('count.characters', { count: characters }),
           sessions: t('count.sessions', { count: sessions }),
+          // 世界书是这次导入的新收获，值得单独报出来
+          ...(lorebooks === 0 ? {} : { lore: t('import.lore', { books: lorebooks, entries }) }),
         }),
       );
       setItems([]);

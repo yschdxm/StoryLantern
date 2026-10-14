@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { chatImportPlan, characterDraftFrom, withLorebook } from '../src/data/import-bridge.ts';
+import { chatImportPlan, characterDraftFrom, lorebookDraftFrom, loreEntryDraftsFrom, withLorebook } from '../src/data/import-bridge.ts';
 import { createAppStore } from '../src/app/state.ts';
 import { createMemoryRepository } from '../src/data/memory-repository.ts';
 import type { ImportedCharacter, ImportedChat } from '../../../packages/importer/src/index.ts';
@@ -44,6 +44,35 @@ test('导入映射：角色卡 6 个字段全部落到草稿，名字超长会�
   assert.equal(draft.scenario, '隘口');
   assert.equal(draft.firstMessage, '「进来吧。」');
   assert.equal(draft.exampleDialogue, '{{user}}: 在吗');
+});
+
+test('导入映射：内嵌世界书变成独立的一本书 + 条目（不再塞进场景字段）', () => {
+  const lorebook = {
+    name: '星野的设定',
+    description: '隘口相关的设定',
+    entries: [
+      { keys: ['灯'], secondaryKeys: ['夜'], content: '灯不会说谎。', name: '条目 0', enabled: true, constant: false },
+      { keys: [], secondaryKeys: [], content: '   ', name: '空条目', enabled: true, constant: false },
+      { keys: [], secondaryKeys: [], content: '两轮月亮。', name: '常量条目', enabled: true, constant: true },
+    ],
+  };
+
+  const book = lorebookDraftFrom(lorebook, 'C1');
+  assert.equal(book.name, '星野的设定');
+  assert.deepEqual(book.characterIds, ['C1'], '导入的书绑定到刚导入的角色');
+
+  const entries = loreEntryDraftsFrom('B1', lorebook);
+  assert.equal(entries.length, 2, '空内容条目被跳过');
+  assert.deepEqual(entries[0]?.keys, ['灯']);
+  assert.deepEqual(entries[0]?.secondaryKeys, ['夜']);
+  assert.equal(entries[0]?.order, 0, '按卡片顺序编号，注入顺序与卡片一致');
+  assert.equal(entries[1]?.constant, true, '常量标记要带过来');
+  assert.equal(entries[1]?.order, 10);
+  assert.equal(entries[1]?.lorebookId, 'B1');
+
+  // 角色草稿里不该再有拼出来的「参考设定」段落
+  const draft = characterDraftFrom(card({ scenario: '隘口', lorebook }));
+  assert.equal(draft.scenario, '隘口');
 });
 
 test('导入映射：世界书并入「参考设定」，空条目被跳过，无世界书时不改动场景', () => {

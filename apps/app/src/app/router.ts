@@ -8,10 +8,12 @@
 export type Route =
   | { name: 'sessions' }
   | { name: 'characters' }
+  | { name: 'lore' }
   | { name: 'settings' }
   | { name: 'import' }
   | { name: 'chat'; sessionId: string }
-  | { name: 'character'; characterId: string | 'new' };
+  | { name: 'character'; characterId: string | 'new' }
+  | { name: 'lorebook'; lorebookId: string };
 
 export const ROOT_ROUTE: Route = { name: 'sessions' };
 
@@ -27,6 +29,10 @@ export function parseRoute(hash: string): Route {
       return ROOT_ROUTE;
     case 'characters':
       return { name: 'characters' };
+    case 'lore':
+      return { name: 'lore' };
+    case 'lorebook':
+      return tail === undefined || tail === '' ? { name: 'lore' } : { name: 'lorebook', lorebookId: tail };
     case 'settings':
       return { name: 'settings' };
     case 'import':
@@ -50,6 +56,10 @@ export function routeToHash(route: Route): string {
       return '#/sessions';
     case 'characters':
       return '#/characters';
+    case 'lore':
+      return '#/lore';
+    case 'lorebook':
+      return `#/lorebook/${route.lorebookId}`;
     case 'settings':
       return '#/settings';
     case 'import':
@@ -61,21 +71,23 @@ export function routeToHash(route: Route): string {
   }
 }
 
-/** 底部标签：只有这三个是"根页面"；聊天与角色编辑是二级页面（带返回）。 */
+/** 底部标签：这四个是"根页面"；聊天、角色编辑、世界书详情是二级页面（带返回）。 */
 export const TABS: Array<{ route: Route; label: string; icon: string }> = [
   { route: { name: 'sessions' }, label: 'tab.sessions', icon: 'chat' },
   { route: { name: 'characters' }, label: 'tab.characters', icon: 'user' },
+  { route: { name: 'lore' }, label: 'tab.lore', icon: 'book' },
   { route: { name: 'settings' }, label: 'tab.settings', icon: 'gear' },
 ];
 
 export function isRootRoute(route: Route): boolean {
-  return route.name === 'sessions' || route.name === 'characters' || route.name === 'settings';
+  return route.name === 'sessions' || route.name === 'characters' || route.name === 'lore' || route.name === 'settings';
 }
 
 /** 当前标签（二级页面归属它的来源标签，保证底栏高亮不闪）。 */
 export function activeTabName(route: Route): Route['name'] {
   if (route.name === 'chat') return 'sessions';
   if (route.name === 'character' || route.name === 'import') return 'characters';
+  if (route.name === 'lorebook') return 'lore';
   return route.name;
 }
 
@@ -95,6 +107,8 @@ export function parentOf(route: Route): Route | undefined {
     case 'character':
     case 'import':
       return { name: 'characters' };
+    case 'lorebook':
+      return { name: 'lore' };
     default:
       return undefined;
   }

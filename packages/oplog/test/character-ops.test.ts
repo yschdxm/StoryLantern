@@ -123,8 +123,8 @@ test('未知 op 类型被安全忽略（向前兼容：新客户端写的 op 不
     opId: 'x1',
     deviceId: 'A',
     hlc: { t: 1, c: 0 },
-    entity: { type: 'lorebook', id: 'l1' },
-    type: 'lorebook.upsert' as never,
+    entity: { type: 'future', id: 'l1' },
+    type: 'future.thing' as never,
     payload: { anything: true },
     schema: 1,
   };

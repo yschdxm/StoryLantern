@@ -12,12 +12,20 @@ import {
   applySettingSet,
 } from './message-projection.ts';
 import { cloneHlc, emptyState, laterThan } from './materialize-support.ts';
+import {
+  applyLoreEntryDelete,
+  applyLoreEntryUpsert,
+  applyLorebookDelete,
+  applyLorebookUpsert,
+  listLorebooks,
+} from './lorebook-projection.ts';
 import type { MessageAuthor, Op } from './op.ts';
 import type { SessionSnapshot } from './snapshot.ts';
 import type {
   CandidateRecord,
   CharacterRecord,
   ForkGroup,
+  LorebookRecord,
   MaterializedState,
   MessageRecord,
   RevisionRecord,
@@ -29,6 +37,8 @@ export type {
   CandidateRecord,
   CharacterRecord,
   ForkGroup,
+  LoreEntryRecord,
+  LorebookRecord,
   MaterializedState,
   MessageRecord,
   RevisionRecord,
@@ -121,6 +131,27 @@ export class Materializer {
   /** 未被删除的会话（顺序由上层按"最近活跃"决定）。 */
   sessions(): SessionRecord[] {
     return liveSessions(this.#state);
+  }
+
+  /** 世界书列表（墓碑不出现）。 */
+  lorebooks(): LorebookRecord[] {
+    return listLorebooks(this.#state);
+  }
+
+  /** 某本世界书（被删掉的返回 undefined）。 */
+  lorebook(id: string): LorebookRecord | undefined {
+    const book = this.#state.lorebooks[id];
+    return book === undefined || book.deleted !== undefined ? undefined : book;
+  }
+
+  /**
+   * 与某个角色相关的世界书：绑定了它的 + 全局的（`characterIds` 为空）。
+   * 扫描时只看这一批，避免无关的书参与关键词匹配。
+   */
+  lorebooksFor(characterId: string | undefined): LorebookRecord[] {
+    return this.lorebooks().filter(
+      (book) => book.enabled && (book.characterIds.length === 0 || (characterId !== undefined && book.characterIds.includes(characterId))),
+    );
   }
 
   /** 会话内的消息顺序：按 append 的 HLC 排序派生，因此与到达顺序无关。 */  orderOf(sessionId: string): MessageRecord[] {
@@ -265,6 +296,14 @@ export class Materializer {
         return this.#messageDelete(op);
       case 'setting.set':
         return this.#settingSet(op);
+      case 'lorebook.upsert':
+        return applyLorebookUpsert(this.#state, op);
+      case 'lorebook.delete':
+        return applyLorebookDelete(this.#state, op);
+      case 'lore.entry.upsert':
+        return applyLoreEntryUpsert(this.#state, op);
+      case 'lore.entry.delete':
+        return applyLoreEntryDelete(this.#state, op);
       default:
         // 未知 op 类型：向前兼容地忽略（未来版本写入的新 op 不应让旧客户端崩溃）。
         return 'applied';

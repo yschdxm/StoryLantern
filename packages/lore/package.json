@@ -1,0 +1,10 @@
+{
+  "name": "@storylantern/lore",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Story Lantern 世界书扫描：关键词触发、递归、深度窗口与预算裁剪（纯函数，零依赖）",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

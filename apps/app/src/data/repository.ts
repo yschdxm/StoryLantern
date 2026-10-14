@@ -1,4 +1,16 @@
-import type { Character, CharacterDraft, Message, MessageRole, MessageStatus, Session, SettingsMap } from './types.ts';
+import type {
+  Character,
+  CharacterDraft,
+  LoreEntry,
+  LoreEntryDraft,
+  Lorebook,
+  LorebookDraft,
+  Message,
+  MessageRole,
+  MessageStatus,
+  Session,
+  SettingsMap,
+} from './types.ts';
 
 /**
  * 仓储：界面唯一的取数入口。
@@ -14,6 +26,7 @@ export interface Repository {
   readonly characters: CharacterStore;
   readonly sessions: SessionStore;
   readonly messages: MessageStore;
+  readonly lorebooks: LorebookStore;
   readonly settings: SettingsStore;
   /** 只读诊断信息（浏览器实现返回 undefined）。 */
   probe?(): Promise<ProbeInfo>;
@@ -45,6 +58,23 @@ export interface SettingsStore {
   get(key: string): Promise<string | undefined>;
   set(key: string, value: string): Promise<void>;
   all(): Promise<SettingsMap>;
+}
+
+/**
+ * 世界书仓储。两级结构：书（名字/绑定/开关）与条目（关键词/正文/优先级）。
+ *
+ * 条目为什么单独有方法：将来"lore 自动维护"会逐条增改；
+ * 如果只能整本保存，两个功能同时改一本书就会互相覆盖。
+ */
+export interface LorebookStore {
+  list(): Promise<Lorebook[]>;
+  get(id: string): Promise<Lorebook | undefined>;
+  /** 某角色能用的书：绑定了它的 + 全局的（`characterIds` 为空）。 */
+  forCharacter(characterId: string | undefined): Promise<Lorebook[]>;
+  save(draft: LorebookDraft): Promise<Lorebook>;
+  remove(id: string): Promise<boolean>;
+  saveEntry(draft: LoreEntryDraft): Promise<Lorebook>;
+  removeEntry(lorebookId: string, entryId: string): Promise<Lorebook | undefined>;
 }
 
 export interface ProbeInfo {
@@ -88,6 +118,54 @@ export function validateSessionTitle(title: string): string {
   const trimmed = title.trim();
   if (trimmed === '') throw new DataError('invalid-argument', '会话名不能为空');
   return trimmed;
+}
+
+/** 世界书字段的公共校验：两个实现必须给出同样的错误码与文案。 */
+export function validateLorebookDraft(draft: LorebookDraft): Required<Omit<LorebookDraft, 'id'>> {
+  const name = (draft.name ?? '').trim();
+  if (name === '') throw new DataError('invalid-argument', '世界书名称不能为空');
+  if (name.length > 60) throw new DataError('invalid-argument', '世界书名称过长（最多 60 字）');
+  return {
+    name,
+    description: (draft.description ?? '').trim(),
+    characterIds: [...new Set(draft.characterIds ?? [])],
+    enabled: draft.enabled !== false,
+  };
+}
+
+/** 关键词：去空白、去重、丢掉空串。 */
+export function normalizeLoreKeys(keys: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const key of keys) {
+    const clean = key.trim();
+    if (clean === '' || seen.has(clean)) continue;
+    seen.add(clean);
+    out.push(clean);
+  }
+  return out;
+}
+
+export function validateLoreEntryDraft(draft: LoreEntryDraft): Required<Omit<LoreEntryDraft, 'id'>> {
+  const keys = normalizeLoreKeys(draft.keys ?? []);
+  const constant = draft.constant === true;
+  if (keys.length === 0 && !constant) {
+    throw new DataError('invalid-argument', '条目至少要有一个关键词（常量条目可以没有）');
+  }
+  const content = (draft.content ?? '').trim();
+  if (content === '') throw new DataError('invalid-argument', '条目正文不能为空');
+  return {
+    lorebookId: draft.lorebookId,
+    keys,
+    secondaryKeys: normalizeLoreKeys(draft.secondaryKeys ?? []),
+    content,
+    enabled: draft.enabled !== false,
+    order: Number.isFinite(draft.order) ? Number(draft.order) : 100,
+    caseSensitive: draft.caseSensitive === true,
+    recursive: draft.recursive !== false,
+    depth: Number.isFinite(draft.depth) && Number(draft.depth) > 0 ? Math.floor(Number(draft.depth)) : 0,
+    constant,
+  };
 }
 
 export function validateMessageRole(role: string): MessageRole {
