@@ -280,7 +280,7 @@ fn settings_get(store: &Store, args: &[Value]) -> Result<Value, WireErrorPayload
     if key.is_empty() {
         return Err(WireErrorPayload::new("invalid-argument", "缺少设置键"));
     }
-    let value = store.get_setting(&key).map_err(store_error)?;
+    let value = store.get_setting_for_ui(&key).map_err(store_error)?;
     Ok(json!({ "value": value }))
 }
 
@@ -341,12 +341,18 @@ static STORE_METHODS: &[MethodDef] = &[
     MethodDef { name: "probe", kind: "call", description: "SQLite 探针（路径/日志模式/页大小/条数）", call: Some(store_probe), stream: None },
 ];
 
+static CHAT_METHODS: &[MethodDef] = &[
+    MethodDef { name: "reply", kind: "stream", description: "以会话的角色设定与历史为输入，流式产出回复", call: None, stream: Some(crate::chat::chat_reply) },
+    MethodDef { name: "probe", kind: "call", description: "连通性自检：地址/密钥/模型名是否可用", call: Some(crate::chat::chat_probe), stream: None },
+];
+
 pub static SERVICES: &[ServiceDef] = &[
     ServiceDef { name: "shell", description: "宿主自身的能力", methods: SHELL_METHODS },
     ServiceDef { name: "characters", description: "角色卡（名字/描述/性格/场景/开场白/示例）", methods: CHARACTER_METHODS },
     ServiceDef { name: "sessions", description: "会话（属于某个角色）", methods: SESSION_METHODS },
     ServiceDef { name: "messages", description: "消息（属于某个会话）", methods: MESSAGE_METHODS },
-    ServiceDef { name: "settings", description: "应用设置（键值）", methods: SETTINGS_METHODS },
+    ServiceDef { name: "settings", description: "应用设置（键值；密钥只回掩码）", methods: SETTINGS_METHODS },
+    ServiceDef { name: "chat", description: "模型调用（宿主侧发出，密钥不进前端）", methods: CHAT_METHODS },
     ServiceDef { name: "store", description: "底层存储探针", methods: STORE_METHODS },
 ];
 

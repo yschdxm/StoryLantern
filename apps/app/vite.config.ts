@@ -21,6 +21,10 @@ const PORT = 15199;
 
 export default defineConfig({
   plugins: [react()],
+  // 构建时间戳打进界面：装到设备上"改了没生效"时，一眼就能确认跑的是哪一版
+  define: {
+    __BUILD_STAMP__: JSON.stringify(new Date().toISOString().slice(0, 16).replace('T', ' ')),
+  },
   build: {
     outDir: 'dist',
     emptyOutDir: true,

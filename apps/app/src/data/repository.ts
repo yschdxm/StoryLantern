@@ -94,8 +94,34 @@ export function validateMessageRole(role: string): MessageRole {
   throw new DataError('invalid-argument', `未知的消息角色：${role}`);
 }
 
-/** 会话列表/聊天气泡共用的时间显示：刚刚 / 12:05 / 昨天 / 3月8日 */
-export function formatTime(timestamp: number, now = Date.now()): string {
+/**
+ * 本地端点（局域网/本机）通常不需要 API Key。
+ *
+ * 这条规则与 Rust 侧 `chat.rs` 的 `is_local_endpoint` 必须一致——否则会出现
+ * "宿主愿意调用、界面却还把发送按钮禁着"的不一致。
+ */
+export function isLocalEndpoint(url: string): boolean {
+  const lower = url.toLowerCase();
+  return (
+    lower.includes('127.0.0.1') ||
+    lower.includes('localhost') ||
+    lower.includes('10.0.2.2') ||
+    lower.includes('192.168.') ||
+    lower.includes('10.0.') ||
+    lower.startsWith('http://[') // IPv6 本机
+  );
+}
+
+/** 模型是否已配置到"可以发话"的程度。 */
+export function isModelConfigured(settings: Record<string, string>): boolean {
+  const baseUrl = (settings['model.base_url'] ?? '').trim();
+  const model = (settings['model.name'] ?? '').trim();
+  const apiKey = settings['model.api_key'] ?? '';
+  if (baseUrl === '' || model === '') return false;
+  return apiKey !== '' || isLocalEndpoint(baseUrl);
+}
+
+/** 会话列表/聊天气泡共用的时间显示：刚刚 / 12:05 / 昨天 / 3月8日 */export function formatTime(timestamp: number, now = Date.now()): string {
   if (timestamp <= 0) return '';
   const date = new Date(timestamp);
   const diff = now - timestamp;

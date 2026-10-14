@@ -1,0 +1,78 @@
+#!/usr/bin/env node
+/**
+ * 本地假模型服务（OpenAI 兼容，仅用于验证"聊天链路真的通了"）。
+ *
+ * 它按 SSE 逐字吐一段固定文本，因此能验证整条链路：
+ *   设置 → Rust 读密钥 → HTTP 请求 → SSE 解析 → 分片落库 → Channel → 界面气泡
+ *
+ * 用法：node scripts/mock-openai.mjs [port]
+ * 然后在 App 设置里把接口地址填成 http://10.0.2.2:<port>/v1（模拟器里的宿主机别名）。
+ */
+import http from 'node:http';
+
+const port = Number(process.argv[2] ?? 15198);
+const REPLY = '风从北面来。铜铃响的时候，别回头——这是我唯一能确定的事。';
+
+const server = http.createServer((request, response) => {
+  if (!request.url?.includes('/chat/completions')) {
+    response.writeHead(404, { 'content-type': 'application/json' });
+    response.end(JSON.stringify({ error: { message: `未知路径 ${request.url}` } }));
+    return;
+  }
+
+  let body = '';
+  request.on('data', (chunk) => {
+    body += chunk;
+  });
+  request.on('end', () => {
+    let payload = {};
+    try {
+      payload = JSON.parse(body);
+    } catch {
+      // 忽略：假服务不校验请求体
+    }
+    console.log(`[mock-openai] ${request.method} ${request.url} model=${payload.model ?? '?'} stream=${payload.stream ?? false}`);
+
+    if (payload.stream !== true) {
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(
+        JSON.stringify({
+          id: 'mock-1',
+          object: 'chat.completion',
+          model: payload.model ?? 'mock',
+          choices: [{ index: 0, message: { role: 'assistant', content: REPLY }, finish_reason: 'stop' }],
+        }),
+      );
+      return;
+    }
+
+    response.writeHead(200, {
+      'content-type': 'text/event-stream',
+      'cache-control': 'no-cache',
+      connection: 'keep-alive',
+    });
+
+    const characters = [...REPLY];
+    let index = 0;
+    const timer = setInterval(() => {
+      if (index >= characters.length) {
+        clearInterval(timer);
+        response.write('data: [DONE]\n\n');
+        response.end();
+        console.log(`[mock-openai] 流式结束，共 ${characters.length} 片`);
+        return;
+      }
+      const delta = characters[index];
+      index += 1;
+      response.write(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: delta } }] })}\n\n`);
+    }, 45);
+
+    // 注意：必须挂在 response 上，不能挂在 request 上——request 的 'close' 在请求体读完时
+    // 就会触发，那样会在第一个分片之前就把定时器清掉，响应永不结束（客户端一直"生成中"）。
+    response.on('close', () => clearInterval(timer));
+  });
+});
+
+server.listen(port, '127.0.0.1', () => {
+  console.log(`[mock-openai] listening on http://127.0.0.1:${port}/v1（模拟器里用 http://10.0.2.2:${port}/v1）`);
+});

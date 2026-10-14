@@ -19,6 +19,8 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # bundled：把 SQLite 源码一起编进来，不依赖系统 sqlite（Android 上没有可链接的系统 sqlite）
 rusqlite = { version = "0.37", features = ["bundled"] }
+# 模型调用在宿主侧进行：密钥只落在宿主数据库里，前端拿不到也进不了日志
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 
 [features]
 # 由 tauri 官方模板约定：custom-protocol 用于生产构建

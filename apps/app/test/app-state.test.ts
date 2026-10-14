@@ -1,0 +1,149 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { activeTabName, isRootRoute, parentOf, parseRoute, routeToHash, TABS } from '../src/app/router.ts';
+import { createAppStore } from '../src/app/state.ts';
+import { createMemoryRepository } from '../src/data/memory-repository.ts';
+
+// ---------------------------------------------------------------- 路由
+
+test('路由：hash 与 Route 往返一致，脏输入回落到根页面', () => {
+  const routes = [
+    { name: 'sessions' } as const,
+    { name: 'characters' } as const,
+    { name: 'settings' } as const,
+    { name: 'chat', sessionId: 12 } as const,
+    { name: 'character', characterId: 7 } as const,
+    { name: 'character', characterId: 'new' } as const,
+  ];
+  for (const route of routes) {
+    assert.deepEqual(parseRoute(routeToHash(route)), route);
+  }
+
+  assert.deepEqual(parseRoute(''), { name: 'sessions' });
+  assert.deepEqual(parseRoute('#/'), { name: 'sessions' });
+  assert.deepEqual(parseRoute('#/nonsense'), { name: 'sessions' });
+  assert.deepEqual(parseRoute('#/chat/abc'), { name: 'sessions' });
+  assert.deepEqual(parseRoute('#/chat/0'), { name: 'sessions' });
+  assert.deepEqual(parseRoute('#/character/xyz'), { name: 'characters' });
+  assert.deepEqual(parseRoute('#/chat/9?from=x'), { name: 'chat', sessionId: 9 }, '查询串应被忽略');
+});
+
+test('路由：返回层级与底栏高亮归属', () => {
+  assert.deepEqual(parentOf({ name: 'chat', sessionId: 3 }), { name: 'sessions' });
+  assert.deepEqual(parentOf({ name: 'character', characterId: 'new' }), { name: 'characters' });
+  assert.equal(parentOf({ name: 'sessions' }), undefined, '根页面没有上一级（交给系统退出）');
+
+  assert.equal(isRootRoute({ name: 'sessions' }), true);
+  assert.equal(isRootRoute({ name: 'chat', sessionId: 1 }), false);
+
+  assert.equal(activeTabName({ name: 'chat', sessionId: 1 }), 'sessions');
+  assert.equal(activeTabName({ name: 'character', characterId: 1 }), 'characters');
+  assert.equal(activeTabName({ name: 'settings' }), 'settings');
+});
+
+test('路由：底栏正好三个根标签', () => {
+  assert.deepEqual(
+    TABS.map((tab) => tab.label),
+    ['会话', '角色', '设置'],
+  );
+  for (const tab of TABS) assert.equal(isRootRoute(tab.route), true);
+});
+
+// ---------------------------------------------------------------- 应用状态
+
+async function storeWithData() {
+  const repository = createMemoryRepository();
+  const store = createAppStore(repository);
+  await store.actions.refresh();
+  const character = await store.actions.saveCharacter({
+    name: '星野',
+    description: '夜巡的守望者',
+    firstMessage: '「进来吧，风会替你关门。」',
+  });
+  return { repository, store, character };
+}
+
+test('状态：refresh 拉起数据并把 status 置为 ready', async () => {
+  const { store } = await storeWithData();
+  const state = store.getState();
+  assert.equal(state.status, 'ready');
+  assert.deepEqual(state.characters.map((item) => item.name), ['星野']);
+  assert.equal(state.error, undefined);
+});
+
+test('状态：新建会话后列表出现该会话，进入聊天能读到开场白', async () => {
+  const { store, character } = await storeWithData();
+  const session = await store.actions.createSession(character.id);
+
+  assert.equal(store.getState().sessions[0]?.id, session.id);
+  assert.equal(store.getState().sessions[0]?.messageCount, 1);
+
+  await store.actions.loadMessages(session.id);
+  const state = store.getState();
+  assert.equal(state.activeSessionId, session.id);
+  assert.equal(state.messages[0]?.content, '「进来吧，风会替你关门。」');
+});
+
+test('状态：发送消息会落库并刷新会话列表摘要', async () => {
+  const { store, character } = await storeWithData();
+  const session = await store.actions.createSession(character.id);
+
+  await store.actions.send(session.id, '  风大吗  ');
+  const state = store.getState();
+  assert.deepEqual(
+    state.messages.map((message) => `${message.role}:${message.content}`),
+    ['assistant:「进来吧，风会替你关门。」', 'user:风大吗'],
+    '两端空白应被裁掉',
+  );
+  assert.equal(state.sessions[0]?.lastMessage, '风大吗');
+  assert.equal(state.sessions[0]?.messageCount, 2);
+  assert.equal(state.busy, undefined, '操作结束后 busy 必须清掉');
+});
+
+test('状态：空消息不落库', async () => {
+  const { store, character } = await storeWithData();
+  const session = await store.actions.createSession(character.id);
+  await store.actions.send(session.id, '   ');
+  assert.equal(store.getState().messages.length, 1, '只有开场白');
+});
+
+test('状态：删除会话会清空当前消息并退出该会话', async () => {
+  const { store, character } = await storeWithData();
+  const session = await store.actions.createSession(character.id);
+  await store.actions.loadMessages(session.id);
+
+  await store.actions.deleteSession(session.id);
+  const state = store.getState();
+  assert.deepEqual(state.sessions, []);
+  assert.deepEqual(state.messages, []);
+  assert.equal(state.activeSessionId, undefined, '删掉的会话不能还留在 activeSessionId');
+});
+
+test('状态：校验失败会变成可见错误，而不是把应用留成空白', async () => {
+  const { store } = await storeWithData();
+  await assert.rejects(() => store.actions.saveCharacter({ name: '   ' }));
+  const state = store.getState();
+  assert.match(state.error ?? '', /角色名不能为空/);
+  assert.equal(state.busy, undefined);
+  assert.equal(state.characters.length, 1, '失败不应破坏已有数据');
+});
+
+test('状态：设置写入后立即反映在 state 里', async () => {
+  const { store } = await storeWithData();
+  await store.actions.setSetting('model.base_url', 'https://api.example.com/v1');
+  assert.equal(store.getState().settings['model.base_url'], 'https://api.example.com/v1');
+});
+
+test('状态：订阅能收到状态变化，退订后不再收', async () => {
+  const { store } = await storeWithData();
+  const seen: number[] = [];
+  const off = store.subscribe((state) => seen.push(state.characters.length));
+  assert.equal(seen.length, 1, '订阅时立刻推一次当前状态');
+
+  await store.actions.refresh();
+  assert.ok(seen.length > 1);
+  off();
+  const before = seen.length;
+  await store.actions.refresh();
+  assert.equal(seen.length, before, '退订后不该再收到');
+});

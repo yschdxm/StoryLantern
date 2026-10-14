@@ -7,6 +7,7 @@
 //!
 //! 移动端与桌面共用同一份代码：`run()` 被 main.rs 与 mobile_entry_point 共用。
 
+mod chat;
 mod store;
 mod wire;
 

@@ -5,7 +5,7 @@ import { createTauriTransport } from '../../../packages/wire/src/tauri.ts';
 import { createHostRepository } from '../src/data/host-repository.ts';
 import { createLocalRepository, createMemoryKeyValue, loadState } from '../src/data/local-repository.ts';
 import { createMemoryRepository } from '../src/data/memory-repository.ts';
-import { DataError, formatTime, previewOf, type Repository } from '../src/data/repository.ts';
+import { DataError, formatTime, isLocalEndpoint, isModelConfigured, previewOf, type Repository } from '../src/data/repository.ts';
 
 /**
  * 同一套契约测试跑**三个实现**：内存（语义参考）、localStorage（持久化）、宿主（wire→Rust）。
@@ -289,10 +289,30 @@ test('宿主仓储：probe 暴露宿主存储信息（浏览器实现给的是�
   assert.equal((await browser.probe?.())?.path.includes('没有宿主数据库'), true);
 });
 
+// ---------------------------------------------------------------- 模型配置判定
+
+test('模型配置判定：远端要密钥、本地端点不需要（与 Rust 侧规则一致）', () => {
+  assert.equal(isModelConfigured({}), false);
+  assert.equal(isModelConfigured({ 'model.base_url': 'https://api.deepseek.com/v1' }), false, '缺模型名不算配置好');
+  assert.equal(
+    isModelConfigured({ 'model.base_url': 'https://api.deepseek.com/v1', 'model.name': 'deepseek-chat' }),
+    false,
+    '远端没有密钥不能发话',
+  );
+  assert.equal(
+    isModelConfigured({ 'model.base_url': 'https://api.deepseek.com/v1', 'model.name': 'deepseek-chat', 'model.api_key': 'sk-x' }),
+    true,
+  );
+  for (const local of ['http://127.0.0.1:8080/v1', 'http://localhost:1234/v1', 'http://10.0.2.2:15198/v1', 'http://192.168.1.9:5000/v1']) {
+    assert.equal(isLocalEndpoint(local), true, local);
+    assert.equal(isModelConfigured({ 'model.base_url': local, 'model.name': 'mock' }), true, `${local} 不需要密钥`);
+  }
+  assert.equal(isLocalEndpoint('https://api.deepseek.com/v1'), false);
+});
+
 // ---------------------------------------------------------------- 展示辅助
 
-test('时间与会话预览的展示规则', () => {
-  const now = new Date('2026-10-14T12:00:00').getTime();
+test('时间与会话预览的展示规则', () => {  const now = new Date('2026-10-14T12:00:00').getTime();
   assert.equal(formatTime(0), '');
   assert.equal(formatTime(now - 30_000, now), '刚刚');
   assert.equal(formatTime(now - 5 * 60_000, now), '5 分钟前');

@@ -1,63 +1,135 @@
 import { StrictMode, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { App } from './App.tsx';
+import { createTauriBridgeFromGlobal, createTauriTransport } from '../../../packages/wire/src/index.ts';
+import type { LocaleService } from '../../../packages/plugin-api/src/index.ts';
 import { createAppRuntime, type AppRuntime } from './composition.ts';
-import { createHostClient } from './host-panel.ts';
-import { buildViewModel, type ChatMessage } from './view-model.ts';
+import { createAppStore, type AppStore } from './app/state.ts';
+import { createRouter, isRootRoute, TABS, type Route } from './app/router.ts';
+import { createHostRepository } from './data/host-repository.ts';
+import { createChatClient } from './data/chat-client.ts';
+import { createBrowserRepository } from './data/local-repository.ts';
+import { SETTING_KEYS } from './data/types.ts';
+import type { Repository } from './data/repository.ts';
+import { createHostClient, type HostClient } from './host-panel.ts';
+import { AppShell } from './ui/AppShell.tsx';
+import { ScreenMenu } from './ui/ScreenMenu.tsx';
+import { SessionsScreen } from './screens/SessionsScreen.tsx';
+import { ChatScreen } from './screens/ChatScreen.tsx';
+import { CharactersScreen } from './screens/CharactersScreen.tsx';
+import { CharacterEditScreen } from './screens/CharacterEditScreen.tsx';
+import { SettingsScreen } from './screens/SettingsScreen.tsx';
 import './styles.css';
 
 /**
- * 宿主客户端在模块加载时确定一次：在 Tauri 里探测到 `window.__TAURI__` 就走 IPC，
- * 在浏览器里则是"不可用"的降级实现（面板会说明这一点，而不是假装有宿主）。
+ * 启动：
+ *  1. 选仓储——在 Tauri 里走宿主 SQLite，在浏览器里走 localStorage（同一套行为，契约测试保证）；
+ *  2. 组合插件（core bundle），拿到 locale 等服务；失败也不阻断界面（只是没有多语言）；
+ *  3. 挂外壳 + 按路由渲染页面。
  */
-const host = createHostClient();
+const bridge = createTauriBridgeFromGlobal();
+const transport = bridge === undefined ? undefined : createTauriTransport({ bridge });
+const repository: Repository = transport === undefined ? createBrowserRepository() : createHostRepository(transport);
+const host: HostClient = createHostClient(bridge);
+const chat = createChatClient(transport);
+const store: AppStore = createAppStore(repository);
+const router = createRouter();
 
-/**
- * 演示数据：刻意写成长句，好让默认预算（用户 patch 里调成 256）真的裁掉历史块，
- * 从而在界面上直接看到"被裁掉 + 理由"。
- */
-const DEMO_MESSAGES: ChatMessage[] = [
-  { id: 'm1', author: 'user', text: '风从北面灌进走廊，把灯芯压得只剩一线。我把地图摊在桌上，指给你看那道被雪埋了半个冬天的隘口，说我们必须在第三次钟响之前翻过去。' },
-  { id: 'm2', author: 'character', text: '星野没有立刻回答。她先用指尖把地图上的折痕一点点抚平，像是在抚平一件旧事的褶皱，然后才抬起眼，说那条路她走过一次，代价是丢了一个名字。' },
-  { id: 'm3', author: 'user', text: '我把怀里那枚铜铃放在桌上。铃身有一道细缝，是那年冬天留下的。我问她，认不认得这个声音——如果认得，那我们就还有别的走法。' },
-  { id: 'm4', author: 'character', text: '她终于笑了，笑意很浅，像雪线之上偶然露出的天光。她说认得，然后从袖中抽出一张更旧的地图，上面用褪色的墨标着一条没有名字的河。' },
-  { id: 'm5', author: 'user', text: '我把灯芯挑高了些，让那条河在纸上显出来。河道的走向和隘口几乎是平行的，只是要穿过一片没有人愿意过夜的松林。' },
-  { id: 'm6', author: 'character', text: '她说松林里有别的东西在听，能听见人心里最想留住的名字。她问我，愿不愿意用一半的路程换一个不会丢的名字。' },
-];
+interface Boot {
+  runtime?: AppRuntime;
+  locale?: LocaleService;
+}
 
-function Root() {
-  const [runtime, setRuntime] = useState<AppRuntime | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [revision, setRevision] = useState(0);
+const TITLES: Record<Route['name'], string> = {
+  sessions: '会话',
+  characters: '角色',
+  settings: '设置',
+  chat: '聊天',
+  character: '角色',
+};
+
+function Root(): ReturnType<typeof AppShell> {
+  const [route, setRoute] = useState<Route>(() => router.current());
+  const [boot, setBoot] = useState<Boot>({});
+  const [state, setState] = useState(() => store.getState());
+
+  useEffect(() => router.subscribe(setRoute), []);
+  useEffect(() => store.subscribe(setState), []);
 
   useEffect(() => {
-    createAppRuntime()
-      .then(setRuntime)
-      .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)));
+    void store.actions.refresh();
+    // 插件组合：拿到 locale 与插件清单（界面里的"已激活的插件"就是它）
+    void createAppRuntime()
+      .then((runtime) => setBoot({ runtime, locale: runtime.locale }))
+      .catch(() => setBoot({}));
   }, []);
 
-  if (error !== null) return <pre className="error">{error}</pre>;
-  if (runtime === null) return <p className="loading">正在组合插件…</p>;
+  // 主题：跟随设置（深色为默认）
+  useEffect(() => {
+    const theme = state.settings[SETTING_KEYS.theme] ?? 'dark';
+    document.documentElement.dataset['theme'] = theme === '' ? 'dark' : theme;
+  }, [state.settings]);
 
-  const viewModel = buildViewModel({
-    locale: runtime.locale,
-    assemble: runtime.assemble,
-    messages: DEMO_MESSAGES,
-    characterName: '星野',
-    locales: runtime.locale.locales(),
-    plugins: runtime.tracker.list().map((outcome) => ({ id: outcome.id, status: outcome.status })),
-  });
+  const session = route.name === 'chat' ? state.sessions.find((item) => item.id === route.sessionId) : undefined;
+  const title =
+    route.name === 'chat'
+      ? (session?.title ?? TITLES.chat)
+      : route.name === 'character'
+        ? route.characterId === 'new'
+          ? '新建角色'
+          : '编辑角色'
+        : TITLES[route.name];
 
   return (
-    <App
-      key={revision}
-      viewModel={viewModel}
-      host={host}
-      onChangeLocale={(next) => {
-        runtime.locale.setLocale(next);
-        setRevision((value) => value + 1);
-      }}
-    />
+    <AppShell
+      route={route}
+      title={title}
+      {...(route.name === 'chat' && session !== undefined && session.title !== session.characterName
+        ? { subtitle: session.characterName }
+        : {})}
+      {...(isRootRoute(route) ? {} : { onBack: () => router.back() })}
+      actions={<ScreenMenu route={route} store={store} onDeleted={() => router.navigate({ name: 'sessions' })} />}
+      onNavigate={(next) => router.navigate(next)}
+      layout={route.name === 'chat' ? 'fill' : 'scroll'}
+      hideTabs={route.name === 'chat' || route.name === 'character'}
+    >
+      {route.name === 'sessions' && <SessionsScreen store={store} router={router} host={host} chat={chat} />}
+      {route.name === 'characters' && <CharactersScreen store={store} router={router} host={host} chat={chat} />}
+      {route.name === 'settings' && (
+        <SettingsScreen
+          store={store}
+          router={router}
+          host={host}
+          chat={chat}
+          plugins={boot.runtime?.tracker.list().map((outcome) => ({ id: outcome.id, status: outcome.status })) ?? []}
+          locales={boot.locale?.locales() ?? []}
+          onLocaleChange={(next) => {
+            boot.locale?.setLocale(next);
+            void store.actions.setSetting(SETTING_KEYS.locale, next);
+            setBoot((current) => ({ ...current }));
+          }}
+        />
+      )}
+      {route.name === 'chat' && (
+        <ChatScreen
+          store={store}
+          router={router}
+          host={host}
+          chat={chat}
+          sessionId={route.sessionId}
+          onOpenSettings={() => router.navigate({ name: 'settings' })}
+        />
+      )}
+      {route.name === 'character' && (
+        <CharacterEditScreen
+          store={store}
+          router={router}
+          host={host}
+          chat={chat}
+          characterId={route.characterId}
+          onDone={() => router.navigate({ name: 'characters' }, { replace: true })}
+        />
+      )}
+    </AppShell>
   );
 }
 
@@ -68,3 +140,6 @@ createRoot(container).render(
     <Root />
   </StrictMode>,
 );
+
+// 让底栏标签常量在编译期有用（AppShell 直接用 TABS，这里避免 tree-shaking 误删类型导出）
+export type { TABS };

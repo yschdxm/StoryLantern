@@ -458,6 +458,37 @@ impl Store {
         }
     }
 
+    /// 给界面看的设置值：密钥类只回掩码，**前端永远拿不到明文**（模型调用在宿主侧读）。
+    pub fn get_setting_for_ui(&self, key: &str) -> Result<Option<String>, String> {
+        let value = self.get_setting(key)?;
+        match value {
+            Some(raw) if is_secret_key(key) => Ok(Some(if raw.is_empty() { String::new() } else { "••••••".to_string() })),
+            other => Ok(other),
+        }
+    }
+
+    /// 会话所属的角色（用于组装系统提示）。
+    pub fn session_character(&self, session_id: i64) -> Result<Option<Character>, String> {
+        let conn = self.lock()?;
+        let character_id: Option<i64> = {
+            let mut statement = conn
+                .prepare("SELECT character_id FROM sessions WHERE id=?1")
+                .map_err(|error| format!("查询失败：{error}"))?;
+            let mut rows = statement
+                .query(params![session_id])
+                .map_err(|error| format!("查询失败：{error}"))?;
+            match rows.next().map_err(|error| format!("读取失败：{error}"))? {
+                Some(row) => Some(row.get(0).map_err(|error| format!("读取失败：{error}"))?),
+                None => None,
+            }
+        };
+        drop(conn);
+        match character_id {
+            Some(id) => self.get_character(id),
+            None => Ok(None),
+        }
+    }
+
     pub fn set_setting(&self, key: &str, value: &str) -> Result<(), String> {
         let conn = self.lock()?;
         conn.execute(
