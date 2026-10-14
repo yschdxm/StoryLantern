@@ -37,8 +37,25 @@ export interface SyncAdmin {
 }
 
 export interface OpLogAdmin {
-  stats(): Promise<{ count: number; lastSeq: number; devices: number; bytes: number; corrupt: number }>;
+  stats(): Promise<{
+    count: number;
+    lastSeq: number;
+    devices: number;
+    bytes: number;
+    corrupt: number;
+    load?: { mode: 'snapshot' | 'replay'; ms: number; covered: number; tail: number; problem?: string };
+  }>;
   rebuild(): Promise<{ ops: number; characters: number; sessions: number; messages: number }>;
+  /**
+   * 实体数量**从 op 日志派生**。
+   *
+   * 为什么要单独给：宿主自检里的 `characters/sessions/messages` 读的是 M1 之前的旧表，
+   * 迁移之后那些数字就冻住了。开发者面板如果继续显示它们，会让人以为数据没写进去。
+   */
+  counts(): Promise<{ characters: number; sessions: number; messages: number }>;
+  /** 生成冷启动快照（日志不动）；没有设备本地存储时不可用。 */
+  createSnapshot?(): Promise<{ upToHlc: { t: number; c: number }; opCount: number; digest: string; lastSeq: number }>;
+  clearSnapshot?(): Promise<void>;
 }
 
 /** 订阅 store：只在引用变化时重渲染（状态本身是不可变替换的）。 */

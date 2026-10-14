@@ -21,8 +21,28 @@ export function HostPanel({ client, ops }: HostPanelProps) {
   const [notice, setNotice] = useState<string | null>(null);
   const [streamed, setStreamed] = useState<{ text: string; chunks: number; cancelled: boolean } | null>(null);
   const [controller, setController] = useState<AbortController | null>(null);
-  const [logStats, setLogStats] = useState<{ count: number; lastSeq: number; devices: number; bytes: number; corrupt: number } | undefined>(undefined);
+  const [logStats, setLogStats] = useState<
+    | {
+        count: number;
+        lastSeq: number;
+        devices: number;
+        bytes: number;
+        corrupt: number;
+        load?: { mode: 'snapshot' | 'replay'; ms: number; covered: number; tail: number; problem?: string };
+      }
+    | undefined
+  >(undefined);
   const [rebuilt, setRebuilt] = useState<string | undefined>(undefined);
+  const [snapshotNotice, setSnapshotNotice] = useState<string | undefined>(undefined);
+  const [counts, setCounts] = useState<{ characters: number; sessions: number; messages: number } | undefined>(undefined);
+
+  useEffect(() => {
+    if (ops === undefined || ops.counts === undefined) return;
+    void ops
+      .counts()
+      .then(setCounts)
+      .catch(() => setCounts(undefined));
+  }, [ops]);
 
   useEffect(() => {
     if (ops === undefined) return;
@@ -99,12 +119,26 @@ export function HostPanel({ client, ops }: HostPanelProps) {
           <code>{view.sqlite.writable ? t('dev.writable.yes') : t('dev.writable.no')}</code>
           <span>{t('dev.volume')}</span>
           <code>
-            {t('dev.volume.counts', {
-              characters: t('count.characters', { count: view.sqlite.characters }),
-              sessions: t('count.sessions', { count: view.sqlite.sessions }),
-              messages: t('count.messages', { count: view.sqlite.messages }),
-            })}
+            {counts === undefined
+              ? t('dev.volume.loading')
+              : t('dev.volume.counts', {
+                  characters: t('count.characters', { count: counts.characters }),
+                  sessions: t('count.sessions', { count: counts.sessions }),
+                  messages: t('count.messages', { count: counts.messages }),
+                })}
           </code>
+          {view.sqlite.characters + view.sqlite.sessions + view.sqlite.messages > 0 && (
+            <>
+              <span>{t('dev.legacy')}</span>
+              <code>
+                {t('dev.volume.counts', {
+                  characters: view.sqlite.characters,
+                  sessions: view.sqlite.sessions,
+                  messages: view.sqlite.messages,
+                })}
+              </code>
+            </>
+          )}
           {view.streamStats !== undefined && (
             <>
               <span>{t('dev.emits')}</span>
@@ -129,6 +163,22 @@ export function HostPanel({ client, ops }: HostPanelProps) {
               <>
                 <span>{t('dev.oplog.corrupt')}</span>
                 <code>{logStats.corrupt}</code>
+              </>
+            )}
+            {logStats.load !== undefined && (
+              <>
+                <span>{t('dev.oplog.load')}</span>
+                <code>
+                  {logStats.load.mode === 'snapshot'
+                    ? t('dev.oplog.load.snapshot', { covered: logStats.load.covered, tail: logStats.load.tail, ms: logStats.load.ms })
+                    : t('dev.oplog.load.replay', { ms: logStats.load.ms })}
+                </code>
+                {logStats.load.problem !== undefined && (
+                  <>
+                    <span>{t('dev.oplog.load.problem')}</span>
+                    <code>{logStats.load.problem}</code>
+                  </>
+                )}
               </>
             )}
           </div>
@@ -158,6 +208,44 @@ export function HostPanel({ client, ops }: HostPanelProps) {
             </button>
             {rebuilt !== undefined && <span className="muted">{rebuilt}</span>}
           </div>
+          {ops.createSnapshot !== undefined && (
+            <div className="row">
+              <button
+                type="button"
+                className="btn btn--ghost"
+                onClick={() => {
+                  // 快照只加速下次冷启动；日志不动，所以这里没有"丢数据"的风险
+                  setSnapshotNotice(undefined);
+                  void ops
+                    .createSnapshot?.()
+                    .then((info) =>
+                      setSnapshotNotice(t('dev.oplog.snapshot.created', { ops: info.opCount, digest: info.digest })),
+                    )
+                    .catch((cause: unknown) => setSnapshotNotice(cause instanceof Error ? cause.message : String(cause)))
+                    .then(() => ops.stats().then(setLogStats));
+                }}
+              >
+                {t('dev.oplog.snapshot.create')}
+              </button>
+              {ops.clearSnapshot !== undefined && (
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={() => {
+                    setSnapshotNotice(undefined);
+                    void ops
+                      .clearSnapshot?.()
+                      .then(() => setSnapshotNotice(t('dev.oplog.snapshot.cleared')))
+                      .catch((cause: unknown) => setSnapshotNotice(cause instanceof Error ? cause.message : String(cause)))
+                      .then(() => ops.stats().then(setLogStats));
+                  }}
+                >
+                  {t('dev.oplog.snapshot.clear')}
+                </button>
+              )}
+              {snapshotNotice !== undefined && <span className="muted">{snapshotNotice}</span>}
+            </div>
+          )}
         </>
       )}
 

@@ -47,6 +47,8 @@ const ports = transport === undefined ? createDefaultLocalOpPorts() : createWire
 const repository: Repository = createOpLogRepository({
   ops: ports.ops,
   settings: ports.settings,
+  // 快照放在设备本地 kv：它是派生数据，不进日志、不参与同步
+  device: ports.device,
   deviceId: () => resolveDeviceId(ports.settings),
   ...(ports.loadLegacy === undefined ? {} : { loadLegacy: ports.loadLegacy }),
 });
@@ -55,7 +57,15 @@ const chat = createChatClient(transport);
 const opLogRepository = repository as Partial<OpLogRepository>;
 const opAdmin: OpLogAdmin | undefined =
   typeof opLogRepository.logStats === 'function' && typeof opLogRepository.rebuild === 'function'
-    ? { stats: () => opLogRepository.logStats!(), rebuild: () => opLogRepository.rebuild!() }
+    ? {
+        stats: () => opLogRepository.logStats!(),
+        rebuild: () => opLogRepository.rebuild!(),
+        counts: () => opLogRepository.counts!(),
+        ...(typeof opLogRepository.createSnapshot === 'function'
+          ? { createSnapshot: () => opLogRepository.createSnapshot!() }
+          : {}),
+        ...(typeof opLogRepository.clearSnapshot === 'function' ? { clearSnapshot: () => opLogRepository.clearSnapshot!() } : {}),
+      }
     : undefined;
 const opRepositoryForSync = opLogRepository as OpLogRepository;
 const store: AppStore = createAppStore(repository);

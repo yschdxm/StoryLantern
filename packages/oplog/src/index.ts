@@ -70,6 +70,16 @@ export {
 export { listLorebooks, listLoreEntries } from './lorebook-projection.ts';
 export { listMemories, memoriesFor } from './memory-projection.ts';
 export {
+  SnapshotBlobError,
+  canonicalJson,
+  checkpointOp,
+  stateDigest,
+  validateStateSnapshot,
+  type CheckpointPayload,
+  type CheckpointRecord,
+  type StateSnapshot,
+} from './checkpoint.ts';
+export {
   memoryDelete,
   memoryUpsert,
   type MemoryAuthor,
