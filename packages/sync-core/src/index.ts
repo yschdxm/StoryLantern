@@ -108,3 +108,14 @@ export {
 } from './state.ts';
 export { chunkOps, estimateBatchBytes } from './chunk.ts';
 export { collectTrash, type CollectInput, type CollectResult } from './gc.ts';
+
+export {
+  verifySigned,
+  signingPayload,
+  toHex,
+  fromHex,
+  type SignerPort,
+  type SigningAlgorithm,
+  type SignedEnvelope,
+  type VerifyOutcome,
+} from './signing.ts';
