@@ -31,6 +31,7 @@ import { CharactersScreen } from './screens/CharactersScreen.tsx';
 import { LoreScreen } from './screens/LoreScreen.tsx';
 import { LorebookScreen } from './screens/LorebookScreen.tsx';
 import { MemoriesScreen } from './screens/MemoriesScreen.tsx';
+import { FactsScreen } from './screens/FactsScreen.tsx';
 import { CharacterEditScreen } from './screens/CharacterEditScreen.tsx';
 import { SettingsScreen } from './screens/SettingsScreen.tsx';
 import { ImportScreen } from './screens/ImportScreen.tsx';
@@ -284,7 +285,7 @@ function Root(): ReturnType<typeof AppShell> {
         onNavigate={(next) => router.navigate(next)}
         layout={route.name === 'chat' ? 'fill' : 'scroll'}
         hideTabs={
-          route.name === 'chat' || route.name === 'character' || route.name === 'import' || route.name === 'lorebook' || route.name === 'memories'
+          route.name === 'chat' || route.name === 'character' || route.name === 'import' || route.name === 'lorebook' || route.name === 'memories' || route.name === 'facts'
         }
       >
         {route.name === 'sessions' && <SessionsScreen store={store} router={router} host={host} chat={chat} />}
@@ -292,6 +293,9 @@ function Root(): ReturnType<typeof AppShell> {
         {route.name === 'lore' && <LoreScreen store={store} router={router} host={host} chat={chat} />}
         {route.name === 'lorebook' && (
           <LorebookScreen store={store} router={router} host={host} chat={chat} lorebookId={route.lorebookId} />
+        )}
+        {route.name === 'facts' && (
+          <FactsScreen store={store} router={router} host={host} chat={chat} characterId={route.characterId} />
         )}
         {route.name === 'memories' && (
           <MemoriesScreen store={store} router={router} host={host} chat={chat} characterId={route.characterId} />

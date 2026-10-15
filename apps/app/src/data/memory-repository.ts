@@ -20,6 +20,8 @@ import { createLocalLoreStore } from './local-lore-store.ts';
 import { createLocalMemoryStore } from './local-memory-store.ts';
 import { createLocalSummaryStore } from './local-summary-store.ts';
 import type { Summary, SummaryStore } from './summary-types.ts';
+import { createLocalFactStore } from './local-fact-store.ts';
+import type { Fact, FactStore } from './fact-types.ts';
 import type {
   Character,
   CharacterDraft,
@@ -55,12 +57,13 @@ export interface RepositoryState {
   lorebooks: Lorebook[];
   memories: Memory[];
   summaries: Summary[];
+  facts: Fact[];
   settings: SettingsMap;
   sequence: number;
 }
 
 export function emptyState(): RepositoryState {
-  return { characters: [], sessions: [], messages: [], lorebooks: [], memories: [], summaries: [], settings: {}, sequence: 0 };
+  return { characters: [], sessions: [], messages: [], lorebooks: [], memories: [], summaries: [], facts: [], settings: {}, sequence: 0 };
 }
 
 export interface MemoryRepositoryOptions {
@@ -85,6 +88,7 @@ export function createMemoryRepository(
     lorebooks: (initial.lorebooks ?? []).map((book) => ({ ...book, entries: book.entries.map((entry) => ({ ...entry })) })),
     memories: (initial.memories ?? []).map((memory) => ({ ...memory, keys: [...memory.keys], sourceMessageIds: [...memory.sourceMessageIds] })),
     summaries: (initial.summaries ?? []).map((summary) => ({ ...summary, covers: [...summary.covers] })),
+    facts: (initial.facts ?? []).map((fact) => ({ ...fact, sourceMessageIds: [...fact.sourceMessageIds] })),
     settings: { ...initial.settings },
     sequence: initial.sequence,
   };
@@ -334,6 +338,7 @@ export function createMemoryRepository(
   });
 
   const summaries: SummaryStore = createLocalSummaryStore({ state, now: () => now(), commit });
+  const facts: FactStore = createLocalFactStore({ state, now: () => now(), commit });
 
   return {
     kind: 'local',
@@ -343,6 +348,7 @@ export function createMemoryRepository(
     lorebooks,
     memories,
     summaries,
+    facts,
     settings,
     async probe(): Promise<ProbeInfo> {
       return {
@@ -363,6 +369,7 @@ export function createMemoryRepository(
       lorebooks: state.lorebooks.map(copyBook),
       memories: state.memories.map((memory) => ({ ...memory, keys: [...memory.keys], sourceMessageIds: [...memory.sourceMessageIds] })),
       summaries: state.summaries.map((summary) => ({ ...summary, covers: [...summary.covers] })),
+      facts: state.facts.map((fact) => ({ ...fact, sourceMessageIds: [...fact.sourceMessageIds] })),
       settings: { ...state.settings },
       sequence: state.sequence,
     }),

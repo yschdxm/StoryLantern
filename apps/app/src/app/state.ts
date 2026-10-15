@@ -1,6 +1,7 @@
 import type { MessageDraft, Repository } from '../data/repository.ts';
 import { DataError } from '../data/repository.ts';
 import type { Summary, SummaryDraft } from '../data/summary-types.ts';
+import type { Fact, FactDraft } from '../data/fact-types.ts';
 import type {
   Character,
   CharacterDraft,
@@ -33,6 +34,8 @@ export interface AppState {
   lorebooks: Lorebook[];
   /** 所有长期记忆；同样在这里按角色筛。 */
   memories: Memory[];
+  /** 设定库事实（M4）；界面按角色筛。 */
+  facts: Fact[];
   activeSessionId?: string;
   settings: SettingsMap;
   /** 正在写库的操作名（用于按钮禁用/局部 loading）。 */
@@ -81,6 +84,10 @@ export interface AppActions {
   summariesOf(sessionId: string): Promise<Summary[]>;
   /** 一次写入若干条摘要（编排层算出来的目标 + 生成的文本）。 */
   saveSummaries(sessionId: string, drafts: readonly SummaryDraft[]): Promise<Summary[]>;
+  /** 设定库（M4）：某个角色能看到的事实（含全局）。 */
+  factsOf(characterId?: string): Promise<Fact[]>;
+  /** 一次写入若干条事实（抽取的提议、采纳/拒绝都走这里：只是 state 不同）。 */
+  saveFacts(drafts: readonly FactDraft[]): Promise<Fact[]>;
   deleteMemory(id: string): Promise<void>;
 }
 
@@ -97,6 +104,7 @@ const INITIAL: AppState = {
   messages: [],
   lorebooks: [],
   memories: [],
+  facts: [],
   settings: {},
 };
 
@@ -210,7 +218,7 @@ export function createAppStore(repository: Repository): AppStore {
     },
 
     async refreshMemories() {
-      set({ memories: await repository.memories.list() });
+      set({ memories: await repository.memories.list(), facts: await repository.facts.list() });
     },
 
     async summariesOf(sessionId) {
@@ -220,6 +228,15 @@ export function createAppStore(repository: Repository): AppStore {
     async saveSummaries(sessionId, drafts) {
       if (drafts.length === 0) return [];
       return run('saveSummaries', () => repository.summaries.save(sessionId, drafts));
+    },
+
+    async factsOf(characterId) {
+      return run('factsOf', () => repository.facts.list(characterId));
+    },
+
+    async saveFacts(drafts) {
+      if (drafts.length === 0) return [];
+      return run('saveFacts', () => repository.facts.save(drafts));
     },
 
     async saveMemory(draft) {

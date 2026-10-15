@@ -166,6 +166,7 @@ export {
   provenanceLine,
   type ExportFactsOptions,
   type FactConflict,
+  type FactLike,
   type FactProposal,
   type LoreEntryDraft,
   type ParseFactsResult,

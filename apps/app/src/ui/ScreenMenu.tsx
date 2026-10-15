@@ -45,6 +45,14 @@ export function ScreenMenu({
           }}
         />
         <SheetItem
+          icon="book"
+          label={t('facts.menu')}
+          onClick={() => {
+            setOpen(false);
+            onNavigate?.({ name: 'facts', characterId: session.characterId });
+          }}
+        />
+        <SheetItem
           icon="edit"
           label={t('sessions.rename.action')}
           onClick={() => {

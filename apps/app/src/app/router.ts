@@ -14,7 +14,8 @@ export type Route =
   | { name: 'chat'; sessionId: string }
   | { name: 'character'; characterId: string | 'new' }
   | { name: 'lorebook'; lorebookId: string }
-  | { name: 'memories'; characterId: string };
+  | { name: 'memories'; characterId: string }
+  | { name: 'facts'; characterId: string };
 
 export const ROOT_ROUTE: Route = { name: 'sessions' };
 
@@ -48,6 +49,10 @@ export function parseRoute(hash: string): Route {
       if (tail === undefined || tail === '') return { name: 'characters' };
       return { name: 'character', characterId: tail };
     }
+    case 'facts': {
+      if (tail === undefined || tail === '') return ROOT_ROUTE;
+      return { name: 'facts', characterId: tail };
+    }
     default:
       return ROOT_ROUTE;
   }
@@ -65,6 +70,8 @@ export function routeToHash(route: Route): string {
       return `#/lorebook/${route.lorebookId}`;
     case 'memories':
       return `#/memories/${route.characterId}`;
+    case 'facts':
+      return `#/facts/${route.characterId}`;
     case 'settings':
       return '#/settings';
     case 'import':

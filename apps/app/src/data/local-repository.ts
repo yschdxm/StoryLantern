@@ -58,6 +58,8 @@ export function loadState(store: KeyValueStore): RepositoryState {
       memories: Array.isArray(parsed.memories) ? parsed.memories : [],
       // 同一套兼容策略：旧数据没有摘要字段时按空数组读
       summaries: Array.isArray(parsed.summaries) ? parsed.summaries : [],
+      // 同一套兼容策略：旧数据没有设定库字段时按空数组读
+      facts: Array.isArray(parsed.facts) ? parsed.facts : [],
       settings: typeof parsed.settings === 'object' && parsed.settings !== null ? parsed.settings : {},
       sequence: typeof parsed.sequence === 'number' ? parsed.sequence : 0,
     };
@@ -78,6 +80,7 @@ export function createLocalRepository(store: KeyValueStore): Repository & { pers
     lorebooks: repository.lorebooks,
     memories: repository.memories,
     summaries: repository.summaries,
+    facts: repository.facts,
     settings: repository.settings,
     ...(repository.probe === undefined ? {} : { probe: repository.probe }),
     persist: () => store.write(STORAGE_KEY, JSON.stringify(repository.snapshot())),

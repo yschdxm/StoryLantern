@@ -1,6 +1,22 @@
 import type { FactRecord } from './state-types.ts';
 
 /**
+ * 冲突判断只需要这几个字段 —— 放宽成最小形状，应用层的视图（不该带 HLC / opId）可以直接传。
+ */
+export interface FactLike {
+  id: string;
+  subject: string;
+  predicate: string;
+  object: string;
+  state: 'proposed' | 'accepted' | 'rejected';
+  deleted?: unknown;
+  /** 下面三个字段冲突判断用不到，但导出世界书要用；放进同一个最小形状，免得再分两个类型。 */
+  text: string;
+  sourceMessageIds: readonly string[];
+  confidence?: number;
+}
+
+/**
  * 设定库的**纯逻辑**：解析模型输出、判断冲突、导出世界书条目、把 provenance 变可读。
  *
  * 这里没有网络、没有存储、没有界面 —— 因此可以确定性地测，也能被"评估"直接调用。
@@ -102,9 +118,9 @@ export interface FactConflict {
  * 这样每条都指得出具体是哪两句话打架；要合并展示是界面的事，但信息不在这里丢掉。
  * 已拒绝的不参与；同一对不重复。
  */
-export function conflictsOf(facts: readonly FactRecord[]): FactConflict[] {
+export function conflictsOf(facts: readonly FactLike[]): FactConflict[] {
   const alive = facts.filter((fact) => fact.deleted === undefined && fact.state !== 'rejected');
-  const groups = new Map<string, FactRecord[]>();
+  const groups = new Map<string, FactLike[]>();
   for (const fact of alive) {
     const key = `${fact.subject}\u0000${fact.predicate}`;
     groups.set(key, [...(groups.get(key) ?? []), fact]);
@@ -147,12 +163,12 @@ export interface ExportFactsOptions {
 }
 
 /** provenance 变成人能读的一行：**导出世界书时也带着**，这样条目本身可核对。 */
-export function provenanceLine(fact: Pick<FactRecord, 'sourceMessageIds'>, titles?: ReadonlyMap<string, string>): string {
+export function provenanceLine(fact: { sourceMessageIds: readonly string[] }, titles?: ReadonlyMap<string, string>): string {
   const parts = fact.sourceMessageIds.map((id) => (titles?.get(id) === undefined ? id : `${titles.get(id)}（${id}）`));
   return `来源：${parts.join('、')}`;
 }
 
-export function factsToLoreEntries(facts: readonly FactRecord[], options: ExportFactsOptions = {}): LoreEntryDraft[] {
+export function factsToLoreEntries(facts: readonly FactLike[], options: ExportFactsOptions = {}): LoreEntryDraft[] {
   const onlyAccepted = options.onlyAccepted ?? true;
   return facts
     .filter((fact) => fact.deleted === undefined && (!onlyAccepted || fact.state === 'accepted'))
