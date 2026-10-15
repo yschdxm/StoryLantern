@@ -1,5 +1,6 @@
 import type { Hlc } from './hlc.ts';
 import type { MessageAuthor } from './op.ts';
+import type { SummaryLevel } from './summary-ops.ts';
 
 /** 物化状态的记录类型。独立成文件，便于 protocol 层（快照/编解码）只依赖类型。 */
 
@@ -78,12 +79,32 @@ export interface CharacterRecord {
   deleted?: { hlc: Hlc; opId: string };
 }
 
+/**
+ * 分层摘要（M4）。与记忆/世界书同一套 LWW + 墓碑语义；`covers` 与 `contentHash` 是它与下层内容的连接：
+ * 指纹不同就说明下层被改过（见 summary-plan.ts 的失效传播）。
+ */
+export interface SummaryRecord {
+  id: string;
+  sessionId: string;
+  level: SummaryLevel;
+  covers: string[];
+  contentHash: string;
+  text: string;
+  createdBy: 'user' | 'model';
+  modelId?: string;
+  createdHlc: Hlc;
+  updatedHlc: Hlc;
+  opId: string;
+  deleted?: { hlc: Hlc; opId: string };
+}
+
 export interface MaterializedState {
   characters: Record<string, CharacterRecord>;
   sessions: Record<string, SessionRecord>;
   messages: Record<string, MessageRecord>;
   lorebooks: Record<string, LorebookRecord>;
   memories: Record<string, MemoryRecord>;
+  summaries: Record<string, SummaryRecord>;
   settings: Record<string, { value: unknown; hlc: Hlc; opId: string }>;
 }
 

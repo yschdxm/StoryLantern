@@ -87,6 +87,29 @@ export {
   type MemoryUpsertPayload,
 } from './memory-ops.ts';
 export {
+  summaryDelete,
+  summaryUpsert,
+  type SummaryDeletePayload,
+  type SummaryLevel,
+  type SummaryUpsertPayload,
+} from './summary-ops.ts';
+export {
+  applySummaryDelete,
+  applySummaryUpsert,
+  listSummaries,
+} from './summary-projection.ts';
+export {
+  DEFAULT_ARC_SIZE,
+  DEFAULT_SCENE_SIZE,
+  planSummaries,
+  staleSummaries,
+  summaryIdOf,
+  type SummaryMessage,
+  type SummaryPlanInput,
+  type SummaryTarget,
+} from './summary-plan.ts';
+export type { SummaryRecord } from './state-types.ts';
+export {
   Materializer,
   type CandidateRecord,
   type CharacterRecord,
