@@ -148,6 +148,8 @@ export function conflictsOf(facts: readonly FactLike[]): FactConflict[] {
 
 /** 世界书条目草稿：形状与 lore.entry.upsert 的 payload 对齐（写库由调用方做）。 */
 export interface LoreEntryDraft {
+  /** 来源事实 id：调用方据此派生**稳定**的条目 id，重复导出就是更新而不是又加一条。 */
+  factId: string;
   comment: string;
   content: string;
   keys: string[];
@@ -173,6 +175,7 @@ export function factsToLoreEntries(facts: readonly FactLike[], options: ExportFa
   return facts
     .filter((fact) => fact.deleted === undefined && (!onlyAccepted || fact.state === 'accepted'))
     .map((fact) => ({
+      factId: fact.id,
       // 注释里放 provenance 与状态：导出到世界书之后仍然能回溯"这条是从哪句话来的"
       comment: `${provenanceLine(fact, options.titles)}｜状态：${fact.state}｜置信：${fact.confidence ?? '—'}`,
       content: fact.text,

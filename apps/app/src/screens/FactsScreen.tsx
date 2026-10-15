@@ -135,7 +135,9 @@ export function FactsScreen({ store, characterId, chat }: FactsScreenProps): Rea
       return;
     }
     for (const entry of entries) {
-      await store.actions.saveLoreEntry({ ...entry, lorebookId: book.id });
+      // 稳定 id：同一条事实重复导出是**更新**那一篇，而不是又加一条（真机上曾出现「条目 (2)」）
+      const { factId, ...rest } = entry;
+      await store.actions.saveLoreEntry({ ...rest, lorebookId: book.id, id: `fact-${factId}` });
     }
     setNote(t('facts.exported', { count: entries.length, book: book.name }));
   };

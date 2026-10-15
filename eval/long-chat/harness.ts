@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { checkCitations, type CitationVerdict } from '../../apps/app/src/data/citations.ts';
 import type { ChatCall, ChatClient } from '../../apps/app/src/data/chat-client.ts';
 
 /**
@@ -177,6 +178,62 @@ export function createReplayClient(recording: Recording, options: ReplayOptions 
     async probe() {
       return { ok: true, message: `回放模式（录制来自 ${recording.producedBy}，共 ${recording.entries.length} 条）` };
     },
+  };
+}
+
+// ---------------------------------------------------------------- 引用判分
+
+/**
+ * 「引用正确」的判分（第二半）：把答案里的编号换算回消息，再看那条消息是不是**真的支持**这个答案。
+ *
+ * 与 `scoreProbes` **刻意分开**：答对与引用对是两个比率。合并成一个数字，
+ * 就看不出「答对了但引用错」这种最需要修的情况。
+ *
+ * `window` 必须与装配时的编号窗口一致（都是交给模型的那批消息），否则编号会指错人。
+ * 「支持」的判据由调用方写死在这里：这条消息的正文包含答案键 —— 确定性、可审计。
+ */
+export interface CitationOutcome {
+  id: string;
+  verdict: CitationVerdict;
+  reason: string;
+  /** 答案本身对不对，便于一眼看出「答对但引用错」。 */
+  answerCorrect: boolean;
+}
+
+export interface CitationSummary {
+  total: number;
+  /** 至少一条引用的消息支持答案。 */
+  correct: number;
+  noCitation: number;
+  wrongCitation: number;
+  unresolvable: number;
+  rate: number;
+  outcomes: CitationOutcome[];
+}
+
+export function scoreCitations(
+  probes: readonly Probe[],
+  answers: ReadonlyMap<string, string>,
+  window: readonly { id: string; content: string }[],
+): CitationSummary {
+  const outcomes: CitationOutcome[] = probes.map((probe) => {
+    const answer = answers.get(probe.id) ?? '';
+    const check = checkCitations(answer, window, (messageId) => {
+      const message = window.find((item) => item.id === messageId);
+      return message !== undefined && message.content.includes(probe.fact);
+    });
+    return { id: probe.id, verdict: check.verdict, reason: check.reason, answerCorrect: answer.includes(probe.fact) };
+  });
+  const count = (verdict: CitationVerdict): number => outcomes.filter((outcome) => outcome.verdict === verdict).length;
+  const correct = count('correct');
+  return {
+    total: outcomes.length,
+    correct,
+    noCitation: count('no-citation'),
+    wrongCitation: count('wrong-citation'),
+    unresolvable: count('unresolvable'),
+    rate: outcomes.length === 0 ? 0 : correct / outcomes.length,
+    outcomes,
   };
 }
 
