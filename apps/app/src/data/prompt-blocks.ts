@@ -40,6 +40,11 @@ export interface PromptBlockData {
   matchedMemories?: RetrievedMemory[];
   /** 摘要检索结果：块渲染时写入，供可解释性面板读取。 */
   matchedSummaries?: PromptSummary[];
+  /**
+   * **调用方预选**的摘要（例如向量检索在装配前异步算好）。给了就用它，不再用词法重算。
+   * 为什么需要这个口子：块渲染是同步的，而 embedding 必然异步 —— 同步 render 里塞不进网络调用。
+   */
+  preselectedSummaries?: PromptSummary[];
 }
 
 /** 摘要块需要的最小形状（由调用方从应用层的 Summary 映射过来）。 */
@@ -118,12 +123,22 @@ export function summaryBlockTextOf(data: Partial<PromptBlockData>): string | und
     }
   }
   if (query === '') query = history[history.length - 1]?.content ?? '';
+  const byId = new Map(summaries.map((summary) => [summary.id, summary]));
+  // 预选优先：向量检索（或任何外部排序）在装配前算好的结果直接用，避免同步块里再算一遍词法
+  const preselected = data.preselectedSummaries;
+  if (preselected !== undefined) {
+    const matched = preselected
+      .map((summary) => byId.get(summary.id))
+      .filter((summary): summary is PromptSummary => summary !== undefined)
+      .slice(0, SUMMARY_INJECT_LIMIT);
+    data.matchedSummaries = matched;
+    return matched.length === 0 ? undefined : '【相关摘要】\n' + matched.map((summary) => summary.text.trim()).join('\n');
+  }
   const ranked = retrieve(
     query,
     summaries.map((summary) => ({ id: summary.id, text: summary.text, kind: 'summary' as const, covers: summary.covers })),
     { limit: SUMMARY_INJECT_LIMIT, kinds: ['summary'] },
   );
-  const byId = new Map(summaries.map((summary) => [summary.id, summary]));
   const matched = ranked
     .map((item) => byId.get(item.id))
     .filter((summary): summary is PromptSummary => summary !== undefined);

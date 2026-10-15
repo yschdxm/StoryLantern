@@ -11,6 +11,13 @@ import { WireClient, type WireTransport } from '../../../../packages/wire/src/in
  * 解析（\`index\` 顺序、维度、usage、归一化、批量切分、重试）**全部复用**
  * \`createOpenAiEmbeddingPort\` —— 宿主命令原样回响应体，所以那套已单测的代码直接用得上。
  */
+/**
+ * 默认向量模型：实测（eval/long-chat/embedding-recall.test.ts）Qwen3-Embedding-8B/4B/0.6B 与
+ * bge-large-zh-v1.5 在**本项目的检索任务**上打平，故按"质量优先 + 多语言"取 8B；
+ * 想省延迟/成本可在设置里改 embedding.model（0.6B 单条 306ms vs 8B 856ms）。
+ */
+export const DEFAULT_EMBEDDING_MODEL = 'Qwen3-Embedding-8B';
+
 export interface HostEmbeddingOptions {
   transport: WireTransport;
   /** 用哪份模型配置的地址与密钥（不给 = 设置里的默认那组）。 */

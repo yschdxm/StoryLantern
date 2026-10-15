@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { describeError } from '../data/error-text.ts';
 import { ulid } from '../../../../packages/oplog/src/index.ts';
 import type { AppStore } from '../app/state.ts';
-import { probeEmbedding } from '../data/embedding-host.ts';
+import { DEFAULT_EMBEDDING_MODEL, probeEmbedding } from '../data/embedding-host.ts';
 import { useT } from '../i18n/context.tsx';
 import type { WireTransport } from '../../../../packages/wire/src/index.ts';
 import type { ChatClient } from '../data/chat-client.ts';
@@ -28,13 +28,6 @@ import { Banner, Button, ConfirmDialog, Field, ListRow, Sheet, SheetItem, TextIn
  *  - 密钥框**只写**：不回显明文也不回显掩码，留空表示不改；
  *  - 列表顺序**就是**回退顺序，界面上直接写出来，而不是让用户猜。
  */
-/**
- * 默认向量模型：实测（eval/long-chat/embedding-recall.test.ts）Qwen3-Embedding-8B/4B/0.6B 与
- * bge-large-zh-v1.5 在**本项目的检索任务**上打平，故按"质量优先 + 多语言"取 8B；
- * 想省延迟/成本可在设置里改 embedding.model（0.6B 单条 306ms vs 8B 856ms）。
- */
-const DEFAULT_EMBEDDING_MODEL = 'Qwen3-Embedding-8B';
-
 export function ModelProfilesPanel({ store, chat, settings, transport }: { store: AppStore; chat: ChatClient; settings: Record<string, string>; transport?: WireTransport }): ReactNode {
   const t = useT();
   const profiles = readProfiles(settings);

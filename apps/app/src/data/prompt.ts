@@ -102,6 +102,8 @@ export interface BuildPromptOptions {
    * 打开时只改**交给模型的 messages**；给关键词扫描的那份保持原文。
    */
   cite?: boolean;
+  /** 调用方预选的摘要（向量检索在装配前算好）；不给就走块内的词法检索。 */
+  preselectedSummaries?: PromptSummary[];
   settings: Record<string, string>;
   character?: PromptCharacter;
   history: readonly PromptHistoryItem[];
@@ -180,6 +182,7 @@ export function buildChatRequest(options: BuildPromptOptions): ChatRequest {
     lorebooks: (options.lorebooks ?? []) as PromptBlockData['lorebooks'],
     memories: (options.memories ?? []) as PromptBlockData['memories'],
     summaries: options.summaries ?? [],
+    ...(options.preselectedSummaries === undefined ? {} : { preselectedSummaries: options.preselectedSummaries }),
     history: kept,
   };
 

@@ -7,6 +7,8 @@ import { formatTime, isModelConfigured } from '../data/repository.ts';
 import { buildChatRequest, estimateTokens } from '../data/prompt.ts';
 import { computeUsage } from '../../../../packages/oplog/src/index.ts';
 import { createUsageStore } from '../data/usage-store.ts';
+import { selectSummariesForChat } from '../data/summary-vector-select.ts';
+import type { PromptSummary } from '../data/prompt-blocks.ts';
 import { SETTING_KEYS } from '../data/types.ts';
 import { candidatesFor, targetLabel } from '../data/model-routing.ts';
 import type { ChatReplyResult } from '../data/chat-client.ts';
@@ -29,7 +31,7 @@ export interface ChatScreenProps extends ScreenProps {
  *  2. 新消息到达自动贴底，但**往上翻看历史时不打断**；
  *  3. 历史很长时只渲染最近一屏多一点，翻到顶再往前加载（窗口化），万条消息也不卡。
  */
-export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings }: ChatScreenProps): ReactNode {
+export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings, transport }: ChatScreenProps): ReactNode {
   const t = useT();
   const state = useAppState(store);
   const session = state.sessions.find((item) => item.id === sessionId);
@@ -82,6 +84,15 @@ export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings }:
     const fresh = store.getState();
     const current = fresh.sessions.find((item) => item.id === sessionId);
     const character = fresh.characters.find((item) => item.id === current?.characterId);
+    // 检索（M4）：块渲染是**同步**的，而 embedding 必然异步 —— 所以在装配**之前**把摘要选好。
+    // 用不用得上向量、失败怎么退回，都在 selectSummariesForChat 里（那一层刻意不抛错）。
+    const allSummaries = await store.actions.summariesOf(sessionId);
+    const preselected = await selectSummariesForChat({
+      transport,
+      model: fresh.settings[SETTING_KEYS.embeddingModel],
+      messages: fresh.messages,
+      summaries: allSummaries,
+    });
     const request = buildChatRequest({
       cite: true,
       settings: fresh.settings,
@@ -98,6 +109,8 @@ export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings }:
       // 系统提示交给组装管线：优先级 / 预算 / 每条理由都在那里算
       ...(assemble === undefined ? {} : { assemble }),
       sessionTitle: current?.title ?? '',
+      ...(allSummaries.length === 0 ? {} : { summaries: allSummaries }),
+      ...(preselected === undefined ? {} : { preselectedSummaries: preselected }),
     });
     // 注入痕迹：用户随时能看到"这次模型多看了哪几条设定"（可解释性的最小一步）
     setInjectedLore(request.lore);
