@@ -256,6 +256,7 @@ export const zhCN: AppMessages = {
   'chat.overBudget': '已超出用量预算：已花 ${{spent}} + 这次约 ${{estimate}}（合计 ${{total}}）。到「设置 → 模型配置」调高预算，或清掉预算表示不设上限。',
   'chat.noModel': '没有可用的模型配置：请到「设置 → 模型服务」添加一份，并给它标上「对话」',
   'settings.models': '模型配置（多模型路由）',
+  'tab.facts': '设定库',
   'facts.menu': '设定库',
   'facts.hint': '这些是从对话里抽出来的事实，每条都带着来源。冲突会让你看见（同一个人/物出现了两种说法），采纳与否由你点。',
   'facts.extract': '从最近的对话抽取',

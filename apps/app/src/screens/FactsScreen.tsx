@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { conflictsOf, factsToLoreEntries } from '../../../../packages/oplog/src/index.ts';
 import { describeError } from '../data/error-text.ts';
 import { recomputeFacts } from '../data/fact-organize.ts';
@@ -28,12 +28,22 @@ export function FactsScreen({ store, characterId, chat }: FactsScreenProps): Rea
   const [menuFor, setMenuFor] = useState<string | undefined>(undefined);
 
   const character = state.characters.find((item) => item.id === characterId);
-  const facts: Fact[] = useMemo(
-    () => state.facts.filter((fact) => fact.characterId === undefined || fact.characterId === characterId),
-    [state.facts, characterId],
-  );
-  const conflicts = useMemo(() => conflictsOf(facts), [facts]);
-  const conflictIds = useMemo(() => new Set(conflicts.flatMap((item) => [item.a.factId, item.b.factId])), [conflicts]);
+  /**
+   * 事实列表**由本屏自己加载**，不读应用状态里的切片。
+   *
+   * 为什么：切片只在某些动作里刷新，刚启动时是空的 —— 真机上就因此看到"抽取成功但列表还是空"。
+   * 界面自己加载一遍，写入后再加载一遍，就不会被别处的刷新时机牵着走。
+   */
+  const [facts, setFacts] = useState<Fact[]>([]);
+  const reload = useCallback(async (): Promise<void> => {
+    setFacts(await store.actions.factsOf(characterId));
+  }, [store, characterId]);
+  useEffect(() => {
+    void reload();
+  }, [reload]);
+
+  const conflicts = conflictsOf(facts);
+  const conflictIds = new Set(conflicts.flatMap((item) => [item.a.factId, item.b.factId]));
   const menu = facts.find((fact) => fact.id === menuFor);
 
   /** 抽取：让模型按格式给事实 → 全部落成"待定"。去重与来源换算都在 recomputeFacts 里。 */
@@ -69,6 +79,7 @@ export function FactsScreen({ store, characterId, chat }: FactsScreenProps): Rea
         return;
       }
       await store.actions.saveFacts(result.drafts);
+      await reload();
       setNote(t('facts.extracted', { count: result.drafts.length, dropped: result.dropped, duplicated: result.duplicated }));
     } catch (cause) {
       const message = describeError(cause);
@@ -95,6 +106,7 @@ export function FactsScreen({ store, characterId, chat }: FactsScreenProps): Rea
         createdBy: 'user',
       },
     ]);
+    await reload();
   };
 
   /** 一键导出世界书：只导已采纳的，provenance 跟着进条目注释。 */

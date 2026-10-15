@@ -245,6 +245,7 @@ export const en: AppMessages = {
   'chat.overBudget': 'Usage budget exceeded: ${{spent}} spent + about ${{estimate}} for this call (${{total}}). Raise the budget in Settings → Model, or clear it to remove the limit.',
   'chat.noModel': 'No usable model profile: add one under Settings → Model and tag it "chat"',
   'settings.models': 'Model profiles (routing)',
+  'tab.facts': 'Fact base',
   'facts.menu': 'Fact base',
   'facts.hint': 'Facts distilled from the chat, each with its sources. Conflicts (two claims about the same thing) are shown; you decide what to accept.',
   'facts.extract': 'Distil from recent chat',

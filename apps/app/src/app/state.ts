@@ -236,7 +236,10 @@ export function createAppStore(repository: Repository): AppStore {
 
     async saveFacts(drafts) {
       if (drafts.length === 0) return [];
-      return run('saveFacts', () => repository.facts.save(drafts));
+      const written = await run('saveFacts', () => repository.facts.save(drafts));
+      // 写完必须刷新切片：界面读的是 state.facts，不刷新就会一直显示空状态（真机上踩过）
+      set({ facts: await repository.facts.list() });
+      return written;
     },
 
     async saveMemory(draft) {
