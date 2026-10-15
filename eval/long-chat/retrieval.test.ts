@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { retrieve, type RetrievalDoc } from '../../packages/oplog/src/retrieval.ts';
+import { createHashEmbeddingStub, retrieveHybrid } from '../../packages/oplog/src/retrieval-hybrid.ts';
 import { buildLongConversation, FACTS, TOTAL } from './harness.ts';
 
 /**
@@ -15,6 +16,7 @@ import { buildLongConversation, FACTS, TOTAL } from './harness.ts';
  */
 
 const HISTORY = buildLongConversation();
+const FACT_PROBE_AT = FACTS[0]?.at ?? 0;
 const DOCS: RetrievalDoc[] = HISTORY.map((message, index) => ({
   id: `M${index + 1}`,
   text: message.content,
@@ -65,4 +67,21 @@ test('检索不会把无关文档塞进来：查询只命中一条时，其余�
   assert.ok(ranked.length >= 1);
   assert.ok(ranked.every((item) => item.score > 0), '结果里不该有 0 分的文档');
   assert.equal(ranked.every((item) => item.kind === 'message'), true);
+});
+test('混合检索（桩）：管线跑得通，但**桩不会让召回变好**——如实打印出来', async () => {
+  const stub = createHashEmbeddingStub({ dimensions: 32 });
+  let lexicalHits = 0;
+  let stubHits = 0;
+  for (const fact of FACTS) {
+    const lexical = retrieve(fact.text, DOCS, { limit: 5 });
+    const hybrid = await retrieveHybrid(fact.text, DOCS, { embedder: stub, limit: 5 });
+    if (lexical.some((item) => item.id === idOfFact(fact.at))) lexicalHits += 1;
+    if (hybrid.docs.some((item) => item.id === idOfFact(fact.at))) stubHits += 1;
+    if (fact.at === FACT_PROBE_AT) {
+      console.log('  混合检索模式：' + hybrid.mode + '，来源：' + hybrid.sources.join(' + '));
+    }
+  }
+  console.log('  [检索·桩对比] 事实召回：纯词法 ' + lexicalHits + '/' + FACTS.length + ' vs 词法+桩向量 ' + stubHits + '/' + FACTS.length);
+  // 只断言"管线跑通"：**不断言变好** —— 哈希桩不是语义检索，拿它证明召回提升就是自欺。
+  assert.ok(true);
 });

@@ -119,6 +119,17 @@ export {
   type SummaryRunnerOptions,
 } from './summary-runner.ts';
 export {
+  cosineSimilarity,
+  createHashEmbeddingStub,
+  reciprocalRankFusion,
+  retrieveHybrid,
+  vectorSearch,
+  type EmbeddingPort,
+  type HybridRetrieveOptions,
+  type HybridRetrieveResult,
+  type RetrievalMode,
+} from './retrieval-hybrid.ts';
+export {
   retrieve,
   tokenize,
   type RetrieveOptions,
