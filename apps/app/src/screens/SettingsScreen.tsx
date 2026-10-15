@@ -254,9 +254,10 @@ export function SettingsScreen({ store, router, host, chat, ops, sync, plugins, 
         )}
         {(value(SETTING_KEYS.syncKind) || 'off') === 'folder' && (
           <>
-            <Field label={t('settings.sync.folder.path')} hint={t('settings.sync.folder.hint')}>
+            <Field label={t('settings.sync.folder.path')} hint={value(SETTING_KEYS.syncFolderSaf) === 'on' ? t('settings.sync.folder.safActive') : t('settings.sync.folder.hint')}>
               <TextInput
                 value={value(SETTING_KEYS.syncFolder)}
+                disabled={value(SETTING_KEYS.syncFolderSaf) === 'on'}
                 placeholder={folderRoot === '' ? t('settings.sync.folder.default') : folderRoot}
                 onChange={(next) => update(SETTING_KEYS.syncFolder, next)}
                 onBlur={() => {

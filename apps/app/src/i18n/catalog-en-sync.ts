@@ -29,6 +29,7 @@ export const enSync: AppMessages = {
   'settings.sync.note': 'Only content (characters / chats / messages, end-to-end encrypted) is synced. Model keys, theme and language are device config and never uploaded.',
   'settings.sync.folder': 'Local folder (this machine / a mounted drive)',
   'settings.sync.folder.path': 'Sync folder',
+  'settings.sync.folder.safActive': 'Sync uses the system-picked folder (SAF) right now, so this path is not in use.',
   'settings.sync.folder.hint': 'Leave empty to use sync/ inside the app data directory. On desktop you can point it at a cloud-synced folder (OneDrive / Dropbox / a NAS mount); both devices use the same directory.',
   'settings.sync.folder.default': '(empty = app data directory)',
   'settings.sync.folder.root': 'Files live in: {{path}}',

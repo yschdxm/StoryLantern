@@ -348,6 +348,7 @@ export function TextInput({
   placeholder,
   type = 'text',
   autoFocus = false,
+  disabled = false,
   onBlur,
 }: {
   value: string;
@@ -357,6 +358,8 @@ export function TextInput({
   autoFocus?: boolean;
   /** 失焦时提交（设置页靠它做到"改完立即生效"，不必再放保存按钮）。 */
   onBlur?: () => void;
+  /** 灰掉且不可编辑：用于"这条设置当前不生效"（例如同步改走 SAF 目录时的宿主路径框）。 */
+  disabled?: boolean;
 }): ReactNode {
   return (
     <input
@@ -365,6 +368,7 @@ export function TextInput({
       value={value}
       placeholder={placeholder}
       autoFocus={autoFocus}
+      disabled={disabled}
       onChange={(event) => onChange(event.target.value)}
       {...(onBlur === undefined ? {} : { onBlur })}
     />

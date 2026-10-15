@@ -70,7 +70,14 @@ class SafPlugin(private val activity: Activity) : Plugin(activity) {
     onWorker(invoke) {
       val entries = JSONArray()
       val root = treeRoot() ?: throw IllegalStateException("还没有选择文件夹")
-      collect(root, "", prefix, entries)
+      // 只走 prefix 对应的目录。以前是从根目录整棵树遍历、再按前缀过滤——
+      // 共享目录一大（成百上千个段文件）这一步就慢到没法用。
+      // 语义与旧实现完全一致：返回的仍然是"所有路径以 prefix 开头的文件"（含更深层）。
+      val slash = prefix.lastIndexOf('/')
+      val dirPart = if (slash < 0) "" else prefix.substring(0, slash)
+      val namePart = if (slash < 0) prefix else prefix.substring(slash + 1)
+      val start = descend(root, dirPart)
+      if (start != null) collect(start, dirPart, prefix, namePart, entries)
       JSObject().put("entries", entries)
     }
   }
@@ -174,12 +181,31 @@ class SafPlugin(private val activity: Activity) : Plugin(activity) {
     return current
   }
 
-  private fun collect(dir: DocumentFile, base: String, prefix: String, out: JSONArray) {
+  /** 按相对路径逐段下钻；任一段不存在或不是目录就返回 null（说明没有任何文件能以此前缀开头）。 */
+  private fun descend(root: DocumentFile, dirPart: String): DocumentFile? {
+    var current = root
+    for (segment in dirPart.split('/')) {
+      if (segment.isEmpty()) continue
+      val next = current.findFile(segment) ?: return null
+      if (!next.isDirectory) return null
+      current = next
+    }
+    return current
+  }
+
+  /**
+   * 递归收集路径以 `prefix` 开头的文件。
+   *
+   * `namePart` 只在起始那一层用得上：更深的层级整条路径已经以 prefix 开头了。
+   * 这样既避开了整棵树遍历，又保持与旧实现相同的语义（含更深层）。
+   */
+  private fun collect(dir: DocumentFile, base: String, prefix: String, namePart: String, out: JSONArray) {
     for (child in dir.listFiles()) {
       val name = child.name ?: continue
+      if (namePart.isNotEmpty() && !name.startsWith(namePart)) continue
       val path = if (base.isEmpty()) name else "$base/$name"
       if (child.isDirectory) {
-        collect(child, path, prefix, out)
+        collect(child, path, prefix, "", out)
       } else if (path.startsWith(prefix)) {
         out.put(
           JSObject()
