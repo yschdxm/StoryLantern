@@ -168,6 +168,8 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
     baseCursor: number;
     /** 有 keyring 但没包给我：已提交加入请求，等一台已授权设备接纳。 */
     waiting: boolean;
+      /** 有 keyring 但拿不到 X25519 协商密钥：加入这条路走不通，必须如实报出来。 */
+      joinBlocked: boolean;
   }> => {
     await options.repository.ready;
     const stored = await store.load();
@@ -284,7 +286,7 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
     if (onOps !== undefined) engineOptions.onOps = onOps;
     const engine = new SyncEngine(engineOptions);
 
-    return { engine, roster, restored, baseCursor, waiting: keyring !== undefined && keyring.mine === false };
+    return { engine, roster, restored, baseCursor, waiting: keyring !== undefined && keyring.mine === false, joinBlocked: keyring !== undefined && agreement === undefined };
   };
 
   return {
@@ -296,7 +298,7 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
         const outcome = await options.repository.importOps(ops);
         imported += outcome.appended;
       });
-      const { engine, roster, baseCursor, waiting } = prepared;
+      const { engine, roster, baseCursor, waiting, joinBlocked } = prepared;
       if (waiting) {
         return {
           uploaded: 0,
@@ -332,7 +334,13 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
       // 对端清单里带着它们的公钥：收进名单并落盘，供以后验签
       if (learnPublicKeys(roster, options.deviceId, state) > 0) await saveRoster(options.device, roster);
 
-      return summarize(result, enqueued, imported);
+      const summary = summarize(result, enqueued, imported);
+      if (joinBlocked === true) {
+        summary.warnings.push(
+          "这台设备的 WebView 不支持 X25519 协商密钥：无法加入共享目录、也无法替新设备发钥匙。请换一台支持该能力的设备。",
+        );
+      }
+      return summary;
     },
 
     async devices(): Promise<SyncDevice[]> {
