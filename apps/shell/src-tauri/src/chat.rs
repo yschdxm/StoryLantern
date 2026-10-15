@@ -231,6 +231,61 @@ fn truncate(text: &str, limit: usize) -> String {
     format!("{head}…")
 }
 
+/// 向量嵌入：`{ profileId?, model, input: string[] }` → **原样返回** embeddings 响应体 JSON。
+///
+/// 为什么原样返回响应体：`index` 顺序、维度、usage 的解析在前端已有实现且有单测
+/// （`parseEmbeddingResponse`），宿主不写第二套解析 —— 少一套就少一处会漂移的地方。
+/// 密钥同样由宿主自己读（见 `resolve_target`），前端永远只给 `profileId`。
+pub fn chat_embed(store: &Store, args: &[Value]) -> Result<Value, WireErrorPayload> {
+    let request = args
+        .first()
+        .ok_or_else(|| WireErrorPayload::new("invalid-argument", "缺少请求体"))?;
+    let target = resolve_target(store, request.get("profileId").and_then(Value::as_str))?;
+    let model = request
+        .get("model")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(target.model.trim())
+        .to_string();
+    let input: Vec<String> = request
+        .get("input")
+        .and_then(Value::as_array)
+        .map(|items| items.iter().filter_map(|item| item.as_str().map(str::to_string)).collect())
+        .unwrap_or_default();
+
+    if target.base_url.trim().is_empty() || model.is_empty() {
+        return Err(WireErrorPayload::new(
+            "invalid-argument",
+            format!("「{}」还没有配置接口地址与模型名", target.name),
+        ));
+    }
+    if input.is_empty() {
+        return Err(WireErrorPayload::new("invalid-argument", "input 不能为空"));
+    }
+
+    let url = format!("{}/embeddings", target.base_url.trim_end_matches('/'));
+    let client = reqwest::blocking::Client::builder()
+        .connect_timeout(Duration::from_secs(10))
+        // 批量嵌入比单次对话慢（实测 40 条约 1-2 秒，500 条约 13 秒），给足时间
+        .timeout(Duration::from_secs(120))
+        .build()
+        .map_err(|error| WireErrorPayload::new("transport-failed", format!("初始化请求失败：{error}")))?;
+    let mut http = client.post(&url).json(&json!({ "model": model, "input": input }));
+    if !target.api_key.is_empty() {
+        http = http.bearer_auth(&target.api_key);
+    }
+    match http.send() {
+        Ok(response) => {
+            let status = response.status().as_u16();
+            let body = response.text().unwrap_or_default();
+            // 非 2xx 也把响应体交回前端：前端据此报错并**降级成纯词法**（回退规则在那边）
+            Ok(json!({ "status": status, "body": body }))
+        }
+        Err(error) => Err(WireErrorPayload::new("transport-failed", format!("向量请求失败：{error}"))),
+    }
+}
+
 /// 连通性自检：只发一次极小的非流式请求，用来让用户确认"地址/密钥/模型名"能用。
 /// 可以指定 `profileId`，因此"测试连接"按钮对每一份模型配置都有效。
 pub fn chat_probe(store: &Store, args: &[Value]) -> Result<Value, WireErrorPayload> {

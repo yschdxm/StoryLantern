@@ -176,6 +176,8 @@ export const SETTING_KEYS = {
   providerKind: 'model.provider',
   baseUrl: 'model.base_url',
   apiKey: 'model.api_key',
+  /** 向量模型 id（检索用；密钥与地址沿用所选的模型配置）。 */
+  embeddingModel: 'embedding.model',
   model: 'model.name',
   temperature: 'model.temperature',
   maxTokens: 'model.max_tokens',

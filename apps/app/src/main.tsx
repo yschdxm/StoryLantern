@@ -57,6 +57,7 @@ const repository: Repository = createOpLogRepository({
   ...(ports.loadLegacy === undefined ? {} : { loadLegacy: ports.loadLegacy }),
 });
 const chat = createChatClient(transport);
+// transport 也交给设置页：模型面板用它做「测试向量来源」（密钥仍由宿主注入，前端看不到）
 // op 日志管理入口（只有 op 仓储有）：设置 → 开发者里能看统计、点"从 op 日志重建"
 const opLogRepository = repository as Partial<OpLogRepository>;
 const opAdmin: OpLogAdmin | undefined =
@@ -307,6 +308,7 @@ function Root(): ReturnType<typeof AppShell> {
             router={router}
             host={host}
             chat={chat}
+            {...(transport === undefined ? {} : { transport })}
             {...(opAdmin === undefined ? {} : { ops: opAdmin })}
             {...(syncAdmin === undefined ? {} : { sync: syncAdmin })}
             plugins={boot.runtime?.tracker.list().map((outcome) => ({ id: outcome.id, status: outcome.status })) ?? []}

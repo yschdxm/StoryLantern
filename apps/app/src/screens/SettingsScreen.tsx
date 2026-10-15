@@ -49,7 +49,7 @@ function Segmented<T extends string>({
  * 文本类改完即存（失焦自动保存），选择类点一下就生效——没有"保存"按钮，
  * 移动端表单里多一个保存按钮就是多一次误操作。
  */
-export function SettingsScreen({ store, router, host, chat, ops, sync, plugins, locales, onLocaleChange }: SettingsScreenProps): ReactNode {
+export function SettingsScreen({ store, router, host, chat, ops, sync, plugins, locales, onLocaleChange, transport }: SettingsScreenProps): ReactNode {
   const t = useT();
   const state = useAppState(store);
   const [local, setLocal] = useState<Record<string, string>>({});
@@ -212,7 +212,7 @@ export function SettingsScreen({ store, router, host, chat, ops, sync, plugins, 
 
       <section className="settings-group">
         <h2 className="settings-group__title">{t('settings.models')}</h2>
-        <ModelProfilesPanel store={store} chat={chat} settings={state.settings} />
+        <ModelProfilesPanel store={store} chat={chat} settings={state.settings} {...(transport === undefined ? {} : { transport })} />
       </section>
 
       <section className="settings-group">

@@ -2,7 +2,9 @@ import { useState, type ReactNode } from 'react';
 import { describeError } from '../data/error-text.ts';
 import { ulid } from '../../../../packages/oplog/src/index.ts';
 import type { AppStore } from '../app/state.ts';
+import { probeEmbedding } from '../data/embedding-host.ts';
 import { useT } from '../i18n/context.tsx';
+import type { WireTransport } from '../../../../packages/wire/src/index.ts';
 import type { ChatClient } from '../data/chat-client.ts';
 import {
   MODEL_TASKS,
@@ -26,7 +28,7 @@ import { Banner, Button, ConfirmDialog, Field, ListRow, Sheet, SheetItem, TextIn
  *  - 密钥框**只写**：不回显明文也不回显掩码，留空表示不改；
  *  - 列表顺序**就是**回退顺序，界面上直接写出来，而不是让用户猜。
  */
-export function ModelProfilesPanel({ store, chat, settings }: { store: AppStore; chat: ChatClient; settings: Record<string, string> }): ReactNode {
+export function ModelProfilesPanel({ store, chat, settings, transport }: { store: AppStore; chat: ChatClient; settings: Record<string, string>; transport?: WireTransport }): ReactNode {
   const t = useT();
   const profiles = readProfiles(settings);
   const [editing, setEditing] = useState<ModelProfile | 'new' | undefined>(undefined);
@@ -136,6 +138,7 @@ export function ModelProfilesPanel({ store, chat, settings }: { store: AppStore;
             profile={editing === 'new' ? undefined : editing}
             chat={chat}
             settings={settings}
+            {...(transport === undefined ? {} : { transport })}
             onSave={async (profile, apiKey) => {
               await upsert(profile, apiKey);
             }}
@@ -213,6 +216,7 @@ function ProfileForm({
   profile,
   chat,
   settings,
+  transport,
   onSave,
   onDone,
 }: {
@@ -220,6 +224,7 @@ function ProfileForm({
   chat: ChatClient;
   settings: Record<string, string>;
   /** 保存但**不**关面板：这样"保存并测试"的结果能立刻看到。 */
+  transport?: WireTransport;
   onSave: (profile: ModelProfile, apiKey?: string) => Promise<void>;
   /** 保存并让调用方关闭面板。 */
   onDone: (profile: ModelProfile, apiKey?: string) => Promise<void>;
@@ -237,6 +242,7 @@ function ProfileForm({
   const [apiKey, setApiKey] = useState('');
   const [error, setError] = useState<string | undefined>(undefined);
   const [probe, setProbe] = useState<{ ok: boolean; message: string } | undefined>(undefined);
+  const [vectorProbe, setVectorProbe] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState(false);
 
   // 密钥是否已存过：宿主只回掩码（非空字符串），因此"非空即已存"，明文永远不会到这里
@@ -335,6 +341,27 @@ function ProfileForm({
 
       {error !== undefined && <p className="notice notice--warn">{error}</p>}
       {probe !== undefined && <Banner tone={probe.ok ? 'info' : 'error'}>{probe.message}</Banner>}
+      {transport !== undefined && (
+        <div className="row">
+          <Button
+            variant="ghost"
+            onClick={() => {
+              setVectorProbe(t('settings.vector.testing'));
+              void probeEmbedding({
+                transport,
+                ...(id === '' ? {} : { profileId: id }),
+                // 向量模型 id 取自设置（默认 Qwen3-Embedding-8B）；密钥与地址沿用当前这份配置
+                ...(settings[SETTING_KEYS.embeddingModel] === undefined ? {} : { model: settings[SETTING_KEYS.embeddingModel] }),
+              }).then((result) =>
+                setVectorProbe(result.ok ? t('settings.vector.ok', { dims: result.dimensions, ms: result.ms }) : result.message),
+              );
+            }}
+          >
+            {t('settings.vector.test')}
+          </Button>
+        </div>
+      )}
+      {vectorProbe !== undefined && <Banner tone="info">{vectorProbe}</Banner>}
 
       <div className="row">
         <Button

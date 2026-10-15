@@ -5,9 +5,12 @@ import type { Router } from '../app/router.ts';
 import type { AppState, AppStore } from '../app/state.ts';
 import type { ChatClient } from '../data/chat-client.ts';
 import type { HostClient } from '../host-panel.ts';
+import type { WireTransport } from '../../../../packages/wire/src/index.ts';
 
 /** 每个界面都能拿到的几样东西：状态/动作、路由、宿主诊断、聊天（模型）、op 日志（M1 之后的事实源）。 */
 export interface ScreenProps {
+  /** 宿主 wire 通道（部分界面用它做自检，例如「测试向量来源」）。 */
+  transport?: WireTransport;
   store: AppStore;
   router: Router;
   host: HostClient;
