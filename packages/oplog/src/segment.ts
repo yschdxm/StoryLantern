@@ -1,10 +1,14 @@
 import { concatBytes, fromBase64, fromUtf8, toBase64, toHex, utf8 } from './bytes.ts';
 import { crc32Hex } from './crc32.ts';
+import { decompressOrThrow, openSegmentBodyV2, packSegmentBodyV2 } from './segment-v2.ts';
+// 对外仍然能从 segment.ts 拿到 v2 的常量（原先就在这里定义）
+export { SEGMENT_V2_AAD, SEGMENT_V2_NONCE_BYTES } from './segment-v2.ts';
 import { decodeOps, encodeOp, type Op } from './op.ts';
 import type { CryptoPorts } from './ports.ts';
-
 export const SEGMENT_MAGIC = 'SFSEG1';
-export const SEGMENT_FORMAT_VERSION = 1;
+export const SEGMENT_FORMAT_VERSION = 2;
+
+/**
 
 /**
  * 段的体积目标。段太大 → 一次重传代价高、冲突窗口长；段太小 → 文件数量与
@@ -32,6 +36,12 @@ export interface SegmentHeader {
 }
 
 export interface SegmentTrailer {
+  /** 格式版本：**缺省 = v1**（老段的 trailer 里没有这个字段，读方据此走老路径）。 */
+  v?: number;
+  /** v2 才写：段体用哪种加密（'none' = 未加密）。v1 的这个信息在段头里，所以老段没有。 */
+  cipher?: string;
+  compression?: string;
+  nonceLen?: number;
   count: number;
   crc32: string;
   blobHash: string;
@@ -62,6 +72,12 @@ export class SegmentError extends Error {
 }
 
 export interface PackSegmentInput {
+  /**
+   * 写哪种格式：**默认 2**（先 gzip 再加密、二进制拼帧）。
+   * 1 是老格式（先加密、密文套 base64 塞 JSON、再 gzip），保留它是为了让测试能造出
+   * 真实的老段来验证"读得回老数据"，以及给迁移期用。
+   */
+  format?: 1 | 2;
   ops: readonly Op[];
   deviceId: string;
   seq: number;
@@ -85,23 +101,22 @@ export interface PackedSegment {
 const NEWLINE = 0x0a;
 
 /**
- * 段文件的物理布局：
+ * 段文件的物理布局（两种格式）：
  *
- *   gzip( headerLine "\n" body )  ++  "\n"  ++  utf8(trailerJson)
- *
- * 关键点：
- *  - **trailer 在 gzip 之外**：它的 crc32/blobHash 是"压缩后字节"的摘要，放在压缩内会自指。
- *  - trailer 是单行 JSON，因此按最后一个换行切分永远正确（gzip 流内部的 0x0a 不受影响）。
- *  - 不加密也能读到 trailer，因此"这段是谁写的、多少条、多大"无需解压就能判断。
+ *   v2（默认）[nonceLen 1B][nonce][密文] ++ "\n" ++ utf8(trailerJson)，密文里是 gzip(明文)；
+ *   v1（老段）gzip( headerLine "\n" body ) ++ "\n" ++ utf8(trailerJson)，body 可能是 base64 密文 JSON。
+ * 两版共同点：trailer 永远是**最后一行 JSON**（压缩流里的 0x0a 不受影响），它不加密；格式版本写在 trailer 的 v 里，
+ * 老段没有 v 就是 v1。
  */
 export async function packSegment(input: PackSegmentInput): Promise<PackedSegment> {
   const { ports } = input;
+  const format = input.format ?? SEGMENT_FORMAT_VERSION;
   const useCipher = input.encrypt === true && ports.cipher !== undefined;
   const cipher = useCipher ? ports.cipher : undefined;
 
   const header: SegmentHeader = {
     magic: SEGMENT_MAGIC,
-    v: SEGMENT_FORMAT_VERSION,
+    v: format,
     deviceId: input.deviceId,
     seq: input.seq,
     blindSessionId: input.blindSessionId,
@@ -115,32 +130,42 @@ export async function packSegment(input: PackSegmentInput): Promise<PackedSegmen
   const headerLine = JSON.stringify(header);
 
   const plaintext = input.ops.map((op) => encodeOp(op)).join('\n');
-  let body: string;
-  if (cipher) {
-    const sealed = await cipher.seal(utf8(plaintext), utf8(headerLine));
-    body = JSON.stringify({ nonce: toBase64(sealed.nonce), ct: toBase64(sealed.ciphertext) });
+
+  // 两条写路径都收敛成 { blob, trailer }，最后统一拼一次 bytes。
+  // v2（默认）：先压缩、再加密、密文二进制拼帧 —— 实测压缩 9-24×、打包与解包都快得多（见 segment-v2.ts）。
+  // v1（format=1）：老格式保持字节级不变，供"造老段验证双读"与迁移期使用。
+  let blob: Uint8Array;
+  let trailer: SegmentTrailer;
+  if (format >= 2) {
+    ({ blob, trailer } = await packSegmentBodyV2({
+      header,
+      plain: utf8(headerLine + "\n" + plaintext),
+      ports,
+      encrypt: input.encrypt === true,
+    }));
   } else {
-    body = plaintext;
+    let body: string;
+    if (cipher) {
+      const sealed = await cipher.seal(utf8(plaintext), utf8(headerLine));
+      body = JSON.stringify({ nonce: toBase64(sealed.nonce), ct: toBase64(sealed.ciphertext) });
+    } else {
+      body = plaintext;
+    }
+
+    const contentHash = toHex(await ports.digest.sha256(utf8(headerLine + "\n" + body)));
+    const signature = ports.signer ? await ports.signer.sign(utf8(signaturePayload(header, contentHash))) : undefined;
+    blob = await ports.compressor.compress(utf8(headerLine + "\n" + body));
+    trailer = {
+      count: header.count,
+      crc32: crc32Hex(blob),
+      blobHash: toHex(await ports.digest.sha256(blob)),
+      contentHash,
+      ...(signature === undefined ? {} : { sig: toBase64(signature) }),
+    };
   }
 
-  const contentHash = toHex(await ports.digest.sha256(utf8(`${headerLine}\n${body}`)));
-  const signature = ports.signer
-    ? await ports.signer.sign(utf8(signaturePayload(header, contentHash)))
-    : undefined;
-
-  const compressed = await ports.compressor.compress(utf8(`${headerLine}\n${body}`));
-  const blobHash = toHex(await ports.digest.sha256(compressed));
-
-  const trailer: SegmentTrailer = {
-    count: header.count,
-    crc32: crc32Hex(compressed),
-    blobHash,
-    contentHash,
-    ...(signature === undefined ? {} : { sig: toBase64(signature) }),
-  };
-
-  const bytes = concatBytes(compressed, new Uint8Array([NEWLINE]), utf8(JSON.stringify(trailer)));
-  return { name: segmentFileName(input.seq, blobHash), bytes, header, trailer, blobHash };
+  const bytes = concatBytes(blob, new Uint8Array([NEWLINE]), utf8(JSON.stringify(trailer)));
+  return { name: segmentFileName(input.seq, trailer.blobHash), bytes, header, trailer, blobHash: trailer.blobHash };
 }
 
 /** 签名覆盖的规范元组：不含 blobHash，避免"签名内容反过来依赖签名本身"的循环。 */
@@ -222,6 +247,7 @@ function splitTrailer(bytes: Uint8Array): { blob: Uint8Array; trailerText: strin
   throw new SegmentError('truncated', '未找到有效的 trailer（文件被截断、或不是段文件）');
 }
 
+
 function parseJson<T>(text: string, label: string): T {
   try {
     return JSON.parse(text) as T;
@@ -270,12 +296,13 @@ export async function unpackSegment(
     }
   }
 
-  let plain: Uint8Array;
-  try {
-    plain = await ports.compressor.decompress(split.blob);
-  } catch (error) {
-    throw new SegmentError('compression', `解压失败：${error instanceof Error ? error.message : String(error)}`);
-  }
+  // v2：密文帧 = [nonceLen 1B][nonce][密文]，里面是**压缩后**的整份明文 → 先解密、再解压。
+  // v1：blob 就是 gzip(headerLine + body)，body 可能还套着一层 base64 密文 JSON。
+  // 版本靠 trailer.v 判断（老 trailer 没有 v 字段 → v1），所以不必猜、也不必看文件头魔数。
+  const plain =
+    trailer.v === 2
+      ? await openSegmentBodyV2(split.blob, trailer, ports)
+      : await decompressOrThrow(ports.compressor, split.blob);
 
   const text = fromUtf8(plain);
   const newline = text.indexOf('\n');
@@ -324,7 +351,9 @@ export async function unpackSegment(
   }
 
   let opsText = body;
-  if (header.cipher !== 'none') {
+  if (trailer.v === 2) {
+    // v2 的加密在"整份明文"那一层做过了（上面），body 到这里就是明文 ops
+  } else if (header.cipher !== 'none') {
     if (!ports.cipher) throw new SegmentError('decrypt', `段使用 ${header.cipher} 加密，但当前没有可用的解密实现`);
     if (ports.cipher.algorithm !== header.cipher) {
       throw new SegmentError('decrypt', `段使用 ${header.cipher} 加密，当前实现是 ${ports.cipher.algorithm}`);

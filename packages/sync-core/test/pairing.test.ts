@@ -141,7 +141,9 @@ test('配对是信任根：配对前拒绝对方签名，配对后接受', async
     encrypt: true,
   });
 
-  // 未配对：名单里没有 B 的公钥 → 拒绝
+  // 未配对、也没有 B 的主密钥 → 拒绝。
+  // 注意 v2 的顺序变化：整份明文（含段头）先压缩再加密，所以**先解密、后验签**，
+  // 拿不到密钥时报告的是"解不开"而不是"签名无效"（v1 恰好相反）。安全性不变：一样进不来。
   await assert.rejects(
     unpackSegment(segment.bytes, {
       ports: {
@@ -149,6 +151,20 @@ test('配对是信任根：配对前拒绝对方签名，配对后接受', async
         compressor: nodeGzip,
         verifier: createRosterVerifier(roster.toVerifierMap()),
         cipher: createAesGcmCipher({ key: a.profileKey }),
+      },
+      fileName: segment.name,
+    }),
+    /decrypt|解密|signature|签名/,
+  );
+
+  // 关键性质不因格式而变：**名单才是信任根** —— 有密钥、但名单里没有 B 的公钥 → 验签失败。
+  await assert.rejects(
+    unpackSegment(segment.bytes, {
+      ports: {
+        digest: nodeDigest,
+        compressor: nodeGzip,
+        verifier: createRosterVerifier(roster.toVerifierMap()),
+        cipher: createAesGcmCipher({ key: b.profileKey }),
       },
       fileName: segment.name,
     }),
