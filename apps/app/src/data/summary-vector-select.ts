@@ -46,6 +46,10 @@ export interface ChatSummarySelectionInput {
   /** 向量模型 id；缺省用默认。 */
   model?: string | undefined;
   messages: readonly { role: string; content: string }[];
+  /** 用哪份模型配置的地址与密钥（不给就用设置里的默认那组）。 */
+  profileId?: string | undefined;
+  /** 每完成一次嵌入请求回调一次（调用方据此记账，与摘要那条同一条路）。 */
+  recordUsage?: ((call: { modelId: string; promptTokens: number }) => Promise<void>) | undefined;
   summaries: readonly PromptSummary[];
 }
 
@@ -68,7 +72,15 @@ export async function selectSummariesForChat(input: ChatSummarySelectionInput): 
   if (question === '') return undefined;
   try {
     const picked = await selectSummariesByVector({
-      embedder: createHostEmbeddingPort({ transport: input.transport, model: input.model ?? DEFAULT_EMBEDDING_MODEL }),
+      embedder: createHostEmbeddingPort({
+        transport: input.transport,
+        ...(input.profileId === undefined || input.profileId === '' ? {} : { profileId: input.profileId }),
+        model: input.model ?? DEFAULT_EMBEDDING_MODEL,
+        // 用量按 task: 'embed' 记（UsageTask 里本来就有这一项）
+        onUsage: (usage) => {
+          void input.recordUsage?.({ modelId: input.model ?? DEFAULT_EMBEDDING_MODEL, promptTokens: usage.promptTokens });
+        },
+      }),
       question,
       summaries: input.summaries,
     });

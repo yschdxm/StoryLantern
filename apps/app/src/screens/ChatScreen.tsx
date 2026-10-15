@@ -84,14 +84,18 @@ export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings, t
     const fresh = store.getState();
     const current = fresh.sessions.find((item) => item.id === sessionId);
     const character = fresh.characters.find((item) => item.id === current?.characterId);
-    // 检索（M4）：块渲染是**同步**的，而 embedding 必然异步 —— 所以在装配**之前**把摘要选好。
-    // 用不用得上向量、失败怎么退回，都在 selectSummariesForChat 里（那一层刻意不抛错）。
+    // 检索（M4）：块渲染同步、embedding 异步 —— 所以检索必须在装配**之前**算好（见 selectSummariesForChat）。
+    const usage = createUsageStore({ settings: () => store.getState().settings, setSetting: (key, value) => store.actions.setSetting(key, value) });
     const allSummaries = await store.actions.summariesOf(sessionId);
     const preselected = await selectSummariesForChat({
       transport,
+      ...(candidatesFor(fresh.settings, 'chat')[0]?.id === undefined ? {} : { profileId: candidatesFor(fresh.settings, 'chat')[0]?.id }),
       model: fresh.settings[SETTING_KEYS.embeddingModel],
       messages: fresh.messages,
       summaries: allSummaries,
+      recordUsage: async (call) => {
+        await usage.record(fresh.settings['device.id'] ?? 'unknown', computeUsage({ at: Date.now(), task: 'embed', modelId: call.modelId, promptTokens: call.promptTokens, completionTokens: 0, prices: usage.prices().value }));
+      },
     });
     const request = buildChatRequest({
       cite: true,
@@ -133,10 +137,6 @@ export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings, t
 
       // 预算闸门（M4 判据 3）：**发送前**判定。估算刻意取上界（输出按 max_tokens 估），
       // 宁可高估、也不能让用户在不知不觉中超支。价格按**配置 id** 匹配（见 usage-store 的说明）。
-      const usage = createUsageStore({
-        settings: () => store.getState().settings,
-        setSetting: (key, value) => store.actions.setSetting(key, value),
-      });
       const promptTokens =
         request.trace.usedTokens + estimateTokens(request.messages.map((message) => message.content).join(String.fromCharCode(10)));
       const maxOutputRaw = Number(fresh.settings[SETTING_KEYS.maxTokens] ?? '');
