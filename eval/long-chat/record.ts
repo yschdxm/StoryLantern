@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { buildChatRequest } from '../../apps/app/src/data/prompt.ts';
 import type { ChatCall, ChatClient } from '../../apps/app/src/data/chat-client.ts';
 import { buildLongConversation, createRecorder, PROBES, scoreProbes, type Recording } from './harness.ts';
+import { buildPerfectSummaries, buildProbeRequest } from './probe-request.ts';
 
 /**
  * 用**真实 provider** 录一份长对话评估集，并当场算出"事实题正确率"。
@@ -145,12 +145,12 @@ async function main(): Promise<void> {
   const recorder = createRecorder(inner, args.model + String.fromCharCode(64) + new URL(args.baseUrl).host);
 
   const history = buildLongConversation();
+  // 带上摘要注入：不然量到的是"管线里没有记忆"的答对率，而不是 M4 这条判据要量的东西
+  const summaries = await buildPerfectSummaries(
+    history.map((message, index) => ({ id: `M${index + 1}`, role: message.role as 'user' | 'assistant' | 'system', content: message.content })),
+  );
   for (const probe of PROBES) {
-    const request = buildChatRequest({
-      cite: true,
-      settings: {},
-      history: [...history, { role: 'user', content: probe.question, status: 'done' }],
-    });
+    const request = buildProbeRequest({ probe, history, summaries });
     const result = await recorder.client.reply({ messages: request.messages, systemPrompt: request.systemPrompt }, {});
     answers.set(probe.id, result.text);
     console.log(`  ${probe.id} 第 ${probe.at} 条 → ${result.text.slice(0, 40).replace(/\n/g, ' ')}…`);
