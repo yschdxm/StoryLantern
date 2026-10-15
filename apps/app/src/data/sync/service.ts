@@ -153,7 +153,6 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
   const ports = createWebCryptoPorts(keys);
   /** 设备本地 kv：名单与同步状态都放这里。 */
   const store: SyncServiceOptions['store'] = options.store;
-
   /**
    * 每次进入同步/回收都要先做的一步：读本机状态、发现远端设备、合并名单、造引擎。
    *
@@ -175,7 +174,6 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
     const restored = sanitizeSyncState(stored.state);
     // 状态被判为不可用（旧编号）时，本地 op 要整份重推一遍
     const baseCursor = restored === undefined ? 0 : stored.enqueuedSeq;
-
     // 远端发现：能解开我们密文并发布设备清单的，才是自己人
     const discovered: { deviceId: string }[] = [];
     try {
@@ -194,7 +192,6 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
     const persisted = await loadRoster(options.device);
     const { roster } = mergeRoster(persisted, discovered, { selfId: options.deviceId, now: now() });
     await saveRoster(options.device, roster);
-
     // 每台设备自己的"锁和钥匙"：公钥随设备清单发布，供对端验签
     const signer = await createDeviceSigner({ deviceId: options.deviceId, device: options.device, secret: options.secret });
 
