@@ -27,6 +27,21 @@ export interface MessageStoreDeps {
   base(): { deviceId: string; clock: HlcClock };
 }
 
+/**
+ * 宿主对**每次** ops.append 有条数上限：`apps/shell/src-tauri/src/wire_ops.rs` 的
+ * `MAX_OPS_PER_APPEND = 5000`，超了宿主会直接拒绝（真机上导入 1 万条时就是这么被挡下的）。
+ * 这里留出余量按 4000 分片，用纯函数切好，便于单测。
+ */
+export const APPEND_CHUNK = 4000;
+
+/** 把要写的 op 切成每片 ≤size 的若干片（纯函数）。 */
+export function chunkOps<T>(items: readonly T[], size: number = APPEND_CHUNK): T[][] {
+  if (size <= 0) throw new Error('分片大小必须为正数');
+  const chunks: T[][] = [];
+  for (let at = 0; at < items.length; at += size) chunks.push(items.slice(at, at + size));
+  return chunks;
+}
+
 export function createMessageStore(deps: MessageStoreDeps): MessageStore {
   return {
     list: (sessionId) =>
@@ -95,7 +110,9 @@ export function createMessageStore(deps: MessageStoreDeps): MessageStore {
           }
         }
         if (ops.length === 0) return 0;
-        await deps.appendAndApply(ops);
+        // 分片写入：宿主的单次上限是 5000 条，超了会被整批拒绝（真机踩到过）。
+        // 分片仍然远少于"每条一次"，1 万条 = 3 次写入而不是 1 万次。
+        for (const slice of chunkOps(ops)) await deps.appendAndApply(slice);
         return entries.length;
       }),
 

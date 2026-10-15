@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createDevice, createMemoryBackend } from './sync-harness.ts';
 import { instrumentBackend } from '../../../packages/sync-core/src/backend.ts';
 import { estimateTokens } from '../src/data/prompt.ts';
+import { APPEND_CHUNK } from '../src/data/op-message-store.ts';
 import { HlcClock } from '../../../packages/oplog/src/hlc.ts';
 import { decodeOps, encodeOp, messageAppend } from '../../../packages/oplog/src/op.ts';
 import { ulid } from '../../../packages/oplog/src/bytes.ts';
@@ -184,7 +185,7 @@ test(
   );
 });
 ﻿
-test('批量导入：1 万条消息一次写入完成并全部落库（真机逐条写要 ≥180 秒）', async () => {
+test('批量导入：1 万条消息分片写入完成并全部落库（真机逐条写要 ≥180 秒）', async () => {
   const backend = createMemoryBackend();
   const a = await createDevice('device-a', backend, 'shared secret');
   const character = await a.repository.characters.save({ name: '星野' });
@@ -199,7 +200,7 @@ test('批量导入：1 万条消息一次写入完成并全部落库（真机逐
   const added = await a.repository.messages.appendMany(session.id, entries);
   const elapsed = performance.now() - started;
   const listed = await a.repository.messages.list(session.id);
-  console.log(`  [批量导入] ${added} 条走一次写入，耗时 ${elapsed.toFixed(0)} ms；读回 ${listed.length} 条`);
+  console.log(`  [批量导入] ${added} 条走分片写入（${Math.ceil(added / APPEND_CHUNK)} 片），耗时 ${elapsed.toFixed(0)} ms；读回 ${listed.length} 条`);
 
   assert.equal(added, 10_000, '批量写入应当报告写入条数');
   assert.equal(listed.length, 10_000, '1 万条应当全部落库且能读回');
