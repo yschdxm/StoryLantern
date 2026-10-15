@@ -66,6 +66,24 @@ export async function detectKeyWrapSupport(): Promise<boolean> {
   }
 }
 
+/**
+ * 本机能不能用这条曲线（真机没有 X25519，所以不能假设"存过的就一定能用"）。
+ *
+ * 真机踩到：手机的协商密钥是**换 P-256 之前**生成的 X25519，于是在"复用旧密钥"的逻辑下，
+ * 它拿着 X25519 去加入、库主人也确实用 X25519 把它那份包好了——可它自己的 WebView 解不开，
+ * 于是永远认为"我不在库里"，每个同步都重跑一遍加入流程（请求日志里能看到成片重复的 PROPFIND/GET）。
+ */
+export async function canUseCurve(curve: WrapCurve): Promise<boolean> {
+  const subtle = globalThis.crypto?.subtle;
+  if (subtle === undefined) return false;
+  try {
+    await subtle.generateKey(CURVES[curve].algorithm as never, true, ['deriveBits']);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function createWebCryptoKeyWrap(): KeyWrapPort {
   const subtle = globalThis.crypto?.subtle;
   if (subtle === undefined) throw new Error('这个环境没有 WebCrypto，无法包装密钥');
@@ -223,7 +241,11 @@ export async function loadOrCreateAgreementKeys(
     try {
       const parsed = JSON.parse(stored) as { v?: number; publicKey?: string; privateKey?: string };
       if (parsed.v === 1 && typeof parsed.publicKey === 'string' && typeof parsed.privateKey === 'string' && parsed.publicKey !== '') {
-        return { publicKey: parsed.publicKey, privateKey: parsed.privateKey };
+        // 存过的密钥也未必能用：换曲线（X25519 → P-256）之后，真机上那把旧钥匙根本解不开任何东西，
+        // 必须重新生成，否则会一直以为自己"没加入共享库"（真机上表现为同步反复重跑）。
+        if (await canUseCurve(curveOfPublicKey(parsed.publicKey))) {
+          return { publicKey: parsed.publicKey, privateKey: parsed.privateKey };
+        }
       }
     } catch {
       // 坏数据按"还没有密钥"处理：重新生成一把（旧的包再也解不开，这是正确行为）
