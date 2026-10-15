@@ -29,6 +29,21 @@ const MOARK_KEY = process.env.MOARK_API_KEY ?? '';
 const MOARK_BASE = process.env.MOARK_BASE_URL ?? 'https://api.moark.com/v1';
 const EMBED_MODEL = process.env.EMBEDDING_MODEL ?? 'Qwen3-Embedding-8B';
 const maybe = KEY === '' ? test.skip : test;
+
+/**
+ * **旧提示**（加"不要抽说话人"那条规则之前的原文）—— 评估里留着它，是为了能做**同等样本**的
+ * 前后对比：用 `EXTRACTION_PROMPT=legacy` 跑同样次数，前后各 5 次，才谈得上比较。
+ */
+const LEGACY_INSTRUCTION = [
+  '你是一个设定整理助手。请从下面带序号的对话里，抽出**已经确立**的事实（谁是谁、什么是什么、发生了什么）。',
+  '只输出一个 JSON 数组，不要任何解释、不要代码块以外的文字。每一项形如：',
+  '{"subject":"主语（人或物）","predicate":"谓语（关系或属性，如 身份/来历/地点）","object":"宾语（具体内容）",',
+  '"text":"一句人话（可选）","sources":[1,3],"confidence":80}',
+  '要求：sources 里是**对话序号**（方括号里的数字），必须真的支持这条事实；没有依据就不要写这一条。',
+  '只整理、不发挥：不要推测，不要把设定写成小说。',
+].join('\n');
+const PROMPT_MODE = process.env.EXTRACTION_PROMPT === 'legacy' ? 'legacy' : 'new';
+const INSTRUCTION_OVERRIDE = PROMPT_MODE === 'legacy' ? LEGACY_INSTRUCTION : undefined;
 const WINDOW = 40;
 
 async function realReply(_profileId: string | undefined, systemPrompt: string, userText: string): Promise<string> {
@@ -88,7 +103,9 @@ maybe('真实提取：把窗口滑到每个埋点，量召回与精确率（官�
       existing: [],
       reply: realReply,
       window: WINDOW,
-      embed: async (texts: readonly string[]) => embed(texts),
+      // EXTRACTION_MERGE=off 关掉近似合并 —— 这样能**隔离变量**：只看提示本身的效果
+      ...(process.env.EXTRACTION_MERGE === 'off' ? {} : { embed: async (texts: readonly string[]) => embed(texts) }),
+      ...(INSTRUCTION_OVERRIDE === undefined ? {} : { instruction: INSTRUCTION_OVERRIDE }),
     });
     const elapsed = Date.now() - started;
     const windowIds = new Set(history.slice(-WINDOW).map((message) => message.id));
@@ -158,6 +175,7 @@ maybe('真实提取：把窗口滑到每个埋点，量召回与精确率（官�
     for (const item of drafts) console.log(`      · ${item.text}（来源=${JSON.stringify(item.ids)}）`);
   }
 
+  console.log(`  [真实提取] 提示模式=${PROMPT_MODE}`);
   console.log(`  [真实提取] 合计：真值实例 ${totalTruth}，严格 ${strictHits}/${totalTruth}，` +
     `语义(≥0.5) ${MOARK_KEY === '' ? '(未量)' : `${semanticHits}/${totalTruth}`}，语义(且间隔≥0.25) ${MOARK_KEY === '' ? '(未量)' : `${semanticStrictHits}/${totalTruth}`}，` +
     `抽出 ${totalDrafts} 条（合并后），噪声 ${MOARK_KEY === '' ? '(未量)' : noise}，越界来源 ${bogusSources}`);

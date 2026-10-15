@@ -42,6 +42,11 @@ export interface FactOrganizeInput {
   /** 最多看最近多少条对话（默认 40，与上下文窗口一致）。 */
   window?: number;
   /**
+   * 可选的系统提示：默认用仓库里那条 FACT_INSTRUCTION。留出这个口子是为了让评估能
+   * 拿**旧提示**跑同样多次数，做同等样本的前后对比（否则前后样本量不等，比出来的不算数）。
+   */
+  instruction?: string;
+  /**
    * 可选的向量源：给了就做**近似重复合并**（同一句话被拆成两三条时合并成一条）。
    * 不给就**不猜** —— 只保留原来的精确去重（没向量时宁可多留一条，也不要错并两条）。
    */
@@ -119,7 +124,7 @@ export async function recomputeFacts(input: FactOrganizeInput): Promise<FactOrga
   let parsed: { proposals: FactProposal[]; dropped: number } | undefined;
   for (const candidate of candidates) {
     try {
-      const raw = await input.reply(candidate.id === '' ? undefined : candidate.id, FACT_INSTRUCTION, transcript);
+      const raw = await input.reply(candidate.id === '' ? undefined : candidate.id, input.instruction ?? FACT_INSTRUCTION, transcript);
       const shape = toValidatorShape(raw);
       if (shape.error !== undefined) throw new Error(shape.error);
       const result = parseFactProposals(shape.json);
