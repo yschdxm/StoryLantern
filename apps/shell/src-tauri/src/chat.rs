@@ -254,26 +254,42 @@ pub fn chat_embed(store: &Store, args: &[Value]) -> Result<Value, WireErrorPaylo
         .map(|items| items.iter().filter_map(|item| item.as_str().map(str::to_string)).collect())
         .unwrap_or_default();
 
-    if target.base_url.trim().is_empty() || model.is_empty() {
-        return Err(WireErrorPayload::new(
-            "invalid-argument",
-            format!("「{}」还没有配置接口地址与模型名", target.name),
-        ));
-    }
+    // 配置没填全时**退回设置里那组默认**（M1 及以前就存在的字段）：
+    // 以前这里直接报"还没配置接口地址"，用户看不出到底读到了什么，也没法在只填了默认那组时用它。
+    let legacy = legacy_target(store);
+    let (base_url, api_key) = if (target.base_url.trim().is_empty() || model.is_empty()) {
+        if legacy.base_url.trim().is_empty() || legacy.model.trim().is_empty() {
+            // 诊断信息：把**读到了什么**说清楚（密钥只说有没有，绝不回显内容）
+            return Err(WireErrorPayload::new(
+                "invalid-argument",
+                format!(
+                    "「{}」没有可用的接口地址（读到的 base_url=\"{}\"、model=\"{}\"；设置里那组默认为空；密钥{}）。请在设置里填好接口地址与模型名。",
+                    target.name,
+                    target.base_url,
+                    model,
+                    if target.api_key.is_empty() { "未配置" } else { "已配置" },
+                ),
+            ));
+        }
+        (legacy.base_url, legacy.api_key)
+    } else {
+        (target.base_url, target.api_key)
+    };
     if input.is_empty() {
         return Err(WireErrorPayload::new("invalid-argument", "input 不能为空"));
     }
 
-    let url = format!("{}/embeddings", target.base_url.trim_end_matches('/'));
+    let url = format!("{}/embeddings", base_url.trim_end_matches('/'));
     let client = reqwest::blocking::Client::builder()
         .connect_timeout(Duration::from_secs(10))
         // 批量嵌入比单次对话慢（实测 40 条约 1-2 秒，500 条约 13 秒），给足时间
         .timeout(Duration::from_secs(120))
         .build()
         .map_err(|error| WireErrorPayload::new("transport-failed", format!("初始化请求失败：{error}")))?;
-    let mut http = client.post(&url).json(&json!({ "model": model, "input": input }));
-    if !target.api_key.is_empty() {
-        http = http.bearer_auth(&target.api_key);
+    let effective_model = if model.is_empty() { legacy.model.clone() } else { model.clone() };
+    let mut http = client.post(&url).json(&json!({ "model": effective_model, "input": input }));
+    if !api_key.is_empty() {
+        http = http.bearer_auth(&api_key);
     }
     match http.send() {
         Ok(response) => {
