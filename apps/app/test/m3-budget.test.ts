@@ -48,13 +48,9 @@ test('性能预算：一次稳态同步的请求数 ≤8、上下行各 ≤1MB',
   assert.ok(up <= 1024 * 1024, `单次同步上行应当 ≤1MB，实际 ${up}B`);
   assert.ok(down <= 1024 * 1024, `单次同步下行应当 ≤1MB，实际 ${down}B`);
 
-  // 已测出的问题（如实记录，不粉饰）：Summary.requests 只统计引擎自己那一轮（pull/push），
-  // 而服务在 prepare 阶段的 keyring/加入请求没算进去——两边差了一倍（本次 4 vs 8）。
-  // 界面显示的是 Summary 那个数，所以用户看到的流量被少报。修法待定（见 docs/M3-STATUS.md）。
-  assert.ok(
-    counted >= steady.requests,
-    `后端计数(${counted}) 不该小于 Summary.requests(${steady.requests})`,
-  );
+  // 修好后（见 service.ts 里"后端只在这里包一层计数器"）：Summary.requests 就是**真实**请求数，
+  // 必须与后端计数器完全一致。修之前这两个数是 4 vs 8（服务自己那几轮没算进去）。
+  assert.equal(steady.requests, counted, 'Summary.requests 必须等于后端真实计数（不能两套口径）');
 });
 
 test(

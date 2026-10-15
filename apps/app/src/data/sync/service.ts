@@ -3,7 +3,7 @@ import { describeError } from '../error-text.ts';
 import { SyncEngine, type SyncEngineOptions, type SyncResult } from '../../../../../packages/sync-core/src/engine.ts';
 import { parseManifestPath, DEVICES_PREFIX } from '../../../../../packages/sync-core/src/paths.ts';
 import { DeviceRosterList } from '../../../../../packages/sync-core/src/roster.ts';
-import type { SyncBackend } from '../../../../../packages/sync-core/src/backend.ts';
+import { instrumentBackend, type SyncBackend } from '../../../../../packages/sync-core/src/backend.ts';
 import type { LocalSyncState } from '../../../../../packages/sync-core/src/state.ts';
 import { emptyState } from '../../../../../packages/sync-core/src/state.ts';
 import type { Op } from '../../../../../packages/oplog/src/op.ts';
@@ -79,7 +79,7 @@ export function syncAvailable(): boolean {
   return webCryptoAvailable();
 }
 
-export function summarize(result: SyncResult, enqueued: number, imported: number): SyncSummary {
+export function summarize(result: SyncResult, enqueued: number, imported: number, requests = result.requests): SyncSummary {
   return {
     uploaded: result.uploaded.length,
     downloaded: result.downloaded.length,
@@ -87,7 +87,7 @@ export function summarize(result: SyncResult, enqueued: number, imported: number
     // 引擎把 op 应用进的物化器与我们自己的一模一样，所以它的计数是 0（已是重复应用）。
     appliedOps: imported,
     enqueued,
-    requests: result.requests,
+    requests,
     warnings: [...result.warnings],
   };
 }
@@ -146,6 +146,12 @@ function learnPublicKeys(roster: DeviceRosterList, selfId: string, state: LocalS
 }
 
 export async function createSyncService(options: SyncServiceOptions): Promise<SyncService> {
+  // 后端只在这里包一层计数器：**所有**请求都经过它——引擎自己那一轮（pull/push）、以及服务直接发的
+  // keyring 读写 / 加入请求 / 换代 / 恢复密钥。以前 summarize 只报引擎那一轮，于是 requests 少算一半。
+  const backendCounters = instrumentBackend(options.backend);
+  options = { ...options, backend: backendCounters.backend };
+  // 请求数 = 后端计数器四项之和（每次 sync 取差值）
+  const requestsSoFar = (): number => { const c = backendCounters.counters; return c.list + c.get + c.put + c.delete; };
   const now = options.now ?? (() => Date.now());
   // 忘记口令时的一次性恢复私钥：只在本次 sync 调用里生效，不落盘
   let pendingRecoveryKey: string | undefined;
@@ -194,7 +200,6 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
     await saveRoster(options.device, roster);
     // 每台设备自己的"锁和钥匙"：公钥随设备清单发布，供对端验签
     const signer = await createDeviceSigner({ deviceId: options.deviceId, device: options.device, secret: options.secret });
-
     const engineOptions: SyncEngineOptions = {
       deviceId: options.deviceId,
       backend: options.backend,
@@ -212,7 +217,6 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
       ? await loadOrCreateAgreementKeys(createWebCryptoKeyWrap(), options.device)
       : undefined;
     if (agreement !== undefined) engineOptions.agreementKey = agreement.publicKey;
-
     if (signer.publicKeyHex !== '') {
       engineOptions.publicKey = signer.publicKeyHex;
       const self = roster.get(options.deviceId);
@@ -251,7 +255,6 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
       }
     }
     if (state !== undefined) engineOptions.state = state;
-
     // 加入流程：能打开 keyring 就替新设备发钥匙；打不开（我不在里面）就写自己的加入请求。
     if (keyring !== undefined && agreement !== undefined) {
       const joinProof = createPasswordProofPort(keys);
@@ -282,12 +285,11 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
     if (onOps !== undefined) engineOptions.onOps = onOps;
     if (options.graceMs !== undefined) engineOptions.graceMs = options.graceMs;
     const engine = new SyncEngine(engineOptions);
-
     return { engine, roster, restored, baseCursor, waiting: keyring !== undefined && keyring.mine === false, joinBlocked: agreement === undefined };
   };
-
   return {
     async sync(recoveryPrivateKey?: string): Promise<SyncSummary> {
+      const requestsBefore = requestsSoFar();
       pendingRecoveryKey = recoveryPrivateKey;
       let imported = 0;
       const prepared = await prepare(async (ops) => {
@@ -302,7 +304,7 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
           downloaded: 0,
           appliedOps: 0,
           enqueued: 0,
-          requests: 0,
+          requests: requestsSoFar() - requestsBefore,
           warnings: ['已提交加入请求：需要一台已授权设备同步一轮来把数据钥匙包给你。'],
             waiting: true,
         };
@@ -322,7 +324,6 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
 
       // 引擎需要**同一份**物化状态：它会把拉到的 op 应用进去
       const result = await engine.sync(options.repository.currentMaterializer());
-
       // 游标推进到日志末尾：刚拉进来的远端 op 不该再被推回去
       const stats = await options.repository.logStats();
       const state = engine.exportState();
@@ -331,7 +332,7 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
       // 对端清单里带着它们的公钥：收进名单并落盘，供以后验签
       if (learnPublicKeys(roster, options.deviceId, state) > 0) await saveRoster(options.device, roster);
 
-      const summary = summarize(result, enqueued, imported);
+      const summary = summarize(result, enqueued, imported, requestsSoFar() - requestsBefore);
       if (joinBlocked === true) {
         summary.warnings.push(
           '这台设备的 WebView 不支持 X25519 协商密钥：无法加入共享目录、也无法替新设备发钥匙。请换一台支持该能力的设备。',
