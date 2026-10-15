@@ -81,7 +81,15 @@ maybe('真实提取：把窗口滑到每个埋点，量召回与精确率（官�
   for (const anchor of FACTS) {
     const history = all.slice(0, anchor.at);
     const started = Date.now();
-    const result = await recomputeFacts({ settings, history, existing: [], reply: realReply, window: WINDOW });
+    // 也走**近似重复合并**（把草稿文本送真 moark 向量）——这样量的是产品改动后的真实行为
+    const result = await recomputeFacts({
+      settings,
+      history,
+      existing: [],
+      reply: realReply,
+      window: WINDOW,
+      embed: async (texts: readonly string[]) => embed(texts),
+    });
     const elapsed = Date.now() - started;
     const windowIds = new Set(history.slice(-WINDOW).map((message) => message.id));
     // 真值 = 既在窗口内、又不晚于窗口末尾（只看过的事实才谈得上"没抽出来"）
@@ -131,15 +139,27 @@ maybe('真实提取：把窗口滑到每个埋点，量召回与精确率（官�
       noise += noiseForWindow;
     }
 
+    // 阈值标定用：把本窗口草稿两两的余弦打出来（"同一句话被拆成两条"到底有多像，无关事实又有多不像）
+    if (MOARK_KEY !== '' && drafts.length >= 2) {
+      const pairVectors = await embed(drafts.map((item) => item.text));
+      const pairs: string[] = [];
+      for (let left = 0; left < drafts.length; left += 1) {
+        for (let right = left + 1; right < drafts.length; right += 1) {
+          const score = cosineSimilarity(pairVectors[left] ?? [], pairVectors[right] ?? []);
+          pairs.push(`${score.toFixed(3)}(${left}|${right})`);
+        }
+      }
+      console.log(`  [真实提取] 窗口末尾 m${anchor.at} 草稿两两余弦：${pairs.join(' ')}`);
+    }
     console.log(
       `  [真实提取] 窗口末尾 m${anchor.at}（${elapsed} ms）：真值 ${truth.length} 条，抽出 ${drafts.length} 条，` +
-        `严格 ${strictForWindow.length}/${truth.length}，语义(≥0.5) ${MOARK_KEY === '' ? '(无向量密钥，未量)' : `${semanticForWindow}/${truth.length}`}，语义(且间隔≥0.25) ${MOARK_KEY === '' ? '(未量)' : `${semanticStrictForWindow}/${truth.length}`}，噪声 ${MOARK_KEY === '' ? '(未量)' : noiseForWindow}`,
+        `合并掉 ${result.merged} 条，严格 ${strictForWindow.length}/${truth.length}，语义(≥0.5) ${MOARK_KEY === '' ? '(无向量密钥，未量)' : `${semanticForWindow}/${truth.length}`}，语义(且间隔≥0.25) ${MOARK_KEY === '' ? '(未量)' : `${semanticStrictForWindow}/${truth.length}`}，噪声 ${MOARK_KEY === '' ? '(未量)' : noiseForWindow}`,
     );
     for (const item of drafts) console.log(`      · ${item.text}（来源=${JSON.stringify(item.ids)}）`);
   }
 
   console.log(`  [真实提取] 合计：真值实例 ${totalTruth}，严格 ${strictHits}/${totalTruth}，` +
     `语义(≥0.5) ${MOARK_KEY === '' ? '(未量)' : `${semanticHits}/${totalTruth}`}，语义(且间隔≥0.25) ${MOARK_KEY === '' ? '(未量)' : `${semanticStrictHits}/${totalTruth}`}，` +
-    `抽出 ${totalDrafts} 条，噪声 ${MOARK_KEY === '' ? '(未量)' : noise}，越界来源 ${bogusSources}`);
+    `抽出 ${totalDrafts} 条（合并后），噪声 ${MOARK_KEY === '' ? '(未量)' : noise}，越界来源 ${bogusSources}`);
   assert.ok(totalDrafts > 0, '真实模型应当在每个窗口都至少抽出一条');
 });

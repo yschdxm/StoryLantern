@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { conflictsOf, factsToLoreEntries, verifyProvenance, type ProvenanceCheck } from '../../../../packages/oplog/src/index.ts';
 import { describeError } from '../data/error-text.ts';
 import { recomputeFacts } from '../data/fact-organize.ts';
+import { DEFAULT_EMBEDDING_MODEL, createHostEmbeddingPort } from '../data/embedding-host.ts';
+import { SETTING_KEYS } from '../data/types.ts';
 import type { Fact } from '../data/fact-types.ts';
 import { useT } from '../i18n/context.tsx';
 import { Banner, Button, EmptyState, ListRow, Sheet, SheetItem } from '../ui/components.tsx';
@@ -19,7 +21,7 @@ export interface FactsScreenProps extends ScreenProps {
   characterId: string;
 }
 
-export function FactsScreen({ store, characterId, chat }: FactsScreenProps): ReactNode {
+export function FactsScreen({ store, characterId, chat, transport }: FactsScreenProps): ReactNode {
   const t = useT();
   const state = useAppState(store);
   const [busy, setBusy] = useState(false);
@@ -73,6 +75,17 @@ export function FactsScreen({ store, characterId, chat }: FactsScreenProps): Rea
         characterId,
         history: history.map((message) => ({ id: message.id, role: message.role, content: message.content })),
         existing: facts,
+        // 近似重复合并：把草稿文本送向量源（同一句话被拆成两三条时合并）。没有通道就不给，
+        // recomputeFacts 会退回精确去重 —— 不猜、不乱并。
+        ...(transport === undefined
+          ? {}
+          : {
+              embed: (texts: readonly string[]) =>
+                createHostEmbeddingPort({
+                  transport,
+                  model: store.getState().settings[SETTING_KEYS.embeddingModel] ?? DEFAULT_EMBEDDING_MODEL,
+                }).embed(texts),
+            }),
         reply: (profileId, systemPrompt, userText) =>
           chat
             .reply(

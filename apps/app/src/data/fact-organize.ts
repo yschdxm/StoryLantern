@@ -1,4 +1,4 @@
-import { parseFactProposals, type FactProposal } from '../../../../packages/oplog/src/index.ts';
+import { cosineSimilarity, parseFactProposals, type FactProposal } from '../../../../packages/oplog/src/index.ts';
 import { candidatesFor, targetLabel } from './model-routing.ts';
 import { describeError } from './error-text.ts';
 import type { Fact, FactDraft } from './fact-types.ts';
@@ -27,6 +27,9 @@ export const FACT_INSTRUCTION = [
   '只抽**故事世界里的设定**：不要把"谁在说话""这段对话讲了什么"这类描述对话本身的话当成事实，也不要成段重复对话原文。',
 ].join('\n');
 
+/** 近似重复的判定阈值（余弦）。**量出来的**：无关事实两两 0.307，同一句话被模型拆成两三条时约 0.709～0.824（第四十八节）。 */
+export const NEAR_DUPLICATE = 0.65;
+
 export interface FactOrganizeInput {
   settings: Record<string, string>;
   characterId?: string;
@@ -38,6 +41,11 @@ export interface FactOrganizeInput {
   reply: (profileId: string | undefined, systemPrompt: string, userText: string) => Promise<string>;
   /** 最多看最近多少条对话（默认 40，与上下文窗口一致）。 */
   window?: number;
+  /**
+   * 可选的向量源：给了就做**近似重复合并**（同一句话被拆成两三条时合并成一条）。
+   * 不给就**不猜** —— 只保留原来的精确去重（没向量时宁可多留一条，也不要错并两条）。
+   */
+  embed?: (texts: readonly string[]) => Promise<readonly (readonly number[])[]>;
 }
 
 export interface FactOrganizeResult {
@@ -46,6 +54,8 @@ export interface FactOrganizeResult {
   dropped: number;
   /** 去重掉了几条（同主语同谓词同宾语）。 */
   duplicated: number;
+  /** 近似重复合并掉了几条（靠向量；没有向量源时恒为 0）。 */
+  merged: number;
 }
 
 /** 宽容剥代码块：模型爱把 JSON 包起来（真正的字段校验交给 oplog 的 parseFactProposals）。 */
@@ -96,7 +106,7 @@ function idOfIndex(index: number, window: readonly { id: string }[]): string | u
 
 export async function recomputeFacts(input: FactOrganizeInput): Promise<FactOrganizeResult> {
   const window = input.history.slice(-(input.window ?? 40));
-  if (window.length === 0) return { drafts: [], dropped: 0, duplicated: 0 };
+  if (window.length === 0) return { drafts: [], dropped: 0, duplicated: 0, merged: 0 };
 
   const candidates = candidatesFor(input.settings, 'extract');
   if (candidates.length === 0) throw new Error('no-model');
@@ -158,5 +168,44 @@ export async function recomputeFacts(input: FactOrganizeInput): Promise<FactOrga
     });
   }
 
-  return { drafts, dropped, duplicated };
+  // **近似重复合并**：真实模型会把同一句话拆成两三条（例：`她｜真名｜阿霜` 与
+  // `她｜保密状态｜从没跟人说过自己的真名`），而精确去重只比"同主语+同谓语+同宾语"，合不掉它们。
+  // 合并规则保守：保留先出现的那条，**来源取并集**（不丢出处）；向量不可用就退回精确去重的结果。
+  let kept: FactDraft[] = drafts;
+  let merged = 0;
+  if (input.embed !== undefined && drafts.length >= 2) {
+    try {
+      // 用**信息最全的一串**做比较（主语｜谓语｜宾语｜文本）：这也是量具里算余弦用的同一串文本 ——
+      // 量具与产品必须比同一个东西，否则阈值标定了也不算数（这一条是被一次"没生效"的实测逼出来的）。
+      const texts = drafts.map(
+        (draft) => `${draft.subject}｜${draft.predicate}｜${draft.object}｜${draft.text ?? ''}`,
+      );
+      const vectors = await input.embed(texts);
+      kept = [];
+      const keptVectors: (readonly number[])[] = [];
+      for (let index = 0; index < drafts.length; index += 1) {
+        const draft = drafts[index];
+        if (draft === undefined) continue;
+        const vector = vectors[index] ?? [];
+        const nearIndex = keptVectors.findIndex((other) => cosineSimilarity(vector, other) >= NEAR_DUPLICATE);
+        if (nearIndex < 0) {
+          kept.push(draft);
+          keptVectors.push(vector);
+          continue;
+        }
+        const target = kept[nearIndex];
+        if (target === undefined) continue;
+        kept[nearIndex] = {
+          ...target,
+          sourceMessageIds: [...new Set([...target.sourceMessageIds, ...draft.sourceMessageIds])],
+        };
+        merged += 1;
+      }
+    } catch {
+      kept = drafts;
+      merged = 0;
+    }
+  }
+
+  return { drafts: kept, dropped, duplicated, merged };
 }
