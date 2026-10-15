@@ -66,6 +66,7 @@ export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings }:
     heightBeforeRef.current = node.scrollHeight;
   }, [hidden]);
 
+
   // 新消息 / 生成内容变化时贴底
   useEffect(() => {
     const node = scrollRef.current;

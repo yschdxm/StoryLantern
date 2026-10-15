@@ -4,6 +4,8 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.enableEdgeToEdge
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.documentfile.provider.DocumentFile
 import org.json.JSONObject
@@ -46,6 +48,22 @@ class MainActivity : TauriActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
+
+    // 键盘（IME）弹出时，把它的 inset 变成内容视图的底部内边距。
+    //
+    // 为什么必须在这里做：enableEdgeToEdge 之后窗口不会自己缩，WebView 也不会。
+    // 真机上量到 innerHeight=889 与 visualViewport.height=889.26 完全相等（889 CSS px 就是整屏），
+    // 键盘占掉的约 539 CSS px 根本没进到网页的视口里——所以贴底的输入栏必然被盖住，
+    // 网页侧再怎么写 CSS 都没用（数据源本身就是错的，见 apps/app/src/ui/viewport.ts 的注释）。
+    ViewCompat.setOnApplyWindowInsetsListener(findViewById(android.R.id.content)) { view, insets ->
+      val ime = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
+      val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars()).bottom
+      val bottom = if (ime > bars) ime else bars
+      if (view.paddingBottom != bottom) {
+        view.setPadding(view.paddingLeft, view.paddingTop, view.paddingRight, bottom)
+      }
+      insets
+    }
   }
 
   override fun onNewIntent(intent: Intent) {

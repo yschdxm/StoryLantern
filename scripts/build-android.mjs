@@ -89,6 +89,10 @@ if (wanted.length === 0) {
   process.exit(1);
 }
 
+// 原生覆盖（MainActivity.kt / SafPlugin.kt）必须先套进 gen/android，否则改了 Kotlin 也不会生效——
+// 这一步以前是手工跑的，忘了就会用旧的覆盖去构建，产物看起来"成功"但行为没变。
+run('套用原生覆盖（MainActivity.kt / SafPlugin.kt → gen/android）', 'node', ['apps/shell/android/apply-overrides.mjs'], root, {});
+
 if (!skipFrontend) {
   run('前端产物（Tauri 把 assets 编译进 .so，必须先跑）', 'node', ['apps/shell/build-frontend.mjs'], root, {});
 }
