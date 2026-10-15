@@ -109,3 +109,22 @@ test('空查询：即便有 embedder 也不折腾，直接词法空结果', asyn
   assert.equal(result.mode, 'lexical');
   assert.deepEqual(result.docs, []);
 });
+test('给了向量缓存就只用它：不会为了查询再把整个语料嵌一遍（曾经会，实测把一次查询拖到 100 秒以上）', async () => {
+  const seen: number[] = [];
+  const spy: EmbeddingPort = {
+    id: 'spy-embedder',
+    async embed(texts) {
+      seen.push(texts.length);
+      return texts.map(() => [1, 0]);
+    },
+  };
+  const vectors = new Map<string, readonly number[]>([
+    ['D1', [1, 0]],
+    ['D2', [0, 1]],
+    ['D3', [1, 0]],
+    ['D4', [0, 1]],
+  ]);
+  const result = await retrieveHybrid('铜铃', CORPUS, { embedder: spy, vectors, limit: 3 });
+  assert.equal(result.mode, 'hybrid');
+  assert.deepEqual(seen, [1], '有缓存时只应当嵌入查询这一条，而不是查询 + 全部文档');
+});

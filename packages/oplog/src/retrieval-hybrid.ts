@@ -116,7 +116,11 @@ export async function retrieveHybrid(
   let queryVector: readonly number[] | undefined;
   let vectors = options.vectors;
   try {
-    const embedded = await embedder.embed([query, ...docs.map((doc) => doc.text)]);
+    // **只嵌入需要嵌入的东西**：调用方给了 vectors 缓存时，这里只算查询那一条。
+    // 曾经这里无条件把"查询 + 全部文档"一起送去嵌入 —— 结果是每次查询都重算整个语料
+    // （在 500 条语料上实测把一次查询拖到 100 秒以上）。缓存在手上就必须用上。
+    const cacheHit = vectors !== undefined;
+    const embedded = await embedder.embed(cacheHit ? [query] : [query, ...docs.map((doc) => doc.text)]);
     queryVector = embedded[0];
     if (vectors === undefined) {
       const built = new Map<string, readonly number[]>();

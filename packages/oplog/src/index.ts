@@ -119,6 +119,15 @@ export {
   type SummaryRunnerOptions,
 } from './summary-runner.ts';
 export {
+  createOpenAiEmbeddingPort,
+  normalizeVector,
+  parseEmbeddingResponse,
+  type EmbeddingFetch,
+  type EmbeddingFetchResponse,
+  type OpenAiEmbeddingOptions,
+  type ParsedEmbeddingResponse,
+} from './embedding-openai.ts';
+export {
   cosineSimilarity,
   createHashEmbeddingStub,
   reciprocalRankFusion,

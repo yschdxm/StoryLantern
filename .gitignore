@@ -46,3 +46,4 @@ Desktop.ini
 # local commit message scratch files
 .commit-msg*.tmp
 .tmp-*
+eval/long-chat/.cache/
