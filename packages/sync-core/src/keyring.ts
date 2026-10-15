@@ -13,6 +13,8 @@
  * 只定义"要能干什么"与 keyring 的数据形状，因此逻辑能在 Node 里用假实现测。
  */
 
+import { describeError } from './error-text.ts';
+
 /** 密钥协商与包装的端口。实现见 app 侧 `data/sync/envelope.ts`。 */
 export interface KeyWrapPort {
   /** 生成一对 X25519 密钥；公钥（raw 十六进制）随设备清单发布。 */
@@ -89,7 +91,7 @@ export function parseKeyring(text: string): Keyring {
   try {
     raw = JSON.parse(text);
   } catch (cause) {
-    throw new Error(`keyring 不是合法 JSON：${cause instanceof Error ? cause.message : String(cause)}`);
+    throw new Error(`keyring 不是合法 JSON：${describeError(cause)}`);
   }
   if (typeof raw !== 'object' || raw === null) throw new Error('keyring 不是对象');
   const record = raw as Record<string, unknown>;

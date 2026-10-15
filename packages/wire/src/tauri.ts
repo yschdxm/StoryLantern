@@ -1,4 +1,5 @@
 import { WireError, type WireInvokeRequest, type WireManifest, type WireTransport } from './transport.ts';
+import { describeError } from '../../sync-core/src/error-text.ts';
 
 /**
  * Tauri IPC 承载。
@@ -135,7 +136,7 @@ export function createTauriTransport(options: TauriTransportOptions): WireTransp
       if (shaped !== undefined) {
         throw new WireError(shaped.code, shaped.message, { service: request.service, method: request.method });
       }
-      throw new WireError('transport-failed', cause instanceof Error ? cause.message : String(cause), {
+      throw new WireError('transport-failed', describeError(cause), {
         service: request.service,
         method: request.method,
       });
@@ -161,7 +162,7 @@ export function createTauriTransport(options: TauriTransportOptions): WireTransp
     }).catch((cause: unknown) => {
       const shaped = asErrorShape(cause);
       if (shaped !== undefined) throw new WireError(shaped.code, shaped.message, { service: request.service, method: request.method });
-      throw new WireError('transport-failed', cause instanceof Error ? cause.message : String(cause), { service: request.service, method: request.method });
+      throw new WireError('transport-failed', describeError(cause), { service: request.service, method: request.method });
     });
     if (opened.error !== undefined) {
       throw new WireError(opened.error.code, opened.error.message, { service: request.service, method: request.method });
@@ -228,7 +229,7 @@ export function createTauriTransport(options: TauriTransportOptions): WireTransp
       }).catch((cause: unknown) => {
         const shaped = asErrorShape(cause);
         if (shaped !== undefined) throw new WireError(shaped.code, shaped.message, { service: request.service, method: request.method });
-        throw new WireError('transport-failed', cause instanceof Error ? cause.message : String(cause), { service: request.service, method: request.method });
+        throw new WireError('transport-failed', describeError(cause), { service: request.service, method: request.method });
       });
       if (opened.error !== undefined) {
         throw new WireError(opened.error.code, opened.error.message, { service: request.service, method: request.method });

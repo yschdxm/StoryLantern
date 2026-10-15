@@ -1,4 +1,5 @@
 import { test } from 'node:test';
+import { describeError } from '../src/error-text.ts';
 import assert from 'node:assert/strict';
 import {
   RECOVERY_FILE,
@@ -173,7 +174,7 @@ test("弱签名设备（没有签名公钥）也能写加入请求：只要带�
   const accepted = await verifyJoinRequest(proof, request, { revoked: new Set() });
   assert.equal(accepted.ok, true, "弱签名设备应当能被接纳（名单侧本来也允许没有公钥的同伴）");
   const missing = await createJoinRequest(proof, { deviceId: "x", publicKey: "", agreementKey: "" }).catch(
-    (cause: unknown) => (cause instanceof Error ? cause.message : String(cause)),
+    (cause: unknown) => (describeError(cause)),
   );
   assert.match(String(missing), /协商公钥/);
 });

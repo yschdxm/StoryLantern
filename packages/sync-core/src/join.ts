@@ -11,6 +11,8 @@
  * 因此格式与校验逻辑能在 Node 里用假实现测。
  */
 
+import { describeError } from './error-text.ts';
+
 /** 密码证明的端口：seal/open 用的钥匙来自**密码**（不是设备密钥）。 */
 export interface JoinProofPort {
   seal(plaintext: Uint8Array): Promise<string>;
@@ -152,7 +154,7 @@ export function parseJoinRequest(text: string): JoinRequest {
   try {
     raw = JSON.parse(text);
   } catch (cause) {
-    throw new Error(`加入请求不是合法 JSON：${cause instanceof Error ? cause.message : String(cause)}`);
+    throw new Error(`加入请求不是合法 JSON：${describeError(cause)}`);
   }
   if (typeof raw !== 'object' || raw === null) throw new Error('加入请求不是对象');
   const record = raw as Record<string, unknown>;

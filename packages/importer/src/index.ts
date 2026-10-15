@@ -1,4 +1,5 @@
 import { parseCharacterJson, parseLorebook } from './card.ts';
+import { describeError } from '../../sync-core/src/error-text.ts';
 import { parseChatText } from './chat.ts';
 import { extractCardTextFromPng, isPng } from './png.ts';
 import { ImportError, isRecord, type Imported } from './types.ts';
@@ -36,7 +37,7 @@ export async function importFile(name: string, bytes: Uint8Array): Promise<Impor
     return importText(name, new TextDecoder().decode(bytes));
   } catch (cause) {
     if (cause instanceof ImportError) throw cause;
-    throw new ImportError('unreadable', cause instanceof Error ? cause.message : String(cause));
+    throw new ImportError('unreadable', describeError(cause));
   }
 }
 

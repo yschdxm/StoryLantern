@@ -14,6 +14,8 @@
  * 所以格式与校验能在 Node 里用假实现测。
  */
 
+import { describeError } from './error-text.ts';
+
 export const RECOVERY_FILE = 'recovery.json';
 
 export interface RecoveryProofPort {
@@ -64,7 +66,7 @@ export function parseRecoveryFile(text: string): RecoveryFile {
   try {
     raw = JSON.parse(text);
   } catch (cause) {
-    throw new Error(`recovery.json 不是合法 JSON：${cause instanceof Error ? cause.message : String(cause)}`);
+    throw new Error(`recovery.json 不是合法 JSON：${describeError(cause)}`);
   }
   if (typeof raw !== 'object' || raw === null) throw new Error('recovery.json 不是对象');
   const record = raw as Record<string, unknown>;
