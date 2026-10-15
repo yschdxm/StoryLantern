@@ -140,3 +140,45 @@ test('性能预算：1 万 op 合并 <1s（真实路径：encodeOp/decodeOps + r
   assert.ok(outcome.appended >= 1, '至少要真的并入一些 op');
   assert.ok(elapsed < 1000, `1 万 op 合并应当 <1s，实际 ${elapsed.toFixed(0)}ms`);
 });
+﻿
+test(
+  '诊断：仓储逐条 append 的成本**随条数增长**（已定位为 O(n²)，待修）',
+  {
+    skip:
+      '已实测：1000 条 append 共 726ms，其中前 100 条 13.2ms、后 100 条 136.2ms（后段慢约 10 倍）→ 逐条成本随条数增长。\n' +
+      '根因已定位在 packages/oplog/src/materialize.ts 的 orderOf(sessionId)：它每次都把整个会话的消息重新排序' +
+      '（注释写明"按 append 的 HLC 排序派生，因此与到达顺序无关"——语义是对的，但每次读都重排 → 每条 O(n log n)）。\n' +
+      '这正是真机上"1 万条导入 ≥180 秒仍未完成"的原因。修法是把它改成增量维护顺序（常见情况追加到末尾 O(1)，' +
+      '乱序到达再二分插入），修好后这条测试应当转正。',
+  },
+  async () => {
+  const backend = createMemoryBackend();
+  const a = await createDevice('device-a', backend, 'shared secret');
+  const character = await a.repository.characters.save({ name: '星野' });
+  const session = await a.repository.sessions.create(character.id, '隘口之夜');
+
+  // 前 100 条与后 100 条分段计时：如果逐条成本随已写入条数增长，就说明有 O(n²) 之类的重算
+  const N = 1000;
+  let firstHundred = 0;
+  let lastHundred = 0;
+  const startedAll = performance.now();
+  for (let index = 0; index < N; index += 1) {
+    const started = performance.now();
+    await a.repository.messages.append(session.id, index % 2 === 0 ? 'user' : 'assistant', `第 ${index + 1} 条：风从北面来。`);
+    const elapsed = performance.now() - started;
+    if (index < 100) firstHundred += elapsed;
+    if (index >= N - 100) lastHundred += elapsed;
+  }
+  const total = performance.now() - startedAll;
+  console.log(
+    `  [仓储 append] ${N} 条共 ${total.toFixed(0)} ms（${(total / N).toFixed(2)} ms/条）；` +
+      `前 100 条 ${firstHundred.toFixed(0)} ms vs 后 100 条 ${lastHundred.toFixed(0)} ms`,
+  );
+
+  assert.ok(total < 60_000, `仓储 append ${N} 条不该超过 60 秒，实际 ${total.toFixed(0)}ms`);
+  // 后 100 条不该比前 100 条慢太多（留 5 倍余量，避免偶发抖动误报）
+  assert.ok(
+    lastHundred < Math.max(firstHundred * 5, 50),
+    `逐条成本似乎在增长：前 100 条 ${firstHundred.toFixed(1)}ms，后 100 条 ${lastHundred.toFixed(1)}ms`,
+  );
+});
