@@ -47,3 +47,8 @@ Desktop.ini
 .commit-msg*.tmp
 .tmp-*
 eval/long-chat/.cache/
+
+# 本地密钥/环境文件（绝不入库）
+.env
+.env.*
+*.local
