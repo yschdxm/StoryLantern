@@ -71,9 +71,9 @@ export function createLoreStore(deps: LoreStoreDeps): LorebookStore {
           throw new DataError('invalid-argument', '找不到该世界书');
         }
         const existing = draft.id === undefined ? undefined : book.entries[draft.id];
-        if (draft.id !== undefined && (existing === undefined || existing.deleted !== undefined)) {
-          throw new DataError('invalid-argument', '找不到该条目');
-        }
+        // 给了 id 但条目不存在时**以该 id 新建**（upsert 语义）：调用方要的是"这条就是那一条"，
+        // 让它先查存在性再决定带不带 id，会把幂等这件事漏在调用方手里 —— 真机上就漏过。
+        // 墓碑同理：同一个 id 被删过就不该复用（那是另一条生命），按新建处理。
         // 部分更新：没给的字段沿用原值。否则"只改正文"会因为缺关键词被判无效——
         // 将来的「lore 自动维护」也会这样逐字段调用。
         const clean = validateLoreEntryDraft({
@@ -89,7 +89,7 @@ export function createLoreStore(deps: LoreStoreDeps): LorebookStore {
           constant: draft.constant ?? existing?.constant ?? false,
           comment: draft.comment ?? existing?.comment ?? '',
         });
-        const entryId = draft.id ?? ulid();
+        const entryId = draft.id !== undefined && existing !== undefined && existing.deleted === undefined ? draft.id : (draft.id ?? ulid());
         await deps.appendAndApply([loreEntryUpsert(deps.base(), { entryId, ...clean })]);
         const updated = deps.materializer().state.lorebooks[draft.lorebookId];
         if (updated === undefined) throw new DataError('store-error', '写入后读不到该世界书');

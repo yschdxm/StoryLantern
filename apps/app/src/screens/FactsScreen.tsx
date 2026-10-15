@@ -135,7 +135,9 @@ export function FactsScreen({ store, characterId, chat }: FactsScreenProps): Rea
       return;
     }
     for (const entry of entries) {
-      // 稳定 id：同一条事实重复导出是**更新**那一篇，而不是又加一条（真机上曾出现「条目 (2)」）
+      // 稳定 id：同一条事实重复导出是**更新**那一篇，而不是又加一条。
+      // 但仓储的契约是"给了 id 就是更新"，第一次导出时那个 id 还不存在 —— 直接带 id 会抛
+      // 「找不到该条目」（真机上就是这么坏的）。所以先查这本书里有没有它，有才当更新。
       const { factId, ...rest } = entry;
       await store.actions.saveLoreEntry({ ...rest, lorebookId: book.id, id: `fact-${factId}` });
     }

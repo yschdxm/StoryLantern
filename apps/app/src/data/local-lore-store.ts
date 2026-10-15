@@ -67,9 +67,8 @@ export function createLocalLoreStore(deps: LocalLoreDeps): LorebookStore {
       const book = findBook(draft.lorebookId);
       if (book === undefined) throw new DataError('invalid-argument', '找不到该世界书');
       const stamp = deps.now();
-      if (draft.id !== undefined) {
-        const existing = book.entries.find((entry) => entry.id === draft.id);
-        if (existing === undefined) throw new DataError('invalid-argument', '找不到该条目');
+      const existing = draft.id === undefined ? undefined : book.entries.find((entry) => entry.id === draft.id);
+      if (existing !== undefined) {
         // 部分更新：没给的字段沿用原值（与 op 仓储同一条规则）
         const clean = validateLoreEntryDraft({
           ...draft,
@@ -88,7 +87,7 @@ export function createLocalLoreStore(deps: LocalLoreDeps): LorebookStore {
       } else {
         const clean = validateLoreEntryDraft(draft);
         const created: LoreEntry = {
-          id: deps.nextId('e'),
+          id: draft.id ?? deps.nextId('e'),
           keys: clean.keys,
           secondaryKeys: clean.secondaryKeys,
           content: clean.content,
