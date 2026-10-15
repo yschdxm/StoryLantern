@@ -62,7 +62,16 @@ export interface Device {
   store: SyncStorePort;
   /** 需要看"对端公钥有没有收到"时用它。 */
   service: SyncService;
-  sync: () => Promise<{ uploaded: number; downloaded: number; appliedOps: number; warnings: string[] }>;
+  /** 本机的 op 日志（量性能预算时要用：段压缩比 = 原始 JSONL 字节数 / 段文件字节数）。 */
+  ops: { list(after: number, limit: number): Promise<{ rows: Array<{ seq: number; line: string }>; lastSeq: number }> };
+  sync: () => Promise<{
+    uploaded: number;
+    downloaded: number;
+    appliedOps: number;
+    /** 本次同步对后端发起的请求数（PLAN §11 的预算：单次 ≤8）。 */
+    requests: number;
+    warnings: string[];
+  }>;
 }
 
 /**
@@ -105,6 +114,7 @@ export async function createDevice(
     repository,
     store,
     service,
+    ops: ports.ops,
     sync: async () => {
       let summary = await service.sync();
       if (summary.warnings.some((warning) => warning.includes('加入请求'))) {
@@ -117,6 +127,7 @@ export async function createDevice(
         uploaded: summary.uploaded,
         downloaded: summary.downloaded,
         appliedOps: summary.appliedOps,
+        requests: summary.requests,
         warnings: summary.warnings,
       };
     },
