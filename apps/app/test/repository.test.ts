@@ -379,3 +379,4 @@ test('op-log：settings 走宿主配置，不进 op 日志（密钥不参与同�
   assert.ok(!lines.includes('sk-secret'), '密钥绝不能出现在 op 日志里');
   assert.equal((await ports.ops.stats()).count, 0, '设置不产生 op');
 });
+﻿
