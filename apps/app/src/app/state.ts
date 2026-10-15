@@ -1,4 +1,4 @@
-import type { Repository } from '../data/repository.ts';
+import type { MessageDraft, Repository } from '../data/repository.ts';
 import { DataError } from '../data/repository.ts';
 import type {
   Character,
@@ -70,6 +70,8 @@ export interface AppActions {
   // ---- 长期记忆 ----
   /** 追加候选回复（导入 swipes 的落点）。 */
   appendCandidates(messageId: string, contents: readonly string[]): Promise<number>;
+  /** 批量追加消息（导入历史用）：只发生一次仓储写入。 */
+  appendMany(sessionId: string, entries: readonly MessageDraft[]): Promise<number>;
   /** 选中候选：选中的那条成为显示正文。 */
   selectCandidate(messageId: string, candidateId: string): Promise<boolean>;
   refreshMemories(): Promise<void>;
@@ -281,6 +283,28 @@ export function createAppStore(repository: Repository): AppStore {
         await repository.messages.append(sessionId, 'user', content, 'done');
         await Promise.all([actions.loadMessages(sessionId), refreshSessions()]);
       });
+    },
+
+    async appendMany(sessionId, entries) {
+      const added = await repository.messages.appendMany(sessionId, entries);
+      if (state.activeSessionId === sessionId) await actions.loadMessages(sessionId);
+      const last = entries[entries.length - 1];
+      if (last !== undefined) {
+        // 同样只就地更新摘要：导入上万条不该打出上万次查询（调用方结束时 refreshSessions 对齐一次）
+        set({
+          sessions: state.sessions.map((session) =>
+            session.id === sessionId
+              ? {
+                  ...session,
+                  messageCount: session.messageCount + added,
+                  lastMessage: last.content,
+                  updatedAt: last.createdAt === undefined || last.createdAt <= 0 ? session.updatedAt : last.createdAt,
+                }
+              : session,
+          ),
+        });
+      }
+      return added;
     },
 
     async appendMessage(sessionId, role, content, options = {}) {

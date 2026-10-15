@@ -183,3 +183,25 @@ test(
     `逐条成本似乎在增长：前 100 条 ${firstHundred.toFixed(1)}ms，后 100 条 ${lastHundred.toFixed(1)}ms`,
   );
 });
+﻿
+test('批量导入：1 万条消息一次写入完成并全部落库（真机逐条写要 ≥180 秒）', async () => {
+  const backend = createMemoryBackend();
+  const a = await createDevice('device-a', backend, 'shared secret');
+  const character = await a.repository.characters.save({ name: '星野' });
+  const session = await a.repository.sessions.create(character.id, '隘口之夜');
+
+  const entries: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+  for (let index = 0; index < 10_000; index += 1) {
+    entries.push({ role: index % 2 === 0 ? 'user' : 'assistant', content: `第 ${index + 1} 条：风从北面来，带着雪线的味道。` });
+  }
+
+  const started = performance.now();
+  const added = await a.repository.messages.appendMany(session.id, entries);
+  const elapsed = performance.now() - started;
+  const listed = await a.repository.messages.list(session.id);
+  console.log(`  [批量导入] ${added} 条走一次写入，耗时 ${elapsed.toFixed(0)} ms；读回 ${listed.length} 条`);
+
+  assert.equal(added, 10_000, '批量写入应当报告写入条数');
+  assert.equal(listed.length, 10_000, '1 万条应当全部落库且能读回');
+  assert.ok(elapsed < 5_000, `批量导入 1 万条应当 <5s，实际 ${elapsed.toFixed(0)}ms`);
+});

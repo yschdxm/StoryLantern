@@ -50,6 +50,15 @@ export interface SessionStore {
   remove(id: string): Promise<boolean>;
 }
 
+/** 批量写入用的一条消息（候选是可选的，语义与 appendCandidates 一致）。 */
+export interface MessageDraft {
+  role: MessageRole;
+  content: string;
+  createdAt?: number;
+  status?: MessageStatus;
+  candidates?: readonly string[];
+}
+
 export interface MessageStore {
   list(sessionId: string): Promise<Message[]>;
   /** `createdAt` 用于导入历史记录：不传就用当前时间。 */
@@ -60,6 +69,13 @@ export interface MessageStore {
    * 返回真正新增的条数：重复内容与空串会被忽略，因此重放是安全的。
    */
   appendCandidates(id: string, contents: readonly string[]): Promise<number>;
+  /**
+   * 一次写多条消息（含各自的候选）。
+   *
+   * 为什么要有它：导入历史时逐条写会变成"每条一次 ops.append"——真机上 1 万条就是 1 万次 IPC
+   * + 1 万次事务，实测 ≥180 秒仍未完成。批量走一次写入，语义与逐条完全相同。
+   */
+  appendMany(sessionId: string, entries: readonly MessageDraft[]): Promise<number>;
   /** 选中某个候选；选中的那条成为该消息的显示正文。 */
   selectCandidate(id: string, candidateId: string): Promise<boolean>;
   remove(id: string): Promise<boolean>;

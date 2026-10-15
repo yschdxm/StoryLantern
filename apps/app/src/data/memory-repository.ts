@@ -249,6 +249,17 @@ export function createMemoryRepository(
     },
 
     /** 追加候选回复（导入 swipes 的落点）：重复与空串都跳过，因此可以安全重放。 */
+    async appendMany(sessionId, entries) {
+      // 内存实现（测试/预览）逐条走同一个 append，语义与 op 实现一致；真机走 op 实现的批量路径。
+      let added = 0;
+      for (const entry of entries) {
+        const view = await this.append(sessionId, entry.role, entry.content, entry.status ?? 'done', entry.createdAt);
+        added += 1;
+        if ((entry.candidates ?? []).length > 0) await this.appendCandidates(view.id, entry.candidates ?? []);
+      }
+      return added;
+    },
+
     async appendCandidates(id, contents) {
       const message = state.messages.find((item) => item.id === id);
       if (message === undefined) return 0;

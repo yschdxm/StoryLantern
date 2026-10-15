@@ -110,13 +110,18 @@ export function ImportScreen({ store, router }: ScreenProps): ReactNode {
           }
           const session = await store.actions.createSession(characterId, plan.title);
           sessions += 1;
-          for (const message of plan.messages) {
-            const saved = await store.actions.appendMessage(session.id, message.role, message.content, {
+          // 批量写入：整本历史只发生**一次**仓储写入。
+          // 以前是逐条 appendMessage + 逐条 appendCandidates：真机上 1 万条就是 1 万次 IPC + 1 万次事务，
+          // 实测 ≥180 秒仍未完成（见 docs/M3-STATUS.md 的《导入瓶颈》两节）。
+          await store.actions.appendMany(
+            session.id,
+            plan.messages.map((message) => ({
+              role: message.role,
+              content: message.content,
               ...(message.createdAt === undefined ? {} : { createdAt: message.createdAt }),
-            });
-            // swipes：当前那条已作为正文落库，其余作为候选跟上去（重复与空串会被忽略）
-            if (message.candidates.length > 0) await store.actions.appendCandidates(saved.id, message.candidates);
-          }
+              ...(message.candidates.length === 0 ? {} : { candidates: message.candidates }),
+            })),
+          );
           // 逐条追加时只做了就地更新；批量结束后对齐一次，列表摘要才是权威值
           await store.actions.refreshSessions();
         }

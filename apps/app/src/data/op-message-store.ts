@@ -64,6 +64,41 @@ export function createMessageStore(deps: MessageStoreDeps): MessageStore {
         return view;
       }),
 
+    appendMany: (sessionId, entries) =>
+      deps.withReady(async () => {
+        const ops: Op[] = [];
+        for (const entry of entries) {
+          const safeRole = validateMessageRole(entry.role);
+          const id = ulid();
+          const content = entry.content;
+          ops.push(
+            messageAppend(
+              deps.base(),
+              {
+                sessionId,
+                messageId: id,
+                author: authorOf(safeRole),
+                content,
+                ...(entry.status === 'error' ? { status: 'error' as const } : {}),
+              },
+              entry.createdAt === undefined || entry.createdAt <= 0 ? {} : { hlc: { t: entry.createdAt, c: 0 } },
+            ),
+          );
+          // 候选：跳过空串、与正文相同、以及同一条里重复的（与 appendCandidates 的规则一致）
+          const seen = new Set<string>();
+          const activeText = content.trim();
+          for (const candidate of entry.candidates ?? []) {
+            const clean = candidate.trim();
+            if (clean === '' || clean === activeText || seen.has(clean)) continue;
+            seen.add(clean);
+            ops.push(candidateAppend(deps.base(), { messageId: id, candidateId: ulid(), content: clean }));
+          }
+        }
+        if (ops.length === 0) return 0;
+        await deps.appendAndApply(ops);
+        return entries.length;
+      }),
+
     update: (id, content, status: MessageStatus = 'done') =>
       deps.withReady(async () => {
         const record = deps.materializer().state.messages[id];
