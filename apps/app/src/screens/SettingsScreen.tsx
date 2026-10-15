@@ -317,13 +317,17 @@ export function SettingsScreen({ store, router, host, chat, ops, sync, plugins, 
                     .then((summary) => {
                       setSecretDraft('');
                       if (summary.root !== undefined) setFolderRoot(summary.root);
+                      // 警告必须显示出来：例如"这台设备的 WebView 不支持 X25519，无法加入共享目录"，
+                      // 以前只显示「完成：上传 1 段」，用户会以为已经加入了（真机上踩到）。
+                      const notes = summary.warnings.filter((item) => item !== "");
+                      const done = t('settings.sync.done', {
+                        uploaded: summary.uploaded,
+                        downloaded: summary.downloaded,
+                        applied: summary.appliedOps,
+                      });
                       setSyncResult({
-                        ok: true,
-                        text: t('settings.sync.done', {
-                          uploaded: summary.uploaded,
-                          downloaded: summary.downloaded,
-                          applied: summary.appliedOps,
-                        }),
+                        ok: notes.length === 0,
+                        text: notes.length === 0 ? done : `${done}｜${notes.join(" ")}`,
                       });
                     })
                     .catch((cause: unknown) =>
