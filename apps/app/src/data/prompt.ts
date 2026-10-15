@@ -1,6 +1,6 @@
 import { scanLore, type ScoredEntry } from '../../../../packages/lore/src/index.ts';
 import type { AssembleFn, PromptGraph } from '../../../../plugins/writing-pipeline/src/index.ts';
-import { characterBlockText, memoryBlockText, type PromptBlockData } from './prompt-blocks.ts';
+import { characterBlockText, memoryBlockText, summaryBlockTextOf, type PromptBlockData, type PromptSummary } from './prompt-blocks.ts';
 import { formatMemoryBlock, selectMemories, type RetrievedMemory } from './memory-retrieval.ts';
 import { SETTING_KEYS, type Lorebook, type Memory, type MessageRole } from './types.ts';
 
@@ -25,7 +25,7 @@ export interface ChatPromptMessage {
 }
 
 /** 请求可解释性：这次调用到底带了什么、裁了什么、为什么。 */
-export type PromptBlockKind = 'custom' | 'character' | 'memory' | 'lore';
+export type PromptBlockKind = 'custom' | 'character' | 'memory' | 'summary' | 'lore';
 
 export interface PromptTraceBlock {
   id: string;
@@ -52,6 +52,8 @@ export interface PromptTrace {
   lore: ScoredEntry[];
   /** 本次实际注入的长期记忆。 */
   memory: RetrievedMemory[];
+  /** 本次实际注入的分层摘要（M4）。 */
+  summaries: PromptSummary[];
   /** 被排除的历史消息及原因（空内容 / 生成失败 / 超出条数上限）。 */
   excluded: PromptTraceExcluded[];
   historyIncluded: number;
@@ -98,6 +100,8 @@ export interface BuildPromptOptions {
   lorebooks?: readonly Lorebook[];
   /** 该角色可用的长期记忆（调用方已按角色筛过；全局记忆也算）。 */
   memories?: readonly Memory[];
+  /** 该会话已有的分层摘要（M4；调用方已按会话筛过）。 */
+  summaries?: readonly PromptSummary[];
   /** 世界书预算（字符）；不传用扫描器默认值。 */
   loreBudgetChars?: number;
   /** 组装管线（来自组合出来的插件）。缺省时走兜底拼接。 */
@@ -164,6 +168,7 @@ export function buildChatRequest(options: BuildPromptOptions): ChatRequest {
     ...(character === undefined ? {} : { character }),
     lorebooks: (options.lorebooks ?? []) as PromptBlockData['lorebooks'],
     memories: (options.memories ?? []) as PromptBlockData['memories'],
+    summaries: options.summaries ?? [],
     history: kept,
   };
 
@@ -171,6 +176,7 @@ export function buildChatRequest(options: BuildPromptOptions): ChatRequest {
   let blocks: PromptTraceBlock[] = [];
   let lore: ScoredEntry[] = [];
   let memory: RetrievedMemory[] = [];
+  let matchedSummaries: PromptSummary[] = [];
   let usedTokens = 0;
   let budgetTokens = 0;
   let omitted = 0;
@@ -227,6 +233,10 @@ export function buildChatRequest(options: BuildPromptOptions): ChatRequest {
     const card = characterBlockText(character);
     if (card !== undefined) parts.push({ kind: 'character', text: card });
     if (memoryResult.matched.length > 0) parts.push({ kind: 'memory', text: formatMemoryBlock(memoryResult.matched) });
+    // 摘要走**检索**（与管线里的块同一份实现，避免两处漂移）
+    const summaryText = summaryBlockTextOf(data);
+    matchedSummaries = data.matchedSummaries ?? [];
+    if (summaryText !== undefined) parts.push({ kind: 'summary', text: summaryText });
     if (loreResult.matched.length > 0) {
       parts.push({ kind: 'lore', text: `【相关设定】\n${loreResult.matched.map((entry) => entry.content.trim()).join('\n')}` });
     }
@@ -247,6 +257,7 @@ export function buildChatRequest(options: BuildPromptOptions): ChatRequest {
     // 世界书/记忆块在渲染时把命中写回了 data
     lore = data.matchedLore ?? [];
     memory = data.matchedMemories ?? [];
+    matchedSummaries = data.matchedSummaries ?? [];
   }
 
   const messageChars = messages.reduce((sum, message) => sum + message.content.length, 0);
@@ -261,6 +272,7 @@ export function buildChatRequest(options: BuildPromptOptions): ChatRequest {
       blocks,
       lore,
       memory,
+      summaries: matchedSummaries,
       excluded,
       historyIncluded: messages.length,
       historyLimit: limit,
@@ -278,6 +290,7 @@ function kindOf(id: string): PromptBlockKind | undefined {
   if (id === 'app.system.custom') return 'custom';
   if (id === 'app.character.card') return 'character';
   if (id === 'app.memory.matched') return 'memory';
+  if (id === 'app.summary.matched') return 'summary';
   if (id === 'app.lore.matched') return 'lore';
   return undefined;
 }
