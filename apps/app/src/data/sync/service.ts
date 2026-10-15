@@ -286,7 +286,7 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
     if (onOps !== undefined) engineOptions.onOps = onOps;
     const engine = new SyncEngine(engineOptions);
 
-    return { engine, roster, restored, baseCursor, waiting: keyring !== undefined && keyring.mine === false, joinBlocked: keyring !== undefined && agreement === undefined };
+    return { engine, roster, restored, baseCursor, waiting: keyring !== undefined && keyring.mine === false, joinBlocked: agreement === undefined };
   };
 
   return {
