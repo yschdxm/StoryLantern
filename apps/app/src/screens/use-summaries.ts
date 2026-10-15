@@ -89,8 +89,9 @@ export function useSummaries(input: UseSummariesInput): UseSummariesResult {
       }
       const written = await input.save(sessionId, result.drafts);
       const done = input.t('summary.recompute.done', { count: written });
+      const used = input.t('summary.recompute.tokens', { prompt: result.tokens.prompt, completion: result.tokens.completion });
       const left = remainingNote(input.t, result.remaining);
-      setNote(left === undefined ? done : done + ' · ' + left);
+      setNote((left === undefined ? done : done + ' · ' + left) + ' · ' + used);
     } catch (cause) {
       input.onError(cause instanceof Error ? cause.message : String(cause));
     } finally {

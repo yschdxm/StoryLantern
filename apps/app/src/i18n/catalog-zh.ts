@@ -323,6 +323,7 @@ export const zhCN: AppMessages = {
   'summary.recompute.none': '内容没有变化，没有需要重算的摘要',
   'summary.recompute.remaining': '还有 {{count}} 个单元，再点一次继续',
   'summary.recompute.tooShort': '这个会话还太短，攒够一批消息才会开始做摘要',
+  'summary.recompute.tokens': '估算用量 {{prompt}} 输入 / {{completion}} 输出 token（不是账单）',
   'dev.oplog.load': '上次启动',
   'dev.oplog.load.snapshot': '载入快照（覆盖 {{covered}} 条）+ 追平 {{tail}} 条 · {{ms}} ms',
   'dev.oplog.load.replay': '全量重放 · {{ms}} ms',

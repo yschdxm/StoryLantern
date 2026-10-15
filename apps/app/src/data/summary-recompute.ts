@@ -1,6 +1,7 @@
 import { candidatesFor, targetLabel } from './model-routing.ts';
 import { organizeSummaries } from './summary-organize.ts';
 import { describeError } from './error-text.ts';
+import { estimateTokens } from './prompt.ts';
 import type { SummarizeRequest } from '../../../../packages/oplog/src/index.ts';
 import type { SettingsMap } from './types.ts';
 
@@ -24,6 +25,8 @@ export interface SummaryRecomputeResult {
   planned: number;
   remaining: number;
   units: number;
+  /** 本次的**估算**用量（不是供应商账单）：输入 = 送出去的材料，输出 = 模型回的字。 */
+  tokens: { prompt: number; completion: number };
   drafts: Awaited<ReturnType<typeof organizeSummaries>>['drafts'];
 }
 
@@ -33,16 +36,22 @@ export async function recomputeSummaries(input: SummaryRecomputeInput): Promise<
   if (candidates.length === 0) throw new Error('no-model');
 
   const errors: string[] = [];
+  const tokens = { prompt: 0, completion: 0 };
   for (const candidate of candidates) {
     try {
       const result = await organizeSummaries({
         sessionId: input.sessionId,
         messages: input.history,
         existing: input.existing,
-        summarize: (request) => input.reply(candidate.id === '' ? undefined : candidate.id, request),
+        summarize: async (request) => {
+          tokens.prompt += estimateTokens(request.inputs.join('\n'));
+          const text = await input.reply(candidate.id === '' ? undefined : candidate.id, request);
+          tokens.completion += estimateTokens(text);
+          return text;
+        },
         ...(candidate.id === '' ? {} : { modelId: candidate.id }),
       });
-      return { planned: result.planned, remaining: result.remaining, units: result.units, drafts: result.drafts };
+      return { planned: result.planned, remaining: result.remaining, units: result.units, tokens, drafts: result.drafts };
     } catch (cause) {
       errors.push(`${targetLabel(candidate)}：${describeError(cause)}`);
     }

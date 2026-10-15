@@ -126,6 +126,18 @@ export {
   type RetrievalKind,
   type ScoredDoc,
 } from './retrieval.ts';
+export {
+  computeUsage,
+  priceOf,
+  totalUsage,
+  withinBudget,
+  type BudgetState,
+  type ModelPrice,
+  type UsageRecord,
+  type UsageSlice,
+  type UsageTask,
+  type UsageTotals,
+} from './usage.ts';
 export type { SummaryRecord } from './state-types.ts';
 export {
   Materializer,

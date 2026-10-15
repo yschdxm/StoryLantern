@@ -312,6 +312,7 @@ export const en: AppMessages = {
   'summary.recompute.none': 'Nothing changed, so no summary needed recomputing',
   'summary.recompute.remaining': '{{count}} unit(s) left — run again to continue',
   'summary.recompute.tooShort': 'This conversation is still short; summarising starts once a full batch exists',
+  'summary.recompute.tokens': 'Estimated usage: {{prompt}} in / {{completion}} out tokens (not a bill)',
   'dev.oplog.load': 'Last start',
   'dev.oplog.load.snapshot': 'snapshot ({{covered}} ops) + {{tail}} replayed · {{ms}} ms',
   'dev.oplog.load.replay': 'full replay · {{ms}} ms',
