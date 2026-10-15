@@ -13,7 +13,7 @@ import type { CharacterRecord, MaterializedState } from './state-types.ts';
 export type ApplyResult = 'applied' | 'duplicate' | 'orphan';
 
 export function emptyState(): MaterializedState {
-  return { characters: {}, sessions: {}, messages: {}, lorebooks: {}, memories: {}, summaries: {}, settings: {} };
+  return { characters: {}, sessions: {}, messages: {}, lorebooks: {}, memories: {}, summaries: {}, facts: {}, settings: {} };
 }
 
 export function cloneHlc(hlc: Hlc): Hlc {

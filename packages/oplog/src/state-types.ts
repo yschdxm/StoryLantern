@@ -1,6 +1,7 @@
 import type { Hlc } from './hlc.ts';
 import type { MessageAuthor } from './op.ts';
 import type { SummaryLevel } from './summary-ops.ts';
+import type { FactAuthor, FactState } from './fact-ops.ts';
 
 /** 物化状态的记录类型。独立成文件，便于 protocol 层（快照/编解码）只依赖类型。 */
 
@@ -98,6 +99,28 @@ export interface SummaryRecord {
   deleted?: { hlc: Hlc; opId: string };
 }
 
+/**
+ * 设定库事实（M4）。与记忆/世界书同一套 LWW + 墓碑；额外带三元组、provenance 与审阅状态。
+ * 冲突**不在这里存**：它是派生计算（见 fact-logic.ts 的 conflictsOf），这样两台设备不会算出两套结果。
+ */
+export interface FactRecord {
+  id: string;
+  characterId?: string;
+  subject: string;
+  predicate: string;
+  object: string;
+  text: string;
+  sourceMessageIds: string[];
+  confidence?: number;
+  state: FactState;
+  createdBy: FactAuthor;
+  modelId?: string;
+  createdHlc: Hlc;
+  updatedHlc: Hlc;
+  opId: string;
+  deleted?: { hlc: Hlc; opId: string };
+}
+
 export interface MaterializedState {
   characters: Record<string, CharacterRecord>;
   sessions: Record<string, SessionRecord>;
@@ -105,6 +128,7 @@ export interface MaterializedState {
   lorebooks: Record<string, LorebookRecord>;
   memories: Record<string, MemoryRecord>;
   summaries: Record<string, SummaryRecord>;
+  facts: Record<string, FactRecord>;
   settings: Record<string, { value: unknown; hlc: Hlc; opId: string }>;
 }
 

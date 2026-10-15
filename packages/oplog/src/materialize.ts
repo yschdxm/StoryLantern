@@ -21,6 +21,7 @@ import {
 } from './lorebook-projection.ts';
 import { applyMemoryDelete, applyMemoryUpsert, listMemories, memoriesFor } from './memory-projection.ts';
 import { applySummaryDelete, applySummaryUpsert, listSummaries } from './summary-projection.ts';
+import { applyFactDelete, applyFactUpsert } from './fact-projection.ts';
 import type { MessageAuthor, Op } from './op.ts';
 import type { SessionSnapshot } from './snapshot.ts';
 import type {
@@ -326,6 +327,10 @@ export class Materializer {
         return applySummaryUpsert(this.#state, op);
       case 'summary.delete':
         return applySummaryDelete(this.#state, op);
+      case 'fact.upsert':
+        return applyFactUpsert(this.#state, op);
+      case 'fact.delete':
+        return applyFactDelete(this.#state, op);
       // 检查点是"日志自己的记号"，不改变物化状态；但仍算已应用，
       // 这样它既能被审计，也不会被当成孤儿反复重试。
       case 'log.checkpoint':

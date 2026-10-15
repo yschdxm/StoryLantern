@@ -150,7 +150,27 @@ export {
   type UsageTask,
   type UsageTotals,
 } from './usage.ts';
-export type { SummaryRecord } from './state-types.ts';
+export {
+  factDelete,
+  factUpsert,
+  type FactAuthor,
+  type FactDeletePayload,
+  type FactState,
+  type FactUpsertPayload,
+} from './fact-ops.ts';
+export { applyFactDelete, applyFactUpsert, listFacts } from './fact-projection.ts';
+export {
+  conflictsOf,
+  factsToLoreEntries,
+  parseFactProposals,
+  provenanceLine,
+  type ExportFactsOptions,
+  type FactConflict,
+  type FactProposal,
+  type LoreEntryDraft,
+  type ParseFactsResult,
+} from './fact-logic.ts';
+export type { FactRecord, SummaryRecord } from './state-types.ts';
 export {
   Materializer,
   type CandidateRecord,
