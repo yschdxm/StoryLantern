@@ -1,4 +1,4 @@
-import { HlcClock, runSummaries, type SummarizeRequest, type SummaryRecordLike } from '../../../../packages/oplog/src/index.ts';
+import { countUnits, HlcClock, runSummaries, type SummarizeRequest, type SummaryRecordLike } from '../../../../packages/oplog/src/index.ts';
 import { summaryHash } from './digest.ts';
 import type { SummaryDraft } from './summary-types.ts';
 
@@ -27,6 +27,8 @@ export interface OrganizeSummariesInput {
 
 export interface OrganizeSummariesResult {
   drafts: SummaryDraft[];
+  /** 这个会话一共有多少个完整单元（=0 说明还没攒够一个 scene，与"内容没变化"是两件事）。 */
+  units: number;
   /** 受一次运行的上限限制，还有多少单元没做（界面据此提示"再点一次继续"）。 */
   remaining: number;
   /** 计划出来的目标数（= drafts 数；写出来是为了界面能说清"为什么一条都没写"）。 */
@@ -72,5 +74,5 @@ export async function organizeSummaries(input: OrganizeSummariesInput): Promise<
     };
   });
 
-  return { drafts, planned: drafts.length, remaining };
+  return { drafts, planned: drafts.length, remaining, units: countUnits(input.messages.length, input.sceneSize, input.arcSize) };
 }

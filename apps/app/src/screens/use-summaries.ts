@@ -83,7 +83,8 @@ export function useSummaries(input: UseSummariesInput): UseSummariesResult {
       }
 
       if (result.planned === 0) {
-        setNote(input.t('summary.recompute.none'));
+        // 两件不同的事：还没攒够一个完整单元 vs 内容没变化
+        setNote(input.t(result.units === 0 ? 'summary.recompute.tooShort' : 'summary.recompute.none'));
         return;
       }
       const written = await input.save(sessionId, result.drafts);

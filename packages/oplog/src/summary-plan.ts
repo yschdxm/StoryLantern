@@ -61,6 +61,23 @@ export interface SummaryTarget {
   reason: 'missing' | 'stale';
 }
 
+/**
+ * 一共有多少个**完整单元**（scene + arc + session），只按消息条数与窗口大小算。
+ *
+ * 用途：区分两件对用户不同的事——"内容没变化，不用重算" vs "还没攒够一个完整单元"。
+ * 它与 `planSummaries` 必须一致，因此测试里有一条**防漂移**断言盯着（两者不等就红）。
+ */
+export function countUnits(
+  messageCount: number,
+  sceneSize: number = DEFAULT_SCENE_SIZE,
+  arcSize: number = DEFAULT_ARC_SIZE,
+): number {
+  const scenes = Math.floor(messageCount / sceneSize);
+  const arcs = Math.floor(scenes / arcSize);
+  const sessions = Math.floor(arcs / arcSize);
+  return scenes + arcs + sessions;
+}
+
 export const DEFAULT_SCENE_SIZE = 20;
 export const DEFAULT_ARC_SIZE = 5;
 

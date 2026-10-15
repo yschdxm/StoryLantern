@@ -3,7 +3,14 @@ import assert from 'node:assert/strict';
 import { HlcClock } from '../src/hlc.ts';
 import { Materializer } from '../src/materialize.ts';
 import { listSummaries } from '../src/summary-projection.ts';
-import { planSummaries, staleSummaries, summaryIdOf, type SummaryMessage, type SummaryTarget } from '../src/summary-plan.ts';
+import {
+  countUnits,
+  planSummaries,
+  staleSummaries,
+  summaryIdOf,
+  type SummaryMessage,
+  type SummaryTarget,
+} from '../src/summary-plan.ts';
 import { summaryDelete, summaryUpsert } from '../src/summary-ops.ts';
 import { nodeDigest } from '../src/node-adapters.ts';
 import { toHex, utf8 } from '../src/bytes.ts';
@@ -74,6 +81,15 @@ test('分层结构：scene/arc/session 按窗口切，只有攒满的单元才�
   assert.equal(arcs.length, 2, `${ARC} 个 scene 一个 arc`);
   assert.equal(sessions.length, 1, `${ARC} 个 arc 一个 session`);
   assert.ok(targets.every((target) => target.reason === 'missing'));
+});
+
+test('防漂移：countUnits 与 planSummaries 必须给出同一个单元数', async () => {
+  for (const count of [0, 1, SCENE - 1, SCENE, SCENE * 3, SCENE * 3 + 1, SCENE * 8]) {
+    const messages = makeMessages(count);
+    const targets = await plan(messages, []);
+    assert.equal(countUnits(count, SCENE, ARC), targets.length, `消息 ${count} 条时两者必须一致`);
+  }
+  console.log('  防漂移：0/1/3/4/12/13/32 条消息下 countUnits 与计划结果一致');
 });
 
 test('幂等：内容没变时再计划一次，什么都不用做（不写任何新 op）', async () => {

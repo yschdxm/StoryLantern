@@ -101,6 +101,7 @@ export {
 export {
   DEFAULT_ARC_SIZE,
   DEFAULT_SCENE_SIZE,
+  countUnits,
   planSummaries,
   staleSummaries,
   summaryIdOf,
@@ -117,6 +118,14 @@ export {
   type SummaryRunResult,
   type SummaryRunnerOptions,
 } from './summary-runner.ts';
+export {
+  retrieve,
+  tokenize,
+  type RetrieveOptions,
+  type RetrievalDoc,
+  type RetrievalKind,
+  type ScoredDoc,
+} from './retrieval.ts';
 export type { SummaryRecord } from './state-types.ts';
 export {
   Materializer,
