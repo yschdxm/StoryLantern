@@ -53,6 +53,7 @@ export function MemoriesScreen({ store, characterId, chat }: MemoriesScreenProps
     loadHistory: (id) => store.actions.messagesOf(id),
     loadExisting: (id) => store.actions.summariesOf(id),
     save: async (id, drafts) => (await store.actions.saveSummaries(id, drafts)).length,
+    setSetting: (key, value) => store.actions.setSetting(key, value),
     chat,
     t,
     onError: (message) => setOrganizeError(message),

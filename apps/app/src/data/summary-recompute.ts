@@ -19,6 +19,10 @@ export interface SummaryRecomputeInput {
   existing: readonly { id: string; contentHash: string; text: string }[];
   /** 用某个模型配置生成一段文本（界面传入：真机上就是聊天客户端）。 */
   reply: (profileId: string | undefined, request: SummarizeRequest) => Promise<string>;
+  /** 每完成一次模型调用就回调一次（用来实时记账 + 判断预算）。 */
+  onCall?: (call: { modelId: string; promptTokens: number; completionTokens: number }) => Promise<void> | void;
+  /** 每做一个单元前的检查（透传给执行器）。 */
+  shouldContinue?: () => boolean;
 }
 
 export interface SummaryRecomputeResult {
@@ -27,6 +31,8 @@ export interface SummaryRecomputeResult {
   units: number;
   /** 本次的**估算**用量（不是供应商账单）：输入 = 送出去的材料，输出 = 模型回的字。 */
   tokens: { prompt: number; completion: number };
+  /** 实际中选的模型配置 id（记账要用）。 */
+  modelId: string;
   drafts: Awaited<ReturnType<typeof organizeSummaries>>['drafts'];
 }
 
@@ -37,21 +43,28 @@ export async function recomputeSummaries(input: SummaryRecomputeInput): Promise<
 
   const errors: string[] = [];
   const tokens = { prompt: 0, completion: 0 };
+  let usedModelId = candidates[0]?.id ?? '';
   for (const candidate of candidates) {
     try {
       const result = await organizeSummaries({
         sessionId: input.sessionId,
         messages: input.history,
         existing: input.existing,
+        ...(input.shouldContinue === undefined ? {} : { shouldContinue: input.shouldContinue }),
         summarize: async (request) => {
-          tokens.prompt += estimateTokens(request.inputs.join('\n'));
+          const promptTokens = estimateTokens(request.inputs.join('\n'));
+          tokens.prompt += promptTokens;
           const text = await input.reply(candidate.id === '' ? undefined : candidate.id, request);
-          tokens.completion += estimateTokens(text);
+          const completionTokens = estimateTokens(text);
+          tokens.completion += completionTokens;
+          // 每次调用后立刻回调：界面据此写用量仓，执行器据此判断预算
+          await input.onCall?.({ modelId: candidate.id === '' ? 'default' : candidate.id, promptTokens, completionTokens });
           return text;
         },
         ...(candidate.id === '' ? {} : { modelId: candidate.id }),
       });
-      return { planned: result.planned, remaining: result.remaining, units: result.units, tokens, drafts: result.drafts };
+      usedModelId = candidate.id === '' ? 'default' : candidate.id;
+      return { planned: result.planned, remaining: result.remaining, units: result.units, tokens, modelId: usedModelId, drafts: result.drafts };
     } catch (cause) {
       errors.push(`${targetLabel(candidate)}：${describeError(cause)}`);
     }

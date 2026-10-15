@@ -42,6 +42,13 @@ export interface SummaryRunnerOptions {
    * 计划器顺序稳定、已完成的单元指纹一致不会重做，所以分批是安全的。
    */
   limit?: number;
+  /**
+   * 每做一个单元之前的检查：返回 false 就停下（例如"预算已经花超了"）。
+   *
+   * 为什么要有：一次运行的 24 个单元是**接连**发生的，如果只在运行前检查一次预算，
+   * 就会跑完整批才发现超支。有了它，超支的那一刻就停，并把"还剩多少个"如实报出来。
+   */
+  shouldContinue?: () => boolean;
   modelId?: string;
   sceneSize?: number;
   arcSize?: number;
@@ -96,7 +103,11 @@ export async function runSummaries(input: SummaryRunInput): Promise<SummaryRunRe
   }
 
   const ops: Array<Op<SummaryUpsertPayload>> = [];
-  for (const target of targets) {
+  for (const [index, target] of targets.entries()) {
+    if (options.shouldContinue !== undefined && !options.shouldContinue()) {
+      // 停下时，"还没做的"要把这一轮剩下的也算上（不只是超过 limit 的那部分）
+      return { targets: targets.slice(0, index), ops, remaining: remaining + (targets.length - index) };
+    }
     const inputs =
       target.level === 'scene'
         ? target.covers.map((id) => {

@@ -355,6 +355,8 @@ export const zhCN: AppMessages = {
   'summary.recompute.done': '已写入 {{count}} 条摘要',
   'summary.recompute.none': '内容没有变化，没有需要重算的摘要',
   'summary.recompute.remaining': '还有 {{count}} 个单元，再点一次继续',
+  'summary.recompute.overBudget': '已经超出用量预算（已花 \${{spent}}），不再开始新的摘要任务',
+  'summary.recompute.stoppedByBudget': '预算用尽，已停下（下次调高预算或清空预算再继续）',
   'summary.recompute.tooShort': '这个会话还太短，攒够一批消息才会开始做摘要',
   'summary.recompute.tokens': '估算用量 {{prompt}} 输入 / {{completion}} 输出 token（不是账单）',
   'dev.oplog.load': '上次启动',

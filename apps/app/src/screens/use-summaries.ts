@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { recomputeSummaries } from '../data/summary-recompute.ts';
+import { createUsageStore } from '../data/usage-store.ts';
+import { computeUsage } from '../../../../packages/oplog/src/index.ts';
 import type { ChatClient } from '../data/chat-client.ts';
 import type { SummaryDraft } from '../data/summary-types.ts';
 import type { SummarizeRequest } from '../../../../packages/oplog/src/index.ts';
@@ -26,6 +28,8 @@ export interface UseSummariesInput {
   loadExisting: (
     sessionId: string,
   ) => Promise<Array<{ id: string; contentHash: string; text: string; deleted?: boolean }>>;
+  /** 写一个设置（用量仓用它记 `usage.device.*`）。 */
+  setSetting: (key: string, value: string) => Promise<void>;
   /** 保存草稿，返回真正写入的条数。 */
   save: (sessionId: string, drafts: readonly SummaryDraft[]) => Promise<number>;
   chat: ChatClient;
@@ -50,6 +54,20 @@ export function useSummaries(input: UseSummariesInput): UseSummariesResult {
     setNote(undefined);
     setRunning(true);
     try {
+      // 用量与预算（M4 判据 3）：摘要这条路以前只算 token、不进闸门 —— 于是它能悄悄超支。
+      const usage = createUsageStore({ settings: () => input.settings, setSetting: input.setSetting });
+      const budget = usage.budget().value;
+      const prices = usage.prices().value;
+      const deviceId = input.settings['device.id'] ?? 'unknown';
+      const before = usage.gate(0);
+      if (!before.ok) {
+        input.onError(input.t('summary.recompute.overBudget', { spent: before.spentUsd.toFixed(4) }));
+        return;
+      }
+      // 运行中的已花用**本地累计**：设置里的记录要等写完才看得到，靠它拦不住正在跑的这批。
+      let spentUsd = before.spentUsd;
+      let stoppedByBudget = false;
+
       const [history, existing] = await Promise.all([input.loadHistory(sessionId), input.loadExisting(sessionId)]);
       let result: Awaited<ReturnType<typeof recomputeSummaries>>;
       try {
@@ -60,6 +78,24 @@ export function useSummaries(input: UseSummariesInput): UseSummariesResult {
           existing: existing
             .filter((item) => item.deleted !== true)
             .map((item) => ({ id: item.id, contentHash: item.contentHash, text: item.text })),
+          shouldContinue: () => {
+            const ok = budget === undefined || spentUsd <= budget;
+            if (!ok) stoppedByBudget = true;
+            return ok;
+          },
+          onCall: async (call) => {
+            const record = computeUsage({
+              at: Date.now(),
+              task: 'summary',
+              modelId: call.modelId,
+              promptTokens: call.promptTokens,
+              completionTokens: call.completionTokens,
+              prices,
+            });
+            spentUsd = Math.round((spentUsd + record.costUsd) * 1e6) / 1e6;
+            // 用仓的 record()：它负责"读当天已有 → 追加 → 写回"，直接 setSetting 会覆盖掉当天记录
+            await usage.record(deviceId, record);
+          },
           reply: (profileId, request: SummarizeRequest) =>
             input.chat
               .reply(
@@ -91,7 +127,8 @@ export function useSummaries(input: UseSummariesInput): UseSummariesResult {
       const done = input.t('summary.recompute.done', { count: written });
       const used = input.t('summary.recompute.tokens', { prompt: result.tokens.prompt, completion: result.tokens.completion });
       const left = remainingNote(input.t, result.remaining);
-      setNote((left === undefined ? done : done + ' · ' + left) + ' · ' + used);
+      const stopped = stoppedByBudget ? input.t('summary.recompute.stoppedByBudget') : '';
+      setNote((left === undefined ? done : done + ' · ' + left) + ' · ' + used + (stopped === '' ? '' : ' · ' + stopped));
     } catch (cause) {
       input.onError(cause instanceof Error ? cause.message : String(cause));
     } finally {

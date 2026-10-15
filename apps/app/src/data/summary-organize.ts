@@ -23,6 +23,8 @@ export interface OrganizeSummariesInput {
   modelId?: string;
   sceneSize?: number;
   arcSize?: number;
+  /** 每做一个单元前的检查（预算用尽就停下）。 */
+  shouldContinue?: () => boolean;
 }
 
 export interface OrganizeSummariesResult {
@@ -51,6 +53,7 @@ export async function organizeSummaries(input: OrganizeSummariesInput): Promise<
       ...(input.modelId === undefined ? {} : { modelId: input.modelId }),
       ...(input.sceneSize === undefined ? {} : { sceneSize: input.sceneSize }),
       ...(input.arcSize === undefined ? {} : { arcSize: input.arcSize }),
+      ...(input.shouldContinue === undefined ? {} : { shouldContinue: input.shouldContinue }),
     },
   });
 

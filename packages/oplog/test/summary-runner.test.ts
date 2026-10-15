@@ -142,3 +142,27 @@ test('计划器与执行器用的是同一个指纹：否则永远不会收敛�
   console.log(`  负向对照：指纹不一致时，${withReal.length} 项永远算 stale`);
   assert.ok(withReal.length > 0, '指纹换成另一个 → 全部重新算 stale（这正是"必须共用同一个指纹"的理由）');
 });
+test('shouldContinue 返回 false 就停下：剩下的如实报出来，且不再调用模型', async () => {
+  const messages = makeMessages(16); // 4 scene → 2 arc → 1 session = 7 个单元
+  const clock = new HlcClock();
+  const { requests, summarize } = makeSummarizer();
+  let allowed = 2;
+  const result = await runSummaries({
+    sessionId: SESSION,
+    messages,
+    existing: [],
+    options: {
+      deviceId: 'device-a',
+      clock,
+      hash: realHash,
+      summarize,
+      sceneSize: SCENE,
+      arcSize: ARC,
+      shouldContinue: () => allowed-- > 0,
+    },
+  });
+  console.log(`  中途停：做了 ${result.ops.length} 个单元，还剩 ${result.remaining} 个，模型被调用 ${requests.length} 次`);
+  assert.equal(result.ops.length, 2, '只做两个单元');
+  assert.equal(result.remaining, 5, '7 - 2 = 5');
+  assert.equal(requests.length, 2, '停下之后不能再调用模型（否则就是白花钱）');
+});

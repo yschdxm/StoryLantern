@@ -344,6 +344,8 @@ export const en: AppMessages = {
   'summary.recompute.done': 'Wrote {{count}} summaries',
   'summary.recompute.none': 'Nothing changed, so no summary needed recomputing',
   'summary.recompute.remaining': '{{count}} unit(s) left — run again to continue',
+  'summary.recompute.overBudget': 'Usage budget already exceeded (\${{spent}}); not starting a new summary run',
+  'summary.recompute.stoppedByBudget': 'Stopped: budget used up (raise or clear the budget to continue)',
   'summary.recompute.tooShort': 'This conversation is still short; summarising starts once a full batch exists',
   'summary.recompute.tokens': 'Estimated usage: {{prompt}} in / {{completion}} out tokens (not a bill)',
   'dev.oplog.load': 'Last start',
