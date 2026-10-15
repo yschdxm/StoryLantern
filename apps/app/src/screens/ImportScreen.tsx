@@ -1,4 +1,5 @@
 import { useRef, useState, type ReactNode } from 'react';
+import { describeError } from '../data/error-text.ts';
 import type { ScreenProps } from './screen-props.ts';
 import { useT } from '../i18n/context.tsx';
 import { importFile, importText, type Imported } from '../../../../packages/importer/src/index.ts';
@@ -49,7 +50,7 @@ export function ImportScreen({ store, router }: ScreenProps): ReactNode {
         const bytes = new Uint8Array(await file.arrayBuffer());
         add(file.name, await importFile(file.name, bytes));
       } catch (cause) {
-        addError(file.name, cause instanceof Error ? cause.message : String(cause));
+        addError(file.name, describeError(cause));
       }
     }
     setBusy(false);
@@ -62,7 +63,7 @@ export function ImportScreen({ store, router }: ScreenProps): ReactNode {
       add('（粘贴的内容）', importText('pasted.json', text));
       setPasted('');
     } catch (cause) {
-      addError('（粘贴的内容）', cause instanceof Error ? cause.message : String(cause));
+      addError('（粘贴的内容）', describeError(cause));
     }
   };
 
@@ -131,7 +132,7 @@ export function ImportScreen({ store, router }: ScreenProps): ReactNode {
       );
       setItems([]);
     } catch (cause) {
-      addError('导入', cause instanceof Error ? cause.message : String(cause));
+      addError('导入', describeError(cause));
     } finally {
       setBusy(false);
     }

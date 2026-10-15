@@ -1,4 +1,5 @@
 import { WireClient, WireError, type WireTransport } from '../../../../packages/wire/src/index.ts';
+import { describeError } from './error-text.ts';
 import { DataError } from './repository.ts';
 import type { ChatPromptMessage } from './prompt.ts';
 
@@ -87,7 +88,7 @@ export function createChatClient(transport: WireTransport | undefined): ChatClie
         });
       } catch (cause) {
         if (cause instanceof WireError) return { ok: false, message: cause.message };
-        return { ok: false, message: cause instanceof Error ? cause.message : String(cause) };
+        return { ok: false, message: describeError(cause) };
       }
     },
   };

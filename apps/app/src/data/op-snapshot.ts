@@ -10,6 +10,7 @@ import {
   type Op,
   type StateSnapshot,
 } from '../../../../packages/oplog/src/index.ts';
+import { describeError } from './error-text.ts';
 import type { DeviceStore } from './op-ports.ts';
 import type { OpLogPort } from './op-types.ts';
 
@@ -49,14 +50,14 @@ export async function readSnapshot(device: DeviceStore): Promise<SnapshotLoadRes
   try {
     raw = await device.get(SNAPSHOT_KEY);
   } catch (cause) {
-    return { problem: `读快照失败：${cause instanceof Error ? cause.message : String(cause)}` };
+    return { problem: `读快照失败：${describeError(cause)}` };
   }
   if (raw === undefined || raw === '') return {};
 
   try {
     return { snapshot: validateStateSnapshot(JSON.parse(raw)) };
   } catch (cause) {
-    const reason = cause instanceof SnapshotBlobError || cause instanceof Error ? cause.message : String(cause);
+    const reason = cause instanceof SnapshotBlobError || describeError(cause);
     return { problem: `快照不可用（${reason}）` };
   }
 }

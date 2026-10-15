@@ -1,4 +1,5 @@
 import { decodeOp } from '../../../../packages/oplog/src/index.ts';
+import { describeError } from './error-text.ts';
 import type { HlcClock, Op } from '../../../../packages/oplog/src/index.ts';
 import { opsFromLegacy } from './op-migration.ts';
 import type { LegacyDump, OpLogPort } from './op-types.ts';
@@ -23,7 +24,7 @@ export async function loadOps(ops: OpLogPort, after = 0, onCorrupt?: (message: s
       try {
         loaded.push(decodeOp(row.line));
       } catch (cause) {
-        onCorrupt?.(`seq=${row.seq}: ${cause instanceof Error ? cause.message : String(cause)}`);
+        onCorrupt?.(`seq=${row.seq}: ${describeError(cause)}`);
       }
     }
     cursor = page.lastSeq;

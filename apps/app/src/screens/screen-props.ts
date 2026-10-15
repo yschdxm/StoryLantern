@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { describeError } from '../data/error-text.ts';
 import type { AssembleFn } from '../../../../plugins/writing-pipeline/src/index.ts';
 import type { Router } from '../app/router.ts';
 import type { AppState, AppStore } from '../app/state.ts';
@@ -121,7 +122,7 @@ export function useAsync(effect: () => Promise<void> | void, deps: readonly unkn
     setError(undefined);
     void Promise.resolve(effect())
       .catch((cause: unknown) => {
-        if (alive) setError(cause instanceof Error ? cause.message : String(cause));
+        if (alive) setError(describeError(cause));
       })
       .finally(() => {
         if (alive) setLoading(false);

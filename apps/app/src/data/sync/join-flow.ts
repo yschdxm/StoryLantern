@@ -1,4 +1,5 @@
 import type { SyncBackend } from '../../../../../packages/sync-core/src/backend.ts';
+import { describeError } from '../error-text.ts';
 import {
   JOIN_PREFIX,
   createJoinRequest,
@@ -167,7 +168,7 @@ export async function acceptJoinRequests(input: AcceptJoinInput): Promise<Accept
     } catch (cause) {
       outcome.refused.push({
         deviceId: entry.path.slice(JOIN_PREFIX.length),
-        reason: `加入请求读不了：${cause instanceof Error ? cause.message : String(cause)}`,
+        reason: `加入请求读不了：${describeError(cause)}`,
       });
       continue;
     }

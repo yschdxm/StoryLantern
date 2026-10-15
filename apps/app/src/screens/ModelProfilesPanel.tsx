@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { describeError } from '../data/error-text.ts';
 import { ulid } from '../../../../packages/oplog/src/index.ts';
 import type { AppStore } from '../app/state.ts';
 import { useT } from '../i18n/context.tsx';
@@ -209,7 +210,7 @@ function ProfileForm({
       setApiKey('');
       await after?.();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
+      setError(describeError(cause));
     } finally {
       setBusy(false);
     }

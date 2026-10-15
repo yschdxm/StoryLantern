@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { describeError } from '../data/error-text.ts';
 import type { ScreenProps } from './screen-props.ts';
 import { useAppState } from './screen-props.ts';
 import { useT } from '../i18n/context.tsx';
@@ -300,7 +301,7 @@ function EntryForm({
               caseSensitive,
               recursive,
               depth: Number.parseInt(depth, 10) || 0,
-            }).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)));
+            }).catch((cause: unknown) => setError(describeError(cause)));
           }}
         >
           {t('common.save')}

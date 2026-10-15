@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { describeError } from '../data/error-text.ts';
 import type { ScreenProps } from './screen-props.ts';
 import { useAppState, useAsync } from './screen-props.ts';
 import { useT } from '../i18n/context.tsx';
@@ -149,7 +150,7 @@ export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings }:
           attempts.push({ label: targetLabel(candidate), ok: true, ms: Date.now() - attemptStarted });
           break;
         } catch (cause) {
-          const message = cause instanceof Error ? cause.message : String(cause);
+          const message = describeError(cause);
           attempts.push({ label: targetLabel(candidate), ok: false, ms: Date.now() - attemptStarted, error: message });
           // 用户点了停止：不要"帮他"再试下一个
           if (controller.signal.aborted) throw cause;
@@ -175,7 +176,7 @@ export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings }:
             },
       );
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : String(cause);
+      const message = describeError(cause);
       setChatError(message);
       setTrace((current) => (current === undefined ? current : { ...current, attempts, totalMs: Date.now() - startedAt }));
       // 失败也留痕：写成一条失败消息，用户看得见、也能删

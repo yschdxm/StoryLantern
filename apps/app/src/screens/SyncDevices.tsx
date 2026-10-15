@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { describeError } from '../data/error-text.ts';
 import { detectSigningAlgorithm } from '../data/sync/signer.ts';
 import { useT } from '../i18n/context.tsx';
 import type { SyncAdmin, SyncDevice } from './screen-props.ts';
@@ -48,7 +49,7 @@ export function SyncDevices({
     try {
       setDevices(await sync.devices());
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
+      setError(describeError(cause));
     }
   };
 
@@ -124,7 +125,7 @@ export function SyncDevices({
             void sync
               .joinWithRecovery(recoveryDraft)
               .then((outcome) => setError(outcome.ok ? undefined : outcome.reason))
-              .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)));
+              .catch((cause: unknown) => setError(describeError(cause)));
           }}
         >
           {t('sync.recovery.join.action')}
@@ -138,7 +139,7 @@ export function SyncDevices({
             void sync
               .createRecovery()
               .then((pair) => setRecovery(pair))
-              .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)));
+              .catch((cause: unknown) => setError(describeError(cause)));
           }}
         >
           {t('sync.recovery.action')}
@@ -200,7 +201,7 @@ export function SyncDevices({
                     : t('sync.gc.candidates', { count: result.candidates.length }),
                 );
               })
-              .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
+              .catch((cause: unknown) => setError(describeError(cause)))
               .finally(() => setBusy(false));
           }}
         >
@@ -265,7 +266,7 @@ export function SyncDevices({
               setNote(changed ? t('sync.devices.revokedNote') : t('sync.devices.revokeFailed'));
               return reload();
             })
-            .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)));
+            .catch((cause: unknown) => setError(describeError(cause)));
         }}
       />
 
@@ -294,7 +295,7 @@ export function SyncDevices({
               setNote(changed ? t('sync.devices.bannedNote') : t('sync.devices.banFailed'));
               return reload();
             })
-            .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)));
+            .catch((cause: unknown) => setError(describeError(cause)));
         }}
       />
 
@@ -313,7 +314,7 @@ export function SyncDevices({
               setAnalysis(result);
               setNote(t('sync.gc.moved', { count: result.moved.length }));
             })
-            .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)))
+            .catch((cause: unknown) => setError(describeError(cause)))
             .finally(() => setBusy(false));
         }}
       />

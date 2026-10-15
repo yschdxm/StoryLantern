@@ -1,4 +1,5 @@
 import type { TauriBridge } from '../../../../packages/wire/src/index.ts';
+import { describeError } from './error-text.ts';
 
 /**
  * 系统目录选择器（Android SAF）。
@@ -52,6 +53,6 @@ export async function pickSafFolder(bridge: TauriBridge | undefined): Promise<Sa
     await bridge.invoke('plugin:saf|pick');
     return await waitForResult(bridge, before.at ?? 0);
   } catch (cause) {
-    return { error: cause instanceof Error ? cause.message : String(cause) };
+    return { error: describeError(cause) };
   }
 }

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { describeError } from './data/error-text.ts';
 import { useT } from './i18n/context.tsx';
 import type { OpLogAdmin } from './screens/screen-props.ts';
 import type { HostClient, HostViewModel, StreamChunk } from './host-panel.ts';
@@ -50,7 +51,7 @@ export function HostPanel({ client, ops }: HostPanelProps) {
       .stats()
       .then(setLogStats)
       // 开发者面板里最忌讳"点了没反应"：把失败原因摆出来
-      .catch((cause: unknown) => setNotice(`${t('dev.oplog')}: ${cause instanceof Error ? cause.message : String(cause)}`));
+      .catch((cause: unknown) => setNotice(`${t('dev.oplog')}: ${describeError(cause)}`));
   }, [ops, t]);
 
   const runStreamDemo = async (signal: AbortSignal): Promise<void> => {
@@ -79,7 +80,7 @@ export function HostPanel({ client, ops }: HostPanelProps) {
       try {
         await runStreamDemo(new AbortController().signal);
       } catch (cause) {
-        setNotice(cause instanceof Error ? cause.message : String(cause));
+        setNotice(describeError(cause));
       }
     })();
     // 只在挂载时跑一次；client 是稳定的单例
@@ -90,7 +91,7 @@ export function HostPanel({ client, ops }: HostPanelProps) {
     const next = new AbortController();
     setController(next);
     void runStreamDemo(next.signal)
-      .catch((cause: unknown) => setNotice(cause instanceof Error ? cause.message : String(cause)))
+      .catch((cause: unknown) => setNotice(describeError(cause)))
       .finally(() => setController(null));
   };
 
@@ -201,7 +202,7 @@ export function HostPanel({ client, ops }: HostPanelProps) {
                     ),
                   )
                   .then(() => ops.stats().then(setLogStats))
-                  .catch((cause: unknown) => setNotice(cause instanceof Error ? cause.message : String(cause)));
+                  .catch((cause: unknown) => setNotice(describeError(cause)));
               }}
             >
               {t('dev.oplog.rebuild')}
@@ -221,7 +222,7 @@ export function HostPanel({ client, ops }: HostPanelProps) {
                     .then((info) =>
                       setSnapshotNotice(t('dev.oplog.snapshot.created', { ops: info.opCount, digest: info.digest })),
                     )
-                    .catch((cause: unknown) => setSnapshotNotice(cause instanceof Error ? cause.message : String(cause)))
+                    .catch((cause: unknown) => setSnapshotNotice(describeError(cause)))
                     .then(() => ops.stats().then(setLogStats));
                 }}
               >
@@ -236,7 +237,7 @@ export function HostPanel({ client, ops }: HostPanelProps) {
                     void ops
                       .clearSnapshot?.()
                       .then(() => setSnapshotNotice(t('dev.oplog.snapshot.cleared')))
-                      .catch((cause: unknown) => setSnapshotNotice(cause instanceof Error ? cause.message : String(cause)))
+                      .catch((cause: unknown) => setSnapshotNotice(describeError(cause)))
                       .then(() => ops.stats().then(setLogStats));
                   }}
                 >

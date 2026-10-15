@@ -1,4 +1,5 @@
 import { HlcClock } from '../../../../../packages/oplog/src/index.ts';
+import { describeError } from '../error-text.ts';
 import { SyncEngine, type SyncEngineOptions, type SyncResult } from '../../../../../packages/sync-core/src/engine.ts';
 import { parseManifestPath, DEVICES_PREFIX } from '../../../../../packages/sync-core/src/paths.ts';
 import { DeviceRosterList } from '../../../../../packages/sync-core/src/roster.ts';
@@ -20,7 +21,6 @@ import { rotateKeyring } from '../../../../../packages/sync-core/src/keyring-sto
 import { publishRecoveryKey } from './recovery-publish.ts';
 import { acceptJoinRequests, publishJoinRequest } from './join-flow.ts';
 import { describeDevice, loadRoster, mergeRoster, saveRoster } from './roster-store.ts';
-
 /** 同步服务：把 op 段推到"哑存储"，再从那儿拉回来。 */
 
 export interface SyncStorePort {
@@ -187,7 +187,7 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
       }
     } catch (cause) {
       // 列目录失败不该让同步崩掉：可能只是远端还没建过目录
-      const message = cause instanceof Error ? cause.message : String(cause);
+      const message = describeError(cause);
       if (!/404/.test(message)) throw cause;
     }
 
@@ -382,7 +382,7 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
       } catch (cause) {
         // 黑名单已经生效（上面已落盘），但**换代失败**——必须让用户看见，
         // 否则他会以为"已经踢干净了"，而对方其实还能用旧钥匙读新内容。
-        const reason = cause instanceof Error ? cause.message : String(cause);
+        const reason = describeError(cause);
         throw new Error(`已写入黑名单，但换代失败：${reason}。它暂时还能读到新内容；下次同步会自动重试换代。`);
       }
       return true;

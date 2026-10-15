@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { describeError } from '../data/error-text.ts';
 import type { ScreenProps } from './screen-props.ts';
 import { useAppState } from './screen-props.ts';
 import { useT } from '../i18n/context.tsx';
@@ -68,7 +69,7 @@ export function CharacterEditScreen({ store, characterId, onDone }: CharacterEdi
       });
       onDone(saved.id);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
+      setError(describeError(cause));
     }
   };
 

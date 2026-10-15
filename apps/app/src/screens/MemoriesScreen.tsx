@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from 'react';
+import { describeError } from '../data/error-text.ts';
 import type { ScreenProps } from './screen-props.ts';
 import { useAppState } from './screen-props.ts';
 import { useT } from '../i18n/context.tsx';
@@ -76,7 +77,7 @@ export function MemoriesScreen({ store, characterId, chat }: MemoriesScreenProps
           raw = result.text;
           break;
         } catch (cause) {
-          errors.push(`${targetLabel(candidate)}：${cause instanceof Error ? cause.message : String(cause)}`);
+          errors.push(`${targetLabel(candidate)}：${describeError(cause)}`);
         }
       }
       if (raw === undefined) throw new Error(errors.join(' / '));
@@ -85,7 +86,7 @@ export function MemoriesScreen({ store, characterId, chat }: MemoriesScreenProps
       if (items.length === 0) throw new Error(t('memory.organize.empty'));
       setProposals({ items, sessionId: session.id, picked: items.map((item) => item.duplicateOf === undefined) });
     } catch (cause) {
-      setOrganizeError(cause instanceof Error ? cause.message : String(cause));
+      setOrganizeError(describeError(cause));
     } finally {
       setOrganizing(false);
     }
@@ -104,7 +105,7 @@ export function MemoriesScreen({ store, characterId, chat }: MemoriesScreenProps
         await store.actions.saveMemory(proposalToDraft(proposal, { characterId, sessionId: current.sessionId, messageIds }));
       }
     } catch (cause) {
-      setOrganizeError(cause instanceof Error ? cause.message : String(cause));
+      setOrganizeError(describeError(cause));
     } finally {
       setOrganizing(false);
     }
@@ -340,7 +341,7 @@ function MemoryForm({
               keys: split(keys),
               importance: Number(importance) || 50,
               createdBy: memory?.createdBy ?? 'user',
-            }).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : String(cause)));
+            }).catch((cause: unknown) => setError(describeError(cause)));
           }}
         >
           {t('common.save')}

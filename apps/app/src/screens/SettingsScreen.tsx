@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { describeError } from '../data/error-text.ts';
 import type { ScreenProps } from './screen-props.ts';
 import { useAppState } from './screen-props.ts';
 import { useT } from '../i18n/context.tsx';
@@ -334,7 +335,7 @@ export function SettingsScreen({ store, router, host, chat, ops, sync, plugins, 
                     .catch((cause: unknown) =>
                       setSyncResult({
                         ok: false,
-                        text: t('settings.sync.failed', { message: cause instanceof Error ? cause.message : String(cause) }),
+                        text: t('settings.sync.failed', { message: describeError(cause) }),
                       }),
                     )
                     .finally(() => setSyncing(false));
