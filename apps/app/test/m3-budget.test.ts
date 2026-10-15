@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import { createDevice, createMemoryBackend } from './sync-harness.ts';
 import { instrumentBackend } from '../../../packages/sync-core/src/backend.ts';
 import { estimateTokens } from '../src/data/prompt.ts';
+import { HlcClock } from '../../../packages/oplog/src/hlc.ts';
+import { decodeOps, encodeOp, messageAppend } from '../../../packages/oplog/src/op.ts';
+import { ulid } from '../../../packages/oplog/src/bytes.ts';
 
 /**
  * M3 的性能预算（PLAN.md §11）：把"单次同步 ≤8 请求、≤1MB"和"段压缩 ≥3×"变成**可复跑**的断言。
@@ -97,4 +100,43 @@ test('性能预算：10 万 token 计数 <300ms（用仓库里真实的 estimate
 
   assert.ok(tokens >= 100_000, `这段文本应当估成 ≥10 万 token，实际 ${tokens}`);
   assert.ok(elapsed < 300, `10 万 token 计数应当 <300ms，实际 ${elapsed.toFixed(1)}ms`);
+});
+﻿
+test('性能预算：1 万 op 合并 <1s（真实路径：encodeOp/decodeOps + repository.importOps）', async () => {
+  const backend = createMemoryBackend();
+  const a = await createDevice('device-a', backend, 'shared secret');
+  const b = await createDevice('device-b', backend, 'shared secret');
+  const character = await a.repository.characters.save({ name: '星野' });
+  const session = await a.repository.sessions.create(character.id, '隘口之夜');
+
+  // 用真实的 op 构造器造 1 万条 message.append（对象与仓储 append 出来的完全一样，
+  // 但比走 1 万次仓储 append 快得多——这里要量的是"合并"，不是"逐条追加"）
+  const clock = new HlcClock();
+  const ops = [];
+  for (let index = 0; index < 10_000; index += 1) {
+    ops.push(
+      messageAppend(
+        { deviceId: 'device-a', clock },
+        {
+          sessionId: session.id,
+          messageId: ulid(),
+          author: index % 2 === 0 ? 'user' : 'character',
+          content: `第 ${index + 1} 条：风从北面来，带着雪线的味道。`,
+        },
+      ),
+    );
+  }
+
+  // 跨设备的真实形态是 JSONL：编码 → 解码，再并入另一台设备
+  const encoded = ops.map((op) => encodeOp(op)).join('\n');
+  const decoded = decodeOps(encoded);
+  assert.equal(decoded.length, 10_000, '编解码往返不能丢 op');
+
+  const started = performance.now();
+  const outcome = await b.repository.importOps(decoded);
+  const elapsed = performance.now() - started;
+  console.log(`  [1 万 op 合并] 解析入库 ${decoded.length} 条，其中新增 ${outcome.appended} 条，耗时 ${elapsed.toFixed(0)} ms`);
+
+  assert.ok(outcome.appended >= 1, '至少要真的并入一些 op');
+  assert.ok(elapsed < 1000, `1 万 op 合并应当 <1s，实际 ${elapsed.toFixed(0)}ms`);
 });
