@@ -19,7 +19,7 @@ import {
  * 规则（已与用户对齐）：
  *  - 共享目录里没有 keyring → **我建一份**，只包给我自己（epoch 1）；
  *  - 有，而且**能打开**（说明包里我）：如果它还覆盖了我认识的所有设备 → 直接用；
- *    否则换代，把我认识的设备一起包进去；
+ *    不在成员侧换代（那等于自任库主人、要给每个对端重包一遍，真机上撞旧 X25519 对端就会失败）；
  *  - 有，但**打不开**（没包给我）→ **绝不换代**：换代要用名单里每台设备的协商公钥重新包，
  *    而我此刻并不知道别人的公钥，换出来会把其它设备锁在外面。
  *    正确做法是走加入流程（写 join 请求，等一台已授权设备接纳）——所以这里只如实报告"我不在里面"。
@@ -34,9 +34,14 @@ export async function readKeyring(backend: SyncBackend): Promise<Keyring | undef
   }
 }
 
+/** 我在里面、但名单里这些对端还没进钥匙包（需要由能服务它们的设备完成换代）。 */
+export interface EnsureKeyringPending {
+  pendingPeers?: string[];
+}
+
 export type EnsureKeyringResult =
-  | { mine: true; epoch: number; keyring: Keyring; contentKey: Uint8Array }
-  | { mine: false; epoch: number; keyring: Keyring };
+  | (EnsureKeyringPending & { mine: true; epoch: number; keyring: Keyring; contentKey: Uint8Array })
+  | (EnsureKeyringPending & { mine: false; epoch: number; keyring: Keyring });
 
 export interface EnsureKeyringInput {
   backend: SyncBackend;
@@ -92,15 +97,28 @@ export async function ensureKeyring(input: EnsureKeyringInput): Promise<EnsureKe
       const contentKey = await openKeyring(keyWrap, existing, deviceId, agreement.privateKey, agreement.publicKey);
       const known = new Set(existing.entries.map((entry) => entry.deviceId));
       const missing = recipients.filter((recipient) => !known.has(recipient.deviceId));
-      if (missing.length === 0) return { mine: true, epoch: existing.epoch, keyring: existing, contentKey };
-      // 我在里面、但还没覆盖我认识的所有设备（例如刚看到的新设备）：往下走，换代
+      // 我在里面、且有对端还没进钥匙包：**不在这里换代**。
+      //
+      // 新设备加入走的是 join/ + acceptJoinRequests（那条路会把新设备包进来，已被真机验证）；
+      // 而在成员侧换代等于"自任库主人"、要给**每个**对端重包一遍——
+      // 真机上只要名单里有一个旧 X25519 对端，这一步就会直接失败（用户手机上踩到过）。
+      if (missing.length > 0) {
+        return {
+          mine: true,
+          epoch: existing.epoch,
+          keyring: existing,
+          contentKey,
+          pendingPeers: missing.map((recipient) => recipient.deviceId),
+        };
+      }
+      return { mine: true, epoch: existing.epoch, keyring: existing, contentKey };
     } catch {
       return { mine: false, epoch: existing.epoch, keyring: existing };
     }
   }
 
-  const epoch = (existing?.epoch ?? 0) + 1;
-  const created = await createKeyring(keyWrap, recipients, epoch);
+  // 走到这里只可能是"确实还没有钥匙包"（有库的两种情况上面都已返回）→ 新建 epoch 1
+  const created = await createKeyring(keyWrap, recipients, 1);
   await backend.put(KEYRING_FILE, new TextEncoder().encode(serializeKeyring(created.keyring)));
   return { mine: true, epoch: created.keyring.epoch, keyring: created.keyring, contentKey: created.contentKey };
 }
