@@ -1,3 +1,4 @@
+import { CITATION_INSTRUCTION, formatNumbered } from './citations.ts';
 import { scanLore, type ScoredEntry } from '../../../../packages/lore/src/index.ts';
 import type { AssembleFn, PromptGraph } from '../../../../plugins/writing-pipeline/src/index.ts';
 import { characterBlockText, memoryBlockText, summaryBlockTextOf, type PromptBlockData, type PromptSummary } from './prompt-blocks.ts';
@@ -93,6 +94,14 @@ export interface PromptHistoryItem {
 }
 
 export interface BuildPromptOptions {
+  /**
+   * 是否给交给模型的历史消息加编号、并追加一句引用说明（默认关）。
+   *
+   * 为什么做成开关：真实聊天要它（不然「引用正确」这条判据无从判），
+   * 而底层装配的单元测试关心的是「谁进了上下文」，不该被编号前缀干扰。
+   * 打开时只改**交给模型的 messages**；给关键词扫描的那份保持原文。
+   */
+  cite?: boolean;
   settings: Record<string, string>;
   character?: PromptCharacter;
   history: readonly PromptHistoryItem[];
@@ -158,9 +167,11 @@ export function buildChatRequest(options: BuildPromptOptions): ChatRequest {
     excluded.push({ role: item.role, reason: 'limit', preview: item.content.replace(/\s+/g, ' ').trim().slice(0, 40) });
   }
   const kept = usable.slice(-limit);
-  const messages: ChatPromptMessage[] = kept.map((item) => ({
+  // 交给模型的历史消息**带编号**：不让它指认来源，「引用正确」这条判据就无从判。
+  // 注意只改这里 —— 下面给关键词扫描用的 messages 保持原文，否则编号会污染扫描。
+  const messages: ChatPromptMessage[] = kept.map((item, index) => ({
     role: item.role === 'assistant' ? 'assistant' : item.role === 'user' ? 'user' : 'system',
-    content: item.content,
+    content: options.cite === true ? formatNumbered(item.content, index + 1) : item.content,
   }));
 
   const data: PromptBlockData = {
@@ -258,6 +269,24 @@ export function buildChatRequest(options: BuildPromptOptions): ChatRequest {
     lore = data.matchedLore ?? [];
     memory = data.matchedMemories ?? [];
     matchedSummaries = data.matchedSummaries ?? [];
+  }
+
+  // 引用说明：两条装配路径（管线 / 兜底）都在这里统一追加，字数照实计入 usedTokens
+  if (options.cite === true && messages.length > 0) {
+    const citationTokens = estimateTokens(CITATION_INSTRUCTION);
+    systemPrompt = systemPrompt === '' ? CITATION_INSTRUCTION : systemPrompt + '\n' + CITATION_INSTRUCTION;
+    usedTokens += citationTokens;
+    blocks = [
+      ...blocks,
+      {
+        id: 'citation.instruction',
+        kind: 'custom',
+        chars: CITATION_INSTRUCTION.length,
+        estimatedTokens: citationTokens,
+        included: true,
+        reason: '',
+      },
+    ];
   }
 
   const messageChars = messages.reduce((sum, message) => sum + message.content.length, 0);

@@ -48,7 +48,8 @@ test('录制回放：对已录制的评估集重放并算分（没有录制则 s
   const history = buildLongConversation();
   /** 与 record.ts 一致：探针问题接在长对话之后、走真实装配 —— 键才可能与录制对上。 */
   const callFor = (question: string) => {
-    const request = buildChatRequest({ settings: {}, history: [...history, { role: 'user', content: question, status: 'done' }] });
+    const request = buildChatRequest({
+      cite: true, settings: {}, history: [...history, { role: 'user', content: question, status: 'done' }] });
     return { messages: request.messages, systemPrompt: request.systemPrompt };
   };
 

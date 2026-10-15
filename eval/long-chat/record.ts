@@ -147,6 +147,7 @@ async function main(): Promise<void> {
   const history = buildLongConversation();
   for (const probe of PROBES) {
     const request = buildChatRequest({
+      cite: true,
       settings: {},
       history: [...history, { role: 'user', content: probe.question, status: 'done' }],
     });

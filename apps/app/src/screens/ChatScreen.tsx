@@ -83,6 +83,7 @@ export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings }:
     const current = fresh.sessions.find((item) => item.id === sessionId);
     const character = fresh.characters.find((item) => item.id === current?.characterId);
     const request = buildChatRequest({
+      cite: true,
       settings: fresh.settings,
       ...(character === undefined ? {} : { character }),
       history: fresh.messages.map((message) => ({ role: message.role, content: message.content, status: message.status })),

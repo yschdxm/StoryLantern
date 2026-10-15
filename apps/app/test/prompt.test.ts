@@ -283,3 +283,29 @@ test('prompt：角色自带的系统提示优先于全局提示（导入卡片�
   });
   assert.ok(onlyGlobal.systemPrompt.startsWith('全局模板'), '角色没写就退回全局');
 });
+
+test('打开 cite 时：交给模型的消息带编号，系统提示追加引用说明（给关键词扫描的那份不受影响）', () => {
+  const request = buildChatRequest({
+    settings: {},
+    history: [
+      { role: 'user', content: '铜铃是谁的？', status: 'done' },
+      { role: 'assistant', content: '是父亲的遗物。', status: 'done' },
+    ],
+    cite: true,
+  });
+  assert.deepEqual(
+    request.messages.map((message) => message.content),
+    ['[1] 铜铃是谁的？', '[2] 是父亲的遗物。'],
+  );
+  assert.match(request.systemPrompt, /编号/);
+  // 世界书/记忆的关键词扫描用的是原文：编号前缀不该影响命中
+  const noCite = buildChatRequest({
+    settings: {},
+    history: [{ role: 'user', content: '铜铃是谁的？', status: 'done' }],
+  });
+  assert.deepEqual(
+    noCite.messages.map((message) => message.content),
+    ['铜铃是谁的？'],
+    '不打开时行为与以前完全一致',
+  );
+});
