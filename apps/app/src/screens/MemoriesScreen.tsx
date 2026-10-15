@@ -5,6 +5,9 @@ import { useAppState } from './screen-props.ts';
 import { useT } from '../i18n/context.tsx';
 import type { Memory } from '../data/types.ts';
 import { candidatesFor, targetLabel } from '../data/model-routing.ts';
+
+/** 分层摘要的指令：只要它把给定材料浓缩成一段事实性的摘要，不要续写剧情。 */
+const SUMMARY_INSTRUCTION = '把给你的材料压缩成一段简短、事实性的摘要：只保留人物、地点、关键事件与已经确立的设定，不要续写、不要评价、不要加戏。';
 import { PROPOSAL_INSTRUCTION, buildProposalMessages, parseProposals, proposalToDraft, type MemoryProposal } from '../data/memory-proposals.ts';
 import { Banner, Button, ConfirmDialog, EmptyState, Field, ListRow, Sheet, SheetItem, TextInput } from '../ui/components.tsx';
 

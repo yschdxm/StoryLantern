@@ -1,5 +1,14 @@
 import type { SummaryLevel } from './summary-ops.ts';
-import type { SummaryRecord } from './state-types.ts';
+
+/**
+ * 计划器只关心三件事：id、内容指纹、以及它是不是墓碑。
+ * 放宽成最小形状，是为了让应用层的视图（不该带着 HLC / opId）也能直接传进来。
+ */
+export interface SummaryRecordLike {
+  id: string;
+  contentHash: string;
+  deleted?: unknown;
+}
 
 /**
  * 分层摘要的**计划器**（M4 判据"内容哈希幂等 / 编辑旧消息后受影响摘要 100% 失效重算"的落点）。
@@ -33,7 +42,7 @@ export interface SummaryPlanInput {
   /** 该会话的消息，**按时间序**。 */
   messages: readonly SummaryMessage[];
   /** 该会话已有的摘要记录（**含墓碑**：删除要优先）。 */
-  existing: readonly SummaryRecord[];
+  existing: readonly SummaryRecordLike[];
   /** 指纹函数：输入若干段文本，输出确定性的十六进制指纹。 */
   hash: (parts: readonly string[]) => Promise<string>;
   /** 一个 scene 覆盖多少条消息（默认 20）。 */

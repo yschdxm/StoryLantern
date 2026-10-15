@@ -18,6 +18,8 @@ import {
 import { pickOpening } from './greeting.ts';
 import { createLocalLoreStore } from './local-lore-store.ts';
 import { createLocalMemoryStore } from './local-memory-store.ts';
+import { createLocalSummaryStore } from './local-summary-store.ts';
+import type { Summary, SummaryStore } from './summary-types.ts';
 import type {
   Character,
   CharacterDraft,
@@ -52,12 +54,13 @@ export interface RepositoryState {
   messages: Message[];
   lorebooks: Lorebook[];
   memories: Memory[];
+  summaries: Summary[];
   settings: SettingsMap;
   sequence: number;
 }
 
 export function emptyState(): RepositoryState {
-  return { characters: [], sessions: [], messages: [], lorebooks: [], memories: [], settings: {}, sequence: 0 };
+  return { characters: [], sessions: [], messages: [], lorebooks: [], memories: [], summaries: [], settings: {}, sequence: 0 };
 }
 
 export interface MemoryRepositoryOptions {
@@ -81,6 +84,7 @@ export function createMemoryRepository(
     messages: [...initial.messages],
     lorebooks: (initial.lorebooks ?? []).map((book) => ({ ...book, entries: book.entries.map((entry) => ({ ...entry })) })),
     memories: (initial.memories ?? []).map((memory) => ({ ...memory, keys: [...memory.keys], sourceMessageIds: [...memory.sourceMessageIds] })),
+    summaries: (initial.summaries ?? []).map((summary) => ({ ...summary, covers: [...summary.covers] })),
     settings: { ...initial.settings },
     sequence: initial.sequence,
   };
@@ -328,6 +332,9 @@ export function createMemoryRepository(
     now: () => now(),
     commit,
   });
+
+  const summaries: SummaryStore = createLocalSummaryStore({ state, now: () => now(), commit });
+
   return {
     kind: 'local',
     characters,
@@ -335,6 +342,7 @@ export function createMemoryRepository(
     messages,
     lorebooks,
     memories,
+    summaries,
     settings,
     async probe(): Promise<ProbeInfo> {
       return {
@@ -354,6 +362,7 @@ export function createMemoryRepository(
       messages: [...state.messages],
       lorebooks: state.lorebooks.map(copyBook),
       memories: state.memories.map((memory) => ({ ...memory, keys: [...memory.keys], sourceMessageIds: [...memory.sourceMessageIds] })),
+      summaries: state.summaries.map((summary) => ({ ...summary, covers: [...summary.covers] })),
       settings: { ...state.settings },
       sequence: state.sequence,
     }),

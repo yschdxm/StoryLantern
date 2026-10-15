@@ -1,8 +1,8 @@
 import type { Op } from './op.ts';
 import type { HlcClock } from './hlc.ts';
-import type { MaterializedState, SummaryRecord } from './state-types.ts';
+import type { MaterializedState } from './state-types.ts';
 import { summaryUpsert, type SummaryLevel, type SummaryUpsertPayload } from './summary-ops.ts';
-import { planSummaries, type SummaryMessage, type SummaryTarget } from './summary-plan.ts';
+import { planSummaries, type SummaryRecordLike, type SummaryMessage, type SummaryTarget } from './summary-plan.ts';
 
 /**
  * 分层摘要的**执行器**：把计划器算出来的目标逐个生成文本、变成 op。
@@ -45,7 +45,7 @@ export interface SummaryRunInput {
   /** 该会话的消息，按时间序。 */
   messages: readonly SummaryMessage[];
   /** 该会话已有的摘要（**含墓碑**；删除优先由计划器负责）。 */
-  existing: readonly SummaryRecord[];
+  existing: readonly (SummaryRecordLike & { text: string })[];
   options: SummaryRunnerOptions;
 }
 
@@ -118,7 +118,7 @@ export async function runSummaries(input: SummaryRunInput): Promise<SummaryRunRe
 /** 便捷入口：直接给物化状态（调用方通常只有 state）。 */
 export async function runSummariesFor(
   state: MaterializedState,
-  input: Omit<SummaryRunInput, 'existing'> & { existing?: readonly SummaryRecord[] },
+  input: Omit<SummaryRunInput, 'existing'> & { existing?: readonly (SummaryRecordLike & { text: string })[] },
 ): Promise<SummaryRunResult> {
   return runSummaries({
     ...input,

@@ -56,6 +56,8 @@ export function loadState(store: KeyValueStore): RepositoryState {
       // 旧版本没有世界书/记忆：缺字段时按空数组读，不给用户报错
       lorebooks: Array.isArray(parsed.lorebooks) ? parsed.lorebooks : [],
       memories: Array.isArray(parsed.memories) ? parsed.memories : [],
+      // 同一套兼容策略：旧数据没有摘要字段时按空数组读
+      summaries: Array.isArray(parsed.summaries) ? parsed.summaries : [],
       settings: typeof parsed.settings === 'object' && parsed.settings !== null ? parsed.settings : {},
       sequence: typeof parsed.sequence === 'number' ? parsed.sequence : 0,
     };
@@ -75,6 +77,7 @@ export function createLocalRepository(store: KeyValueStore): Repository & { pers
     messages: repository.messages,
     lorebooks: repository.lorebooks,
     memories: repository.memories,
+    summaries: repository.summaries,
     settings: repository.settings,
     ...(repository.probe === undefined ? {} : { probe: repository.probe }),
     persist: () => store.write(STORAGE_KEY, JSON.stringify(repository.snapshot())),

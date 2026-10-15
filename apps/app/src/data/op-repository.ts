@@ -18,6 +18,7 @@ import { pickOpening } from './greeting.ts';
 import { createLoreStore } from './op-lore-store.ts';
 import { createMessageStore } from './op-message-store.ts';
 import { createMemoryStore } from './op-memory-store.ts';
+import { createSummaryStore } from './op-summary-store.ts';
 import { loadOps, migrateLegacyOnce } from './op-load.ts';
 import type { DeviceStore } from './op-ports.ts';
 import { buildSnapshot, clearSnapshot as clearStoredSnapshot, prepareSnapshot } from './op-snapshot.ts';
@@ -265,16 +266,15 @@ export function createOpLogRepository(options: OpLogRepositoryOptions): OpLogRep
     base,
   });
 
+  const summaries = createSummaryStore({ withReady, materializer: () => materializer, appendAndApply, base });
   const memories: MemoryStore = createMemoryStore({
     withReady,
     materializer: () => materializer,
     appendAndApply,
     base,
   });
-
   const liveMessageCount = (): number =>
     Object.values(materializer.state.messages).filter((message) => message.deleted === undefined).length;
-
   return {
     kind: 'host',
     ready,
@@ -283,6 +283,7 @@ export function createOpLogRepository(options: OpLogRepositoryOptions): OpLogRep
     messages,
     lorebooks,
     memories,
+    summaries,
     // 设备配置不进 op 日志：密钥不该离开本机，主题/语言属于设备偏好
     settings: options.settings,
 

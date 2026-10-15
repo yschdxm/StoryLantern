@@ -106,6 +106,7 @@ export {
   summaryIdOf,
   type SummaryMessage,
   type SummaryPlanInput,
+  type SummaryRecordLike,
   type SummaryTarget,
 } from './summary-plan.ts';
 export {

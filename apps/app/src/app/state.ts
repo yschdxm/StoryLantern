@@ -1,5 +1,6 @@
 import type { MessageDraft, Repository } from '../data/repository.ts';
 import { DataError } from '../data/repository.ts';
+import type { Summary, SummaryDraft } from '../data/summary-types.ts';
 import type {
   Character,
   CharacterDraft,
@@ -76,6 +77,10 @@ export interface AppActions {
   selectCandidate(messageId: string, candidateId: string): Promise<boolean>;
   refreshMemories(): Promise<void>;
   saveMemory(draft: MemoryDraft): Promise<Memory>;
+  /** 某个会话的分层摘要（M4）。 */
+  summariesOf(sessionId: string): Promise<Summary[]>;
+  /** 一次写入若干条摘要（编排层算出来的目标 + 生成的文本）。 */
+  saveSummaries(sessionId: string, drafts: readonly SummaryDraft[]): Promise<Summary[]>;
   deleteMemory(id: string): Promise<void>;
 }
 
@@ -206,6 +211,15 @@ export function createAppStore(repository: Repository): AppStore {
 
     async refreshMemories() {
       set({ memories: await repository.memories.list() });
+    },
+
+    async summariesOf(sessionId) {
+      return run('summariesOf', () => repository.summaries.list(sessionId));
+    },
+
+    async saveSummaries(sessionId, drafts) {
+      if (drafts.length === 0) return [];
+      return run('saveSummaries', () => repository.summaries.save(sessionId, drafts));
     },
 
     async saveMemory(draft) {

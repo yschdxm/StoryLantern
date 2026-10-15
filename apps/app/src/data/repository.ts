@@ -23,7 +23,11 @@ import type {
  *
  * 为什么不把 SQL 或 fetch 直接写进界面：那样两端会分叉，而"分叉的行为"正是最难查的 bug。
  */
+import type { SummaryStore } from './summary-types.ts';
+
 export interface Repository {
+  /** 分层摘要（M4）：内容，进 op 日志、跟同步走。 */
+  summaries: SummaryStore;
   readonly kind: 'host' | 'local';
   readonly characters: CharacterStore;
   readonly sessions: SessionStore;
