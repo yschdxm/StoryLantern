@@ -23,6 +23,7 @@ import {
   type RecoveryProofPort,
 } from '../../../../../packages/sync-core/src/recovery.ts';
 import { createWebCryptoRecoveryProof } from './recovery-key.ts';
+import { canUseCurve, curveOfPublicKey } from './envelope.ts';
 
 /**
  * 加入流程（"输密码进来"这条路）。
@@ -189,6 +190,16 @@ export async function acceptJoinRequests(input: AcceptJoinInput): Promise<Accept
     }
 
     // 把它加进 keyring：读-改-写 + 读回校验 + 有上限的重试
+    // 真机踩到：库里还躺着旧 X25519 对端的加入请求时，本机（WebView 不认识 X25519）会**直接抛错**，
+    // 整个同步都失败。服务不了的对端就交给能服务的设备去接纳——这里如实跳过并把原因带出去。
+    const curve = curveOfPublicKey(request.agreementKey);
+    if (!(await canUseCurve(curve))) {
+      outcome.refused.push({
+        deviceId: request.deviceId,
+        reason: `本机不认识 ${curve} 这条曲线，交给支持它的设备来接纳`,
+      });
+      continue;
+    }
     const wrapped = await input.keyWrap.wrapFor(request.agreementKey, input.contentKey);
     let added = false;
     for (let attempt = 0; attempt < 4 && !added; attempt += 1) {
