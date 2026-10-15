@@ -81,12 +81,25 @@ export async function loadSyncState(device: Device): Promise<{ ack: Record<strin
   return { ack: state?.ack ?? {}, peerAck: state?.peerAck ?? {} };
 }
 
-export async function createDevice(name: string, backend: SyncBackend, secret: string): Promise<Device> {
+export async function createDevice(
+  name: string,
+  backend: SyncBackend,
+  secret: string,
+  options?: { graceMs?: number },
+): Promise<Device> {
   const ports = createLocalOpPorts(createMemoryKeyValue());
   const repository = createOpLogRepository({ ops: ports.ops, settings: ports.settings, deviceId: name });
   await repository.ready;
   const store = createMemorySyncStore();
-  const service = await createSyncService({ repository, backend, deviceId: name, secret, store, device: ports.device });
+  const service = await createSyncService({
+    repository,
+    backend,
+    deviceId: name,
+    secret,
+    store,
+    device: ports.device,
+    ...(options?.graceMs === undefined ? {} : { graceMs: options.graceMs }),
+  });
   const device: Device = {
     name,
     repository,

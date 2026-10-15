@@ -46,6 +46,8 @@ export const zhSync: AppMessages = {
   'sync.gc': '回收旧段',
   'sync.gc.hint': '回收是不可恢复的动作，所以默认只分析：先看"会删哪些、为什么"，再由你确认执行。判定要求名单里全部活跃设备都已并入，并且只回收本机自己发布的段（对端段没有可信的发布时间记录）。',
   'sync.gc.analyze': '分析可回收段',
+  'sync.gc.grace': '回收宽限期（天）',
+  'sync.gc.grace.hint': '默认 30 天：段在这段时间内一律不回收（回收不可恢复，宁可多占空间）。填 0 只适合你自己验证这条链路。',
   'sync.gc.running': '分析中…',
   'sync.gc.none': '暂时没有可回收的段（可能还有设备没同步完，或还在宽限期内）。',
   'sync.gc.candidates': '可回收 {{count}} 个段（尚未删除）。',

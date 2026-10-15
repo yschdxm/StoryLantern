@@ -3,7 +3,7 @@ import { describeError } from '../data/error-text.ts';
 import { detectSigningAlgorithm } from '../data/sync/signer.ts';
 import { useT } from '../i18n/context.tsx';
 import type { SyncAdmin, SyncDevice } from './screen-props.ts';
-import { Banner, Button, ConfirmDialog, ListRow, Sheet, SheetItem } from '../ui/components.tsx';
+import { Banner, Button, ConfirmDialog, Field, ListRow, Sheet, SheetItem, TextInput } from '../ui/components.tsx';
 
 /**
  * 设备名单与回收。
@@ -19,11 +19,14 @@ export function SyncDevices({
   sync,
   safPick,
   safSync,
+  graceSync,
 }: {
   sync: SyncAdmin;
   safPick?: SyncAdmin['safPick'];
   /** 用系统选择器选中的目录做同步目录的开关。 */
   safSync?: { value: boolean; onChange: (next: boolean) => void } | undefined;
+  /** GC 宽限期（天）：留空 = 默认 30 天。 */
+  graceSync?: { value: string; onChange: (next: string) => void } | undefined;
 }): ReactNode {
   const t = useT();
   const [devices, setDevices] = useState<SyncDevice[] | undefined>(undefined);
@@ -108,6 +111,18 @@ export function SyncDevices({
             {safSync?.value === true ? t('settings.sync.saf.noteOn') : t('settings.sync.saf.noteOff')}
           </p>
         </>
+      )}
+
+      {graceSync !== undefined && (
+        <Field label={t('sync.gc.grace')} hint={t('sync.gc.grace.hint')}>
+          <TextInput
+            type="number"
+            value={graceSync.value}
+            placeholder="30"
+            onBlur={() => undefined}
+            onChange={(next) => graceSync.onChange(next)}
+          />
+        </Field>
       )}
 
       <div className="row">

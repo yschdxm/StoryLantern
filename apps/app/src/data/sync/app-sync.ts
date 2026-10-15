@@ -190,6 +190,11 @@ export async function buildSyncService(input: RunSyncInput): Promise<BuiltSyncSe
     });
   }
 
+  // GC 宽限期：留空或非法 → 用引擎默认（30 天）。做成可调只是为了让"回收"这条链路能被真的走一遍。
+  const graceDaysText = ((await input.settings.get('sync.gc.graceDays')) ?? '').trim();
+  const graceDays = graceDaysText === '' ? Number.NaN : Number(graceDaysText);
+  const graceMs = Number.isFinite(graceDays) && graceDays >= 0 ? Math.round(graceDays * 24 * 3600 * 1000) : undefined;
+
   const service = await createSyncService({
     repository: input.repository,
     backend,
@@ -199,6 +204,7 @@ export async function buildSyncService(input: RunSyncInput): Promise<BuiltSyncSe
     // 设备名单也放在设备本地：吊销必须跨重启保持
     device: input.device,
     ...(input.now === undefined ? {} : { now: input.now }),
+    ...(graceMs === undefined ? {} : { graceMs }),
   });
 
   return root === undefined ? { service } : { service, root };

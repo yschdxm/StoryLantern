@@ -9,7 +9,6 @@ import { HostPanel } from '../HostPanel.tsx';
 import { ModelProfilesPanel } from './ModelProfilesPanel.tsx';
 import { SyncDevices } from './SyncDevices.tsx';
 import { Button, Field, TextInput } from '../ui/components.tsx';
-
 export interface SettingsScreenProps extends ScreenProps {
   plugins: Array<{ id: string; status: string }>;
   locales: string[];
@@ -289,6 +288,7 @@ export function SettingsScreen({ store, router, host, chat, ops, sync, plugins, 
               <SyncDevices
                 sync={sync}
                 safPick={sync.safPick}
+                graceSync={{ value: value(SETTING_KEYS.syncGcGraceDays), onChange: (next) => saveNow(SETTING_KEYS.syncGcGraceDays, next) }}
                 safSync={{
                   value: value(SETTING_KEYS.syncFolderSaf) === 'on',
                   onChange: (next) => saveNow(SETTING_KEYS.syncFolderSaf, next ? 'on' : 'off'),

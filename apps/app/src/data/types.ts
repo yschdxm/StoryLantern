@@ -194,6 +194,8 @@ export const SETTING_KEYS = {
   syncFolder: 'sync.folder',
   /** 'on' = 文件夹同步走系统选择器选中的目录（Android SAF）。 */
   syncFolderSaf: 'sync.folder.saf',
+  /** GC 宽限期（天）：留空 = 默认 30 天。做成可调是为了让人能在真机上真的验证一次回收。 */
+  syncGcGraceDays: 'sync.gc.graceDays',
   syncLastAt: 'sync.last_at',
 } as const;
 

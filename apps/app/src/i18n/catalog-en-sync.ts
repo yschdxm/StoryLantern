@@ -46,6 +46,8 @@ export const enSync: AppMessages = {
   'sync.gc': 'Reclaim old segments',
   'sync.gc.hint': 'Reclaiming cannot be undone, so the default is analysis only: see what would be deleted and why, then confirm. Reclaiming requires every active device to have caught up, and only touches segments published by this device (peer segments have no trustworthy timestamp here).',
   'sync.gc.analyze': 'Analyse reclaimable segments',
+  'sync.gc.grace': 'Reclaim grace period (days)',
+  'sync.gc.grace.hint': 'Defaults to 30 days: nothing is reclaimed inside it (reclaiming is irreversible, so we rather keep bytes). 0 is only for verifying this path yourself.',
   'sync.gc.running': 'Analysing…',
   'sync.gc.none': 'Nothing to reclaim right now (a device may not have caught up, or the grace period is still running).',
   'sync.gc.candidates': '{{count}} segment(s) reclaimable (nothing deleted yet).',

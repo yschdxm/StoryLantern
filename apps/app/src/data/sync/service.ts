@@ -30,7 +30,6 @@ export interface SyncStorePort {
 
 /** 本机上次用过的 keyring 世代：换了世代就把同步进度作废、全量重发（段只是传输）。 */
 export const SYNC_EPOCH_KEY = 'sync.epoch.v1';
-
 export interface SyncSummary {
   uploaded: number;
   downloaded: number;
@@ -71,6 +70,8 @@ export interface SyncServiceOptions {
   store: SyncStorePort;
   /** 设备本地 kv：设备名单放在这里（吊销必须能跨重启保持）。 */
   device: DeviceStore;
+  /** GC 宽限期（毫秒）：回收不可恢复，默认 30 天，宁可多占空间。 */
+  graceMs?: number;
   now?: () => number;
 }
 
@@ -108,7 +109,6 @@ export function sanitizeSyncState(state: LocalSyncState | undefined): LocalSyncS
     return seqs.some((seq, index) => seq !== index + 1) || hosted.lastSeq !== seqs.length;
   });
   if (!broken) return state;
-
   const fresh = emptyState();
   return {
     ...fresh,
@@ -151,7 +151,6 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
   let pendingRecoveryKey: string | undefined;
   const keys = await deriveSyncKeys(options.secret);
   const ports = createWebCryptoPorts(keys);
-
   /** 设备本地 kv：名单与同步状态都放这里。 */
   const store: SyncServiceOptions['store'] = options.store;
 
@@ -284,6 +283,7 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
     }
 
     if (onOps !== undefined) engineOptions.onOps = onOps;
+    if (options.graceMs !== undefined) engineOptions.graceMs = options.graceMs;
     const engine = new SyncEngine(engineOptions);
 
     return { engine, roster, restored, baseCursor, waiting: keyring !== undefined && keyring.mine === false, joinBlocked: agreement === undefined };

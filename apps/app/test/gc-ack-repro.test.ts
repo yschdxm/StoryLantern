@@ -67,3 +67,40 @@ test('⑤ 复现：B 并入 A 的内容后，ack 必须逐环反映（否则 GC 
   const through = safeThroughSeq(sources, active, 'device-a');
   assert.ok(through >= 1, `③ safeThrough 应当 >=1，实际 ${through}`);
 });
+
+test('⑤ 复现：本机发布过段之后，分析必须给出候选或原因（绝不能两者皆空）', async () => {
+  const backend = createMemoryBackend();
+  const secret = 'shared secret';
+  const a = await createDevice('device-a', backend, secret);
+  const character = await a.repository.characters.save({ name: '星野', firstMessage: '「进来吧。」' });
+  await a.repository.sessions.create(character.id, '隘口之夜');
+  const first = await a.sync();
+  assert.ok(first.uploaded > 0, 'A 应当把段推上去');
+
+  const report = await a.service.collect(true);
+  console.log(
+    `  [A 自己分析] candidates=${report.candidates.length} reasons=${report.reasons.length} reasons[0]=${report.reasons[0] ?? '(无)'}`,
+  );
+  assert.ok(
+    report.candidates.length + report.reasons.length >= 1,
+    `本机明明发布过段，分析却什么都没说：candidates=${JSON.stringify(report.candidates)} reasons=${JSON.stringify(report.reasons)}`,
+  );
+});
+﻿
+test('⑤ 宽限期可调：填 0 时应当真的出现可回收段，并且能执行回收（dryRun 绝不删）', async () => {
+  const backend = createMemoryBackend();
+  const secret = 'shared secret';
+  const a = await createDevice('device-a', backend, secret, { graceMs: 0 });
+  const character = await a.repository.characters.save({ name: '星野', firstMessage: '「进来吧。」' });
+  await a.repository.sessions.create(character.id, '隘口之夜');
+  await a.sync();
+
+  const dry = await a.service.collect(true);
+  console.log('  [宽限期 0 · 只分析] candidates=' + dry.candidates.length + ' moved=' + dry.moved.length);
+  assert.ok(dry.candidates.length >= 1, '宽限期为 0 时应当至少有一个可回收段，实际 ' + JSON.stringify(dry));
+  assert.equal(dry.moved.length, 0, 'dryRun 绝不能真的删东西');
+
+  const real = await a.service.collect(false);
+  console.log('  [宽限期 0 · 真回收] candidates=' + real.candidates.length + ' moved=' + real.moved.length);
+  assert.ok(real.moved.length >= 1, '应当真的把段移进 trash，实际 ' + JSON.stringify(real));
+});
