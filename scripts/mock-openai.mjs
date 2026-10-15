@@ -32,11 +32,26 @@ const PROPOSALS = [
   '（以上是从最近对话整理出的建议，请你确认后再记住。）',
 ].join('\n');
 
+/** 设定库抽取请求：返回**事实形状**的 JSON（带 sources 序号，和真实模型该给的形状一致）。 */
+const FACTS_FOR_MOCK = JSON.stringify(
+  [
+    { subject: '星野', predicate: '身份', object: '隘口的守夜人', text: '星野是隘口的守夜人。', sources: [1], confidence: 85 },
+    { subject: '铜铃', predicate: '来历', object: '父亲留下来的遗物', text: '铜铃是父亲留下来的遗物。', sources: [2], confidence: 70 },
+    { subject: '星野', predicate: '身份', object: '旧地图的收藏者', text: '星野收着一张旧地图。', sources: [1, 2], confidence: 40 },
+  ],
+  null,
+  2,
+);
+
 /** 判断这次请求是"记忆整理"还是普通对话，并给出对应的假回复。 */
 function replyFor(system = '') {
   if (system.includes('记忆整理助手')) {
     console.log('[mock-openai]   识别为记忆整理请求，返回 JSON 建议');
     return PROPOSALS;
+  }
+  if (system.includes('设定整理助手')) {
+    console.log('[mock-openai]   识别为设定库抽取请求，返回事实 JSON（带 sources 序号）');
+    return FACTS_FOR_MOCK;
   }
   return REPLY;
 }
