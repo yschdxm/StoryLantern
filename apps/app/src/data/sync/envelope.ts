@@ -74,6 +74,22 @@ export function createWebCryptoKeyWrap(): KeyWrapPort {
     return (await subtle.generateKey(CURVES[curve].algorithm as never, true, ['deriveBits'])) as CryptoKeyPair;
   }
 
+  /**
+   * 这台设备的 WebView 认不认识这条曲线。
+   *
+   * 真机踩过：给**旧 X25519 对端**包钥匙时，真机 WebView 会直接抛
+   * 「Failed to execute 'generateKey' … Algorithm: Unrecognized name」——用户看不懂，
+   * 我们也只想知道"能不能做"。所以先探测，再用人话拒绝。
+   */
+  async function supportsCurve(curve: WrapCurve): Promise<boolean> {
+    try {
+      await subtle.generateKey(CURVES[curve].algorithm as never, true, ['deriveBits']);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   /** ECDH → HKDF → AES-GCM 密钥；salt 与 info 里绑上双方公钥。 */
   async function deriveAesKey(
     myPrivate: CryptoKey,
@@ -139,6 +155,12 @@ export function createWebCryptoKeyWrap(): KeyWrapPort {
     async wrapFor(recipientPublicKeyHex, contentKey) {
       // 按**收件人**公钥选曲线：给他用他自己那把锁对应的曲线，新旧对端都能收到钥匙
       const curve = curveOfPublicKey(recipientPublicKeyHex);
+      if (!(await supportsCurve(curve))) {
+        throw new Error(
+          `这台设备的 WebView 不认识 ${curve} 这条曲线，没法给这个对端（${recipientPublicKeyHex.slice(0, 8)}…）包钥匙：` +
+            '请让支持它的设备（例如较新的 WebView）来做建库/换代。',
+        );
+      }
       // 包装方临时生成一对密钥：只需要对方公钥就能包（离线也能包）
       const ephemeral = await generatePair(curve);
       const ephemeralPublic = new Uint8Array(await subtle.exportKey('raw', ephemeral.publicKey));
