@@ -207,8 +207,9 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
       roster,
       blindKey: keys.blindKey,
       clock: new HlcClock({ now }),
-      // 见文件头：同步侧快照暂不接入，历史靠段同步
-      snapshotThreshold: 0,
+      // 段攒够就发一份会话快照（引擎发布成功即删上一份，稳态有界）。取 4 而非默认 8：
+      // 手机会话普遍不长，8 段等太久。代价见 docs/M4-STATUS.md 第十五节（每次要传一整份状态）。
+      snapshotThreshold: 4,
     };
     if (restored !== undefined) engineOptions.state = restored;
     // 协商密钥对（X25519）：收自己那份内容密钥要用它，管理方式与签名密钥一致

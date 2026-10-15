@@ -106,3 +106,29 @@ test('懒加载：shouldPull 之外的会话本轮完全不拉（不下载、不
   assert.equal(result.hydratedSessions, 0);
   assert.deepEqual(messageIds(b), []);
 });
+test('只留最新一份快照：发布新的之后，旧的那份必须被删掉（否则存储只增不减）', async () => {
+  // 阈值 1：每发一个段就触发一次快照，便于观察"旧的有没有被清掉"
+  const world = createWorld({ snapshotThreshold: 1 });
+  const a = world.peer(A);
+
+  emit(a, messageAppend(a, { sessionId: 'S1', messageId: 'M0', author: 'user', content: '一' }));
+  await world.sync(A);
+  const blind = Object.keys(a.engine.state.hosted)[0] as string;
+  const firstHash = a.engine.state.hosted[blind]?.snapshot?.hash;
+  assert.ok(firstHash !== undefined, '第一份快照应当已发布');
+  const firstPath = 'snapshots/' + blind + '/' + firstHash + '.json.gz';
+  assert.equal(world.backend.files.has(firstPath), true, '第一份快照应当在存储里');
+
+  emit(a, messageAppend(a, { sessionId: 'S1', messageId: 'M1', author: 'user', content: '二' }));
+  await world.sync(A);
+  const secondHash = a.engine.state.hosted[blind]?.snapshot?.hash;
+  assert.ok(secondHash !== undefined && secondHash !== firstHash, '第二份快照应当是另一个内容地址');
+  const secondPath = 'snapshots/' + blind + '/' + secondHash + '.json.gz';
+  assert.equal(world.backend.files.has(secondPath), true, '新快照在');
+  assert.equal(world.backend.files.has(firstPath), false, '旧快照必须被删掉（它是纯优化、可丢弃的文件）');
+
+  // 只剩一份快照文件：将来若有人把清理去掉，这条会红
+  const snapshotFiles = [...world.backend.files.keys()].filter((path) => path.startsWith('snapshots/'));
+  assert.equal(snapshotFiles.length, 1, '快照文件应当只剩一份，实际 ' + snapshotFiles.length + ' 份');
+  console.log('  快照清理：发布第二份后，存储里只剩 1 份快照文件');
+});

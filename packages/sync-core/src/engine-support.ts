@@ -252,6 +252,11 @@ export async function buildAndUploadSnapshot(
   const hosted = ctx.state.hosted[blindSessionId];
   if (!hosted) return undefined;
 
+  // 上一份快照的路径（内容寻址，所以从 hash 就能算出来）。发布成功后要把它删掉：
+  // 快照是一整份会话状态，只增不减的话存储会一直涨（paths.ts 自己写着"纯优化，可丢弃"）。
+  const previousSnapshotPath =
+    hosted.snapshot === undefined ? undefined : snapshotPath(blindSessionId, hosted.snapshot.hash);
+
   // 水位 = 各设备在该会话上"已并入"的最高段序号（读取方据此跳过这些段）。
   const watermarks: Record<string, number> = {};
   for (const [key, seq] of Object.entries(ctx.state.cursors)) {
@@ -282,6 +287,23 @@ export async function buildAndUploadSnapshot(
 
   hosted.snapshot = { hash: encoded.hash, epoch: hosted.epoch, watermarks, bytes: encoded.bytes.length };
   hosted.segmentsSinceSnapshot = 0;
+
+  // 清理旧快照：尽力而为。删不掉只是多占一点存储，绝不能让整次同步失败。
+  if (
+    previousSnapshotPath !== undefined &&
+    previousSnapshotPath !== encoded.path &&
+    ctx.backend.capabilities.delete &&
+    ctx.backend.delete !== undefined
+  ) {
+    try {
+      await ctx.backend.delete(previousSnapshotPath);
+    } catch (error) {
+      warnings.push(
+        `旧快照清理失败（不影响同步，下次同步还会试）：${previousSnapshotPath} —— ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
   return { path: encoded.path, hash: encoded.hash, bytes: encoded.bytes };
 }
 
