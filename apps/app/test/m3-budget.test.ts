@@ -146,8 +146,9 @@ test(
   {
     skip:
       '已实测：1000 条 append 共 726ms，其中前 100 条 13.2ms、后 100 条 136.2ms（后段慢约 10 倍）→ 逐条成本随条数增长。\n' +
-      '根因已定位在 packages/oplog/src/materialize.ts 的 orderOf(sessionId)：它每次都把整个会话的消息重新排序' +
-      '（注释写明"按 append 的 HLC 排序派生，因此与到达顺序无关"——语义是对的，但每次读都重排 → 每条 O(n log n)）。\n' +
+      '根因：apps/app/src/data/op-ports.ts 的 createLocalOpPorts —— 每次 append 都用 JSON.stringify 把【整份日志】' +
+      '序列化一遍（state.rows 随 append 增长）→ 每条 O(n) → 累计 O(n²)。（上一版这里误写成 materialize 的 orderOf，已更正：' +
+      'orderOf 只被列表/会话视图调用，append 路径不经过它。）' +
       '这正是真机上"1 万条导入 ≥180 秒仍未完成"的原因。修法是把它改成增量维护顺序（常见情况追加到末尾 O(1)，' +
       '乱序到达再二分插入），修好后这条测试应当转正。',
   },
