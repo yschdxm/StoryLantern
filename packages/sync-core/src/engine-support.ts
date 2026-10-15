@@ -307,6 +307,47 @@ export async function buildAndUploadSnapshot(
   return { path: encoded.path, hash: encoded.hash, bytes: encoded.bytes };
 }
 
+/**
+ * 快照 GC：清掉**墓碑会话**留下的快照。
+ *
+ * 为什么按墓碑而不是按"当前状态里还有没有这个会话"：某台设备可能还没拉到那个会话的元数据，
+ * 按"我现在没有"去删就会误删别人正要用的快照。**墓碑是跟着 op 同步的事实**，各设备一致 ——
+ * 按它清是安全的。删不掉只告警，绝不让整次同步失败（快照本来就是可丢弃的优化）。
+ */
+export async function garbageCollectSnapshots(
+  ctx: { backend: SyncBackend },
+  blindSessionIds: readonly string[],
+  warnings: string[],
+): Promise<string[]> {
+  if (blindSessionIds.length === 0) return [];
+  if (!ctx.backend.capabilities.delete || ctx.backend.delete === undefined) return [];
+
+  let entries: Array<{ path?: string; key?: string }>;
+  try {
+    const listed = await ctx.backend.list('snapshots/');
+    entries = listed.entries as unknown as Array<{ path?: string; key?: string }>;
+  } catch (error) {
+    warnings.push(`快照 GC 跳过（列目录失败）：${error instanceof Error ? error.message : String(error)}`);
+    return [];
+  }
+
+  const prefixes = blindSessionIds.map((blind) => `snapshots/${blind}/`);
+  const removed: string[] = [];
+  for (const entry of entries) {
+    const path = entry.path ?? entry.key;
+    if (path === undefined || !prefixes.some((prefix) => path.startsWith(prefix))) continue;
+    try {
+      await ctx.backend.delete(path);
+      removed.push(path);
+    } catch (error) {
+      warnings.push(
+        `快照 GC 删除失败（不影响同步）：${path} —— ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+  return removed;
+}
+
 // ---------------------------------------------------------------- 发布校验与清理
 
 /** 发布后回读校验：半上传/被吃字节的写入不能算"已发布"。 */

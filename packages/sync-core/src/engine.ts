@@ -8,6 +8,7 @@ import { instrumentBackend, type BackendCallCounters, type SyncBackend } from '.
 import { chunkOps } from './chunk.ts';
 import {
   buildAndUploadSnapshot,
+  garbageCollectSnapshots,
   pruneOwnManifests,
   pullChanges,
   verifyPublishedSegment,
@@ -269,7 +270,18 @@ export class SyncEngine {
       blindSessionId,
       warnings,
     );
-    if (encoded) this.#uploaded.push(encoded.path);
+    if (encoded) {
+      this.#uploaded.push(encoded.path);
+      // 顺手 GC：只在"刚发了快照"这条稀有路径上做，不为它增加每次同步的开销。
+      // 只清**墓碑会话**的快照（墓碑是同步事实，各设备一致，不会误删别人还要用的）。
+      const dead = Object.values(materializer.state.sessions).filter((session) => session.deleted !== undefined);
+      if (dead.length > 0) {
+        const blinds: string[] = [];
+        for (const session of dead) blinds.push(await this.blindIdOf(session.id));
+        const removed = await garbageCollectSnapshots({ backend: this.#snapshotContext().backend }, blinds, warnings);
+        if (removed.length > 0) warnings.push(`已清理 ${removed.length} 份墓碑会话的快照`);
+      }
+    }
     return encoded;
   }
 
