@@ -169,7 +169,7 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
     /** 有 keyring 但没包给我：已提交加入请求，等一台已授权设备接纳。 */
     waiting: boolean;
       /** 有 keyring 但拿不到 X25519 协商密钥：加入这条路走不通，必须如实报出来。 */
-      syncDiag: string;
+      joinBlocked: boolean;
   }> => {
     await options.repository.ready;
     const stored = await store.load();
@@ -286,7 +286,7 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
     if (onOps !== undefined) engineOptions.onOps = onOps;
     const engine = new SyncEngine(engineOptions);
 
-    return { engine, roster, restored, baseCursor, waiting: keyring !== undefined && keyring.mine === false, syncDiag: (agreement === undefined ? 'agreement=无 ' : 'agreement=有 ') + (keyring === undefined ? 'keyring=无' : keyring.mine ? 'keyring=mine' : 'keyring=not-mine') };
+    return { engine, roster, restored, baseCursor, waiting: keyring !== undefined && keyring.mine === false, joinBlocked: agreement === undefined };
   };
 
   return {
@@ -298,7 +298,7 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
         const outcome = await options.repository.importOps(ops);
         imported += outcome.appended;
       });
-      const { engine, roster, baseCursor, waiting, syncDiag } = prepared;
+      const { engine, roster, baseCursor, waiting, joinBlocked } = prepared;
       if (waiting) {
         return {
           uploaded: 0,
@@ -335,10 +335,11 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
       if (learnPublicKeys(roster, options.deviceId, state) > 0) await saveRoster(options.device, roster);
 
       const summary = summarize(result, enqueued, imported);
-      if (syncDiag.includes('agreement=无')) {
-        summary.warnings.push('这台设备的 WebView 不支持 X25519 协商密钥：无法加入共享目录、也无法替新设备发钥匙。');
+      if (joinBlocked === true) {
+        summary.warnings.push(
+          '这台设备的 WebView 不支持 X25519 协商密钥：无法加入共享目录、也无法替新设备发钥匙。请换一台支持该能力的设备。',
+        );
       }
-      summary.warnings.push('同步诊断（临时）：' + syncDiag);
       return summary;
     },
 
