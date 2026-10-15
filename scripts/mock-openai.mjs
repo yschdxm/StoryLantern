@@ -11,6 +11,9 @@
 import http from 'node:http';
 
 const port = Number(process.argv[2] ?? 15198);
+// 首字延迟（毫秒）：给"应用内首字 vs 直连"的对比测量用的。默认 0，行为与以前完全一样。
+// 用法：MOCK_TTFT_MS=300 node scripts/mock-openai.mjs 15198
+const ttftMs = Number(process.env.MOCK_TTFT_MS ?? '0') || 0;
 const REPLY = '风从北面来。铜铃响的时候，别回头——这是我唯一能确定的事。';
 
 /** 记忆整理请求：按真实模型最可能的样子回一段"套了代码块 + 前后多说两句"的 JSON。 */
@@ -90,7 +93,8 @@ const server = http.createServer((request, response) => {  if (!request.url?.inc
 
     const characters = [...replyFor(system)];
     let index = 0;
-    const timer = setInterval(() => {
+    let timer = 0;
+    const tick = () => {
       if (index >= characters.length) {
         clearInterval(timer);
         response.write('data: [DONE]\n\n');
@@ -101,7 +105,17 @@ const server = http.createServer((request, response) => {  if (!request.url?.inc
       const delta = characters[index];
       index += 1;
       response.write(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: delta } }] })}\n\n`);
-    }, 45);
+    };
+    if (ttftMs > 0) {
+      console.log(`[mock-openai] 首字延迟 ${ttftMs}ms`);
+      setTimeout(() => {
+        tick();
+        timer = setInterval(tick, 45);
+      }, ttftMs);
+    } else {
+      tick();
+      timer = setInterval(tick, 45);
+    }
 
     // 注意：必须挂在 response 上，不能挂在 request 上——request 的 'close' 在请求体读完时
     // 就会触发，那样会在第一个分片之前就把定时器清掉，响应永不结束（客户端一直"生成中"）。
