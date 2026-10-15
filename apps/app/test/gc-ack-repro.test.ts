@@ -104,3 +104,38 @@ test('⑤ 宽限期可调：填 0 时应当真的出现可回收段，并且能�
   console.log('  [宽限期 0 · 真回收] candidates=' + real.candidates.length + ' moved=' + real.moved.length);
   assert.ok(real.moved.length >= 1, '应当真的把段移进 trash，实际 ' + JSON.stringify(real));
 });
+﻿
+test('⑤ 复现（后加入者路径）：加入已有库之后再发布自己的段，分析必须能看见它们', async () => {
+  const backend = createMemoryBackend();
+  const secret = 'shared secret';
+  const a = await createDevice('device-a', backend, secret, { graceMs: 0 });
+  const b = await createDevice('device-b', backend, secret, { graceMs: 0 });
+
+  // A 建库并发布内容
+  const character = await a.repository.characters.save({ name: '星野', firstMessage: '「进来吧。」' });
+  await a.repository.sessions.create(character.id, '隘口之夜');
+  await a.sync();
+
+  // B 加入（sync() 会自动补一轮"等被接纳"）并同步
+  const joined = await b.sync();
+  console.log('  [B 加入并同步] downloaded=' + joined.downloaded + ' warnings=' + joined.warnings.length);
+
+  // B 自己造内容并发布
+  const own = await b.repository.characters.save({ name: 'B 的角色' });
+  await b.repository.sessions.create(own.id, 'B 的会话');
+  const published = await b.sync();
+  console.log('  [B 发布自己的段] uploaded=' + published.uploaded);
+
+  const state = await loadSyncState(b);
+  const hostedBlindCount = Object.keys((await b.store.load()).state?.hosted ?? {}).length;
+  console.log('  [B 本地状态] ack=' + JSON.stringify(state.ack) + ' hosted 会话数=' + hostedBlindCount);
+
+  const report = await b.service.collect(true);
+  console.log(
+    '  [B 自己分析] candidates=' + report.candidates.length + ' reasons=' + report.reasons.length + ' reasons[0]=' + (report.reasons[0] ?? '(无)'),
+  );
+  assert.ok(
+    report.candidates.length + report.reasons.length >= 1,
+    'B 自己发布过段，分析却什么都没说：candidates=' + JSON.stringify(report.candidates) + ' reasons=' + JSON.stringify(report.reasons),
+  );
+});
