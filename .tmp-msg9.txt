@@ -1,0 +1,11 @@
+﻿docs(⑤): 把 safeThrough=0 的范围收紧到一句可检验的假设（已并入的内容没有反映到对端清单的 ack 里）
+
+真机又跑了一轮完整循环（模拟器同步 → 手机同步 → 手机分析，三边都是「刚刚」），结果仍是 safeThrough=0，说明不是面板刷新问题、而是数据真的是 0。
+
+读码：safeThroughSeq 对每台活跃设备取 ack[owner] 的最小值，且找不到来源按 0 算（roster.ts:158）；sources 里对端那部分来自 peerAck[owner] = manifest.ack（engine-support.ts:96）；每台设备的 ack[owner] 只在它自己并入别人的段时更新（engine-support.ts:182）并随清单发布（engine.ts:297）。
+
+关键事实：模拟器确实并入了手机的内容（它的 DATA 显示 1 character · 1 chat，而手机创建时它是 0），但手机算出的 peerAck[模拟器][手机] 仍是 0。假设因此收紧为：已并入的内容没有反映到对端清单的 ack 里。注意 manifest.ts:110 的 manifest.ack ??= {} —— 旧格式清单（没有 ack 字段）会被当成什么都没并入，这条向后兼容很可能正是真机上的现实路径。
+
+下一步：用已有的两台设备测试骨架（apps/app/test/sync.test.ts、packages/sync-core/test/gc-dryrun.test.ts）做确定性复现，逐环断言 B.state.ack[A]、B 清单里的 ack、A 侧算出的 safeThrough。
+
+验证：门禁 / 类型检查 / 全部 413 测试通过 0 失败。
