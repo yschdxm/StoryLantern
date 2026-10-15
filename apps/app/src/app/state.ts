@@ -47,7 +47,7 @@ export interface AppActions {
   messagesOf(sessionId: string): Promise<Message[]>;
   saveCharacter(draft: CharacterDraft): Promise<Character>;
   deleteCharacter(id: string): Promise<void>;
-  createSession(characterId: string, title?: string): Promise<Session>;
+  createSession(characterId: string, title?: string, greetingIndex?: number): Promise<Session>;
   renameSession(id: string, title: string): Promise<void>;
   deleteSession(id: string): Promise<void>;
   send(sessionId: string, text: string): Promise<void>;
@@ -247,9 +247,9 @@ export function createAppStore(repository: Repository): AppStore {
       });
     },
 
-    createSession(characterId, title) {
+    createSession(characterId, title, greetingIndex) {
       return run('createSession', async () => {
-        const session = await repository.sessions.create(characterId, title);
+        const session = await repository.sessions.create(characterId, title, greetingIndex);
         // 顺手把新会话的消息装进状态：界面紧接着就会进聊天页，
         // 不这样做会先闪一下"还没有消息"再补上开场白。
         const messages = await repository.messages.list(session.id);

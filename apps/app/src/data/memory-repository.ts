@@ -15,6 +15,7 @@ import {
   type SessionStore,
   type SettingsStore,
 } from './repository.ts';
+import { pickOpening } from './greeting.ts';
 import { createLocalLoreStore } from './local-lore-store.ts';
 import { createLocalMemoryStore } from './local-memory-store.ts';
 import type {
@@ -159,7 +160,7 @@ export function createMemoryRepository(
         .map(buildSession);
     },
 
-    async create(characterId, title) {
+    async create(characterId, title, greetingIndex) {
       const character = findCharacter(characterId);
       if (character === undefined) throw new DataError('invalid-argument', `角色 ${characterId} 不存在`);
       const stamp = now();
@@ -174,12 +175,13 @@ export function createMemoryRepository(
         lastMessage: '',
       };
       state.sessions.push(session);
-      if (character.firstMessage.trim() !== '') {
+      const opening = pickOpening(character, greetingIndex);
+      if (opening !== undefined) {
         state.messages.push({
           id: nextId('m'),
           sessionId: session.id,
           role: 'assistant',
-          content: character.firstMessage.trim(),
+          content: opening,
           status: 'done',
           createdAt: stamp,
           candidates: [],

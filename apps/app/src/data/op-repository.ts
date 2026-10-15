@@ -14,6 +14,7 @@ import {
   type Op,
   type Snapshot,
 } from '../../../../packages/oplog/src/index.ts';
+import { pickOpening } from './greeting.ts';
 import { createLoreStore } from './op-lore-store.ts';
 import { createMessageStore } from './op-message-store.ts';
 import { createMemoryStore } from './op-memory-store.ts';
@@ -165,6 +166,9 @@ export function createOpLogRepository(options: OpLogRepositoryOptions): OpLogRep
             scenario: (draft.scenario ?? '').trim(),
             firstMessage: (draft.firstMessage ?? '').trim(),
             exampleDialogue: (draft.exampleDialogue ?? '').trim(),
+            // 以前没写进 op：物化是整体覆盖，于是每次保存都会把它们抹掉（界面能编辑、能"保存成功"，读回来却是空）
+            systemPrompt: (draft.systemPrompt ?? '').trim(),
+            alternateGreetings: (draft.alternateGreetings ?? []).map((item) => item.trim()).filter((item) => item !== ''),
           }),
         ]);
         const record = materializer.state.characters[id];
@@ -196,7 +200,7 @@ export function createOpLogRepository(options: OpLogRepositoryOptions): OpLogRep
           .sort((a, b) => b.updatedAt - a.updatedAt || b.id.localeCompare(a.id)),
       ),
 
-    create: (characterId, title) =>
+    create: (characterId, title, greetingIndex) =>
       withReady(async () => {
         const character = materializer.state.characters[characterId];
         if (character === undefined || character.deleted !== undefined) {
@@ -208,15 +212,11 @@ export function createOpLogRepository(options: OpLogRepositoryOptions): OpLogRep
         const ops: Op[] = [
           sessionCreate(base(), { sessionId: id, title: clean === '' ? character.name : clean, characterId }),
         ];
-        // 开场白随会话一起落地：界面上"新建会话"就该看到那句话
-        if (character.firstMessage.trim() !== '') {
+        // 开场白随会话一起落地：界面上"新建会话"就该看到那句话选哪一条由 greetingIndex 决定（-1 = 不插入），规则与内存实现共用 pickOpening
+        const opening = pickOpening(character, greetingIndex);
+        if (opening !== undefined) {
           ops.push(
-            messageAppend(base(), {
-              sessionId: id,
-              messageId: ulid(),
-              author: 'character',
-              content: character.firstMessage.trim(),
-            }),
+                        messageAppend(base(), { sessionId: id, messageId: ulid(), author: 'character', content: opening, }),
           );
         }
         await appendAndApply(ops);

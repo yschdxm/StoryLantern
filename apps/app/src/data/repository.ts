@@ -44,7 +44,8 @@ export interface CharacterStore {
 
 export interface SessionStore {
   list(): Promise<Session[]>;
-  create(characterId: string, title?: string): Promise<Session>;
+  /** `greetingIndex`：`0`=第一条开场白（默认）、`-1`=不插入、其余依次对应备选开场白。 */
+  create(characterId: string, title?: string, greetingIndex?: number): Promise<Session>;
   rename(id: string, title: string): Promise<boolean>;
   remove(id: string): Promise<boolean>;
 }
