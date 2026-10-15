@@ -43,6 +43,8 @@ export interface LoreEntryUpsertPayload {
   depth: number;
   /** 常量条目：不问关键词，只要书激活就注入。 */
   constant: boolean;
+  /** 条目备注（SillyTavern 的 comment）。设定库导出的条目把 provenance 与审阅状态放这里。 */
+  comment?: string;
 }
 
 export interface LoreEntryDeletePayload {

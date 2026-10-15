@@ -223,6 +223,7 @@ export function validateLoreEntryDraft(draft: LoreEntryDraft): Required<Omit<Lor
   const content = (draft.content ?? '').trim();
   if (content === '') throw new DataError('invalid-argument', '条目正文不能为空');
   return {
+    comment: draft.comment ?? '',
     lorebookId: draft.lorebookId,
     keys,
     secondaryKeys: normalizeLoreKeys(draft.secondaryKeys ?? []),

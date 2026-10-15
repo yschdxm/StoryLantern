@@ -234,6 +234,7 @@ interface EntryDraft {
   caseSensitive: boolean;
   recursive: boolean;
   depth: number;
+  comment: string;
 }
 
 function EntryForm({
@@ -249,6 +250,8 @@ function EntryForm({
   const [keys, setKeys] = useState(entry?.keys.join('，') ?? '');
   const [secondary, setSecondary] = useState(entry?.secondaryKeys.join('，') ?? '');
   const [content, setContent] = useState(entry?.content ?? '');
+  // 注释：设定库里导出的条目会把 provenance 与状态写在这里，所以它必须能看见、也必须能保存
+  const [comment, setComment] = useState(entry?.comment ?? '');
   const [order, setOrder] = useState(String(entry?.order ?? 100));
   const [depth, setDepth] = useState(String(entry?.depth ?? 0));
   const [constant, setConstant] = useState(entry?.constant ?? false);
@@ -265,6 +268,9 @@ function EntryForm({
       </Field>
       <Field label={t('lore.entry.secondary')} hint={t('lore.entry.secondary.hint')}>
         <TextInput value={secondary} onChange={setSecondary} />
+      </Field>
+      <Field label={t('lore.entry.comment')} hint={t('lore.entry.comment.hint')}>
+        <TextInput value={comment} onChange={setComment} />
       </Field>
       <Field label={t('lore.entry.content')}>
         <textarea className="input" rows={4} value={content} onChange={(event) => setContent(event.target.value)} />
@@ -295,6 +301,7 @@ function EntryForm({
               keys: split(keys),
               secondaryKeys: split(secondary),
               content: content.trim(),
+              comment: comment.trim(),
               order: Number.parseInt(order, 10) || 100,
               enabled: entry?.enabled ?? true,
               constant,

@@ -82,6 +82,7 @@ export function createLocalLoreStore(deps: LocalLoreDeps): LorebookStore {
           recursive: draft.recursive ?? existing.recursive,
           depth: draft.depth ?? existing.depth,
           constant: draft.constant ?? existing.constant,
+          comment: draft.comment ?? existing.comment,
         });
         Object.assign(existing, clean, { updatedAt: stamp });
       } else {
@@ -97,6 +98,7 @@ export function createLocalLoreStore(deps: LocalLoreDeps): LorebookStore {
           recursive: clean.recursive,
           depth: clean.depth,
           constant: clean.constant,
+          comment: clean.comment,
           createdAt: stamp,
           updatedAt: stamp,
         };

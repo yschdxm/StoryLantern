@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { conflictsOf, factsToLoreEntries } from '../../../../packages/oplog/src/index.ts';
+import { conflictsOf, factsToLoreEntries, verifyProvenance, type ProvenanceCheck } from '../../../../packages/oplog/src/index.ts';
 import { describeError } from '../data/error-text.ts';
 import { recomputeFacts } from '../data/fact-organize.ts';
 import type { Fact } from '../data/fact-types.ts';
@@ -35,8 +35,19 @@ export function FactsScreen({ store, characterId, chat }: FactsScreenProps): Rea
    * 界面自己加载一遍，写入后再加载一遍，就不会被别处的刷新时机牵着走。
    */
   const [facts, setFacts] = useState<Fact[]>([]);
+  /**
+   * provenance 核对（M4）：光有"源消息 id"不算数 —— 还要看那条消息是不是这条事实真正的出处。
+   * 核对结果是**派生**的（不落库）：同一批事实在任何设备上算出来都一样。
+   */
+  const [messages, setMessages] = useState<{ id: string; content: string }[]>([]);
   const reload = useCallback(async (): Promise<void> => {
     setFacts(await store.actions.factsOf(characterId));
+    const session = store
+      .getState()
+      .sessions.filter((item) => item.characterId === characterId)
+      .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+    const history = session === undefined ? [] : await store.actions.messagesOf(session.id);
+    setMessages(history.map((message) => ({ id: message.id, content: message.content })));
   }, [store, characterId]);
   useEffect(() => {
     void reload();
@@ -129,6 +140,9 @@ export function FactsScreen({ store, characterId, chat }: FactsScreenProps): Rea
     setNote(t('facts.exported', { count: entries.length, book: book.name }));
   };
 
+  /** 每条事实的核对结果（派生计算，见 verifyProvenance）。 */
+  const checkOf = (fact: Fact): ProvenanceCheck => verifyProvenance(fact, messages);
+
   const label = (fact: Fact): string =>
     fact.state === 'accepted' ? t('facts.state.accepted') : fact.state === 'rejected' ? t('facts.state.rejected') : t('facts.state.proposed');
 
@@ -163,6 +177,7 @@ export function FactsScreen({ store, characterId, chat }: FactsScreenProps): Rea
               meta={[
                 label(fact),
                 t('facts.sources', { count: fact.sourceMessageIds.length }),
+                checkOf(fact).verified ? t('facts.verified') : t('facts.unverified'),
                 conflictIds.has(fact.id) ? t('facts.conflictTag') : '',
                 fact.confidence === undefined ? '' : `${fact.confidence}`,
               ]
@@ -177,6 +192,11 @@ export function FactsScreen({ store, characterId, chat }: FactsScreenProps): Rea
       <Sheet open={menu !== undefined} title={menu?.subject} onClose={() => setMenuFor(undefined)}>
         {menu !== undefined && <p className="muted">{menu.text}</p>}
         {menu !== undefined && <p className="muted">{t('facts.provenance')}：{menu.sourceMessageIds.join('、')}</p>}
+        {menu !== undefined && (
+          <p className="muted">
+            {checkOf(menu).verified ? t('facts.verified') : t('facts.unverified')} —— {checkOf(menu).reason}
+          </p>
+        )}
         <SheetItem
           icon="edit"
           label={t('facts.accept')}

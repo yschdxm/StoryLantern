@@ -96,6 +96,8 @@ export interface LoreEntry {
   depth: number;
   /** 常量条目：不问关键词，书激活就注入。 */
   constant: boolean;
+  /** 条目备注：设定库导出的条目把 provenance 与审阅状态写在这里。 */
+  comment: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -132,6 +134,7 @@ export interface LoreEntryDraft {
   recursive?: boolean;
   depth?: number;
   constant?: boolean;
+  comment?: string;
 }
 
 // ---------------------------------------------------------------- 长期记忆

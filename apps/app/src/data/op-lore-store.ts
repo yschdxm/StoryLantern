@@ -87,6 +87,7 @@ export function createLoreStore(deps: LoreStoreDeps): LorebookStore {
           recursive: draft.recursive ?? existing?.recursive ?? true,
           depth: draft.depth ?? existing?.depth ?? 0,
           constant: draft.constant ?? existing?.constant ?? false,
+          comment: draft.comment ?? existing?.comment ?? '',
         });
         const entryId = draft.id ?? ulid();
         await deps.appendAndApply([loreEntryUpsert(deps.base(), { entryId, ...clean })]);

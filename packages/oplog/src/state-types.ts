@@ -164,6 +164,8 @@ export interface MemoryRecord {
  * "自动维护"这类功能会逐条增改，整本覆盖写会让并发编辑互相覆盖。
  */
 export interface LoreEntryRecord {
+  /** 条目备注（SettilyTavern 的 comment）：设定库导出的条目带 provenance。 */
+  comment: string;
   id: string;
   keys: string[];
   secondaryKeys: string[];

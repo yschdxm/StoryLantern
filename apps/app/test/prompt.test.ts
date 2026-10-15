@@ -81,6 +81,7 @@ const lorebook = (
     keys: entry.keys,
     secondaryKeys: [],
     content: entry.content,
+    comment: '',
     enabled: true,
     order: entry.order ?? 100,
     caseSensitive: false,

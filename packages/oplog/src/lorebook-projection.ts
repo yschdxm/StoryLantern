@@ -30,6 +30,7 @@ interface EntryUpsertPayload {
   recursive: boolean;
   depth: number;
   constant: boolean;
+  comment?: string;
 }
 
 export function applyLorebookUpsert(state: MaterializedState, op: Op): ApplyResult {
@@ -93,6 +94,8 @@ export function applyLoreEntryUpsert(state: MaterializedState, op: Op): ApplyRes
     recursive: payload.recursive,
     depth: payload.depth,
     constant: payload.constant,
+    // 旧 op 没有这个字段：按空字符串读，不是"丢了"
+    comment: payload.comment ?? '',
     createdHlc: existing === undefined ? cloneHlc(op.hlc) : cloneHlc(existing.createdHlc),
     updatedHlc: cloneHlc(op.hlc),
     opId: op.opId,
@@ -119,6 +122,7 @@ export function applyLoreEntryDelete(state: MaterializedState, op: Op): ApplyRes
     recursive: existing?.recursive ?? true,
     depth: existing?.depth ?? 0,
     constant: existing?.constant ?? false,
+    comment: existing?.comment ?? '',
     createdHlc: existing === undefined ? cloneHlc(op.hlc) : cloneHlc(existing.createdHlc),
     updatedHlc: cloneHlc(op.hlc),
     opId: op.opId,

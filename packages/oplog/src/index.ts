@@ -171,6 +171,7 @@ export {
   type LoreEntryDraft,
   type ParseFactsResult,
 } from './fact-logic.ts';
+export { verifyProvenance, type ProvenanceCheck, type ProvenanceMessage } from './fact-verify.ts';
 export type { FactRecord, SummaryRecord } from './state-types.ts';
 export {
   Materializer,

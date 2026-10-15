@@ -87,6 +87,7 @@ export function loreEntryView(record: LoreEntryRecord): Lorebook['entries'][numb
     recursive: record.recursive,
     depth: record.depth,
     constant: record.constant,
+    comment: record.comment,
     createdAt: record.createdHlc.t,
     updatedAt: record.updatedHlc.t,
   };
