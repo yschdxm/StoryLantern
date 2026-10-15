@@ -44,7 +44,6 @@ export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings }:
   /** 长按消息时它有多少候选（swipes），决定菜单里要不要出现"备选回复"。 */
   const candidateCount =
     menuFor === undefined ? 0 : (state.messages.find((message) => message.id === menuFor)?.candidates.length ?? 0);
-  const [composerOffset, setComposerOffset] = useState(0);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const controllerRef = useRef<AbortController | null>(null);
   const heightBeforeRef = useRef(0);
@@ -73,22 +72,6 @@ export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings }:
     if (node !== null) node.scrollTop = node.scrollHeight;
   }, [state.messages.length, streaming?.text, sessionId]);
 
-  // 键盘弹出时把输入栏顶上去（visualViewport 是移动端唯一可靠的高度来源）
-  useEffect(() => {
-    const viewport = (globalThis as { visualViewport?: VisualViewport }).visualViewport;
-    if (viewport === undefined) return;
-    const update = (): void => {
-      const hiddenByKeyboard = Math.max(0, globalThis.innerHeight - viewport.height - viewport.offsetTop);
-      setComposerOffset(hiddenByKeyboard);
-    };
-    update();
-    viewport.addEventListener('resize', update);
-    viewport.addEventListener('scroll', update);
-    return () => {
-      viewport.removeEventListener('resize', update);
-      viewport.removeEventListener('scroll', update);
-    };
-  }, []);
 
   const runReply = async (): Promise<void> => {
     // 用 store 里的**最新**状态组上下文：刚发出去的那条消息要进上下文
@@ -219,7 +202,7 @@ export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings }:
   })();
 
   return (
-    <div className="chat" style={{ paddingBottom: composerOffset }}>
+    <div className="chat">
       {banner !== undefined && (
         <Banner tone={banner.tone} {...(banner.action === undefined ? {} : { action: banner.action })}>
           {banner.text}

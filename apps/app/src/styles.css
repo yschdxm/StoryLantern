@@ -61,7 +61,9 @@ html {
 html,
 body,
 #root {
-  height: 100%;
+  /* --app-height 由视觉视口（visualViewport）驱动：软键盘弹出时布局视口不变，
+     只有它变小；不跟着它缩，贴底的输入栏就会被键盘盖住。见 src/ui/viewport.ts */
+  height: var(--app-height, 100%);
 }
 
 body {

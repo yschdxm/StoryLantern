@@ -23,6 +23,7 @@ import { createHostClient, type HostClient } from './host-panel.ts';
 import { I18nProvider } from './i18n/context.tsx';
 import { createAppLocaleService, registerAppMessages, translatorOf } from './i18n/locale.ts';
 import { AppShell } from './ui/AppShell.tsx';
+import { installViewportHeight } from './ui/viewport.ts';
 import { ScreenMenu } from './ui/ScreenMenu.tsx';
 import { SessionsScreen } from './screens/SessionsScreen.tsx';
 import { ChatScreen } from './screens/ChatScreen.tsx';
@@ -341,6 +342,9 @@ function Root(): ReturnType<typeof AppShell> {
 
 const container = document.getElementById('root');
 if (container === null) throw new Error('缺少 #root 容器');
+
+// 软键盘弹出的高度变化靠它：让整列跟着 visualViewport 缩（见 ui/viewport.ts）
+installViewportHeight();
 createRoot(container).render(
   <StrictMode>
     <Root />
