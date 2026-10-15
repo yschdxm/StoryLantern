@@ -2,7 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { describeError } from '../data/error-text.ts';
 import { ulid } from '../../../../packages/oplog/src/index.ts';
 import type { AppStore } from '../app/state.ts';
-import { DEFAULT_EMBEDDING_MODEL, probeEmbedding } from '../data/embedding-host.ts';
+import { DEFAULT_EMBEDDING_MODEL, formatResolved, probeEmbedding } from '../data/embedding-host.ts';
 import { useT } from '../i18n/context.tsx';
 import type { WireTransport } from '../../../../packages/wire/src/index.ts';
 import type { ChatClient } from '../data/chat-client.ts';
@@ -356,7 +356,10 @@ function ProfileForm({
                 // 地址与密钥都沿用当前这份配置 —— 密钥不进前端，宿主自己读
                 model: settings[SETTING_KEYS.embeddingModel] ?? DEFAULT_EMBEDDING_MODEL,
               }).then((result) =>
-                setVectorProbe(result.ok ? t('settings.vector.ok', { dims: result.dimensions, ms: result.ms }) : result.message),
+                setVectorProbe(
+                  (result.ok ? t('settings.vector.ok', { dims: result.dimensions, ms: result.ms }) : result.message) +
+                    (result.resolved === undefined ? '' : '\n' + formatResolved(result.resolved)),
+                ),
               );
             }}
           >

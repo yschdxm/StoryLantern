@@ -257,17 +257,39 @@ pub fn chat_embed(store: &Store, args: &[Value]) -> Result<Value, WireErrorPaylo
     // 配置没填全时**退回设置里那组默认**（M1 及以前就存在的字段）：
     // 以前这里直接报"还没配置接口地址"，用户看不出到底读到了什么，也没法在只填了默认那组时用它。
     let legacy = legacy_target(store);
-    let (base_url, api_key) = if (target.base_url.trim().is_empty() || model.is_empty()) {
+let fell_back = target.base_url.trim().is_empty() || model.is_empty();
+    let (base_url, api_key) = if fell_back {
         if legacy.base_url.trim().is_empty() || legacy.model.trim().is_empty() {
             // 诊断信息：把**读到了什么**说清楚（密钥只说有没有，绝不回显内容）
+            // 诊断：把 model.profiles 里**匹配到那条的字段名**列出来（只列字段名，绝不打印密钥内容），
+            // 这样能分清"存了个空串"还是"键名不同"。
+            let raw = setting(store, "model.profiles", "[]");
+            let parsed: Value = serde_json::from_str(&raw).unwrap_or(Value::Null);
+            let count = parsed.as_array().map(|items| items.len()).unwrap_or(0);
+            let fields = parsed
+                .as_array()
+                .and_then(|items| {
+                    items.iter().find(|item| {
+                        item.get("id").and_then(Value::as_str) == request.get("profileId").and_then(Value::as_str)
+                    })
+                })
+                .map(|entry| {
+                    entry
+                        .as_object()
+                        .map(|object| object.keys().cloned().collect::<Vec<_>>().join(","))
+                        .unwrap_or_default()
+                })
+                .unwrap_or_else(|| "（没找到该 id）".to_string());
             return Err(WireErrorPayload::new(
                 "invalid-argument",
                 format!(
-                    "「{}」没有可用的接口地址（读到的 base_url=\"{}\"、model=\"{}\"；设置里那组默认为空；密钥{}）。请在设置里填好接口地址与模型名。",
+                    "「{}」没有可用的接口地址（读到的 base_url=\"{}\"、model=\"{}\"；密钥{}）。\n诊断：model.profiles 里 {} 条，匹配那条的字段名=[{}]。请在设置里填好接口地址与模型名。",
                     target.name,
                     target.base_url,
                     model,
                     if target.api_key.is_empty() { "未配置" } else { "已配置" },
+                    count,
+                    fields,
                 ),
             ));
         }
@@ -291,12 +313,34 @@ pub fn chat_embed(store: &Store, args: &[Value]) -> Result<Value, WireErrorPaylo
     if !api_key.is_empty() {
         http = http.bearer_auth(&api_key);
     }
+    // 诊断信息随响应一起回去：**成功与失败都要**，否则用户（和排查的人）看不到宿主到底用了什么。
+    // 只回字段名与地址，**绝不回传密钥内容** —— 关键纪律不能因为"方便排查"就破.
+    let raw_profiles = setting(store, "model.profiles", "[]");
+    let parsed_profiles: Value = serde_json::from_str(&raw_profiles).unwrap_or(Value::Null);
+    let profiles_count = parsed_profiles.as_array().map(|items| items.len()).unwrap_or(0);
+    let matched_fields = parsed_profiles
+        .as_array()
+        .and_then(|items| {
+            items.iter().find(|item| {
+                item.get("id").and_then(Value::as_str) == request.get("profileId").and_then(Value::as_str)
+            })
+        })
+        .map(|entry| entry.as_object().map(|object| object.keys().cloned().collect::<Vec<_>>().join(",")).unwrap_or_default())
+        .unwrap_or_else(|| "（没找到该 profileId）".to_string());
+    let resolved = json!({
+        "baseUrl": base_url,
+        "model": effective_model,
+        "profilesInStore": profiles_count,
+        "matchedFields": matched_fields,
+        "keyConfigured": !api_key.is_empty(),
+        "fellBackToLegacy": fell_back,
+    });
     match http.send() {
         Ok(response) => {
             let status = response.status().as_u16();
             let body = response.text().unwrap_or_default();
             // 非 2xx 也把响应体交回前端：前端据此报错并**降级成纯词法**（回退规则在那边）
-            Ok(json!({ "status": status, "body": body }))
+            Ok(json!({ "status": status, "body": body, "resolved": resolved }))
         }
         Err(error) => Err(WireErrorPayload::new("transport-failed", format!("向量请求失败：{error}"))),
     }

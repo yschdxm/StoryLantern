@@ -1,4 +1,4 @@
-import { createOpenAiEmbeddingPort, type EmbeddingPort } from '../../../../packages/oplog/src/index.ts';
+import { createOpenAiEmbeddingPort, parseEmbeddingResponse, type EmbeddingPort } from '../../../../packages/oplog/src/index.ts';
 import { WireClient, type WireTransport } from '../../../../packages/wire/src/index.ts';
 
 /**
@@ -59,17 +59,46 @@ export function createHostEmbeddingPort(options: HostEmbeddingOptions): Embeddin
   });
 }
 
+export interface WireEmbedResolved {
+  baseUrl?: string;
+  model?: string;
+  profilesInStore?: number;
+  matchedFields?: string;
+  keyConfigured?: boolean;
+  fellBackToLegacy?: boolean;
+}
+
+/** 把宿主的诊断信息压成一行给人看（只说地址与字段名，**没有密钥内容**）。 */
+export function formatResolved(resolved: WireEmbedResolved | undefined): string {
+  if (resolved === undefined) return '';
+  return (
+    `宿主用的地址=${resolved.baseUrl ?? '（空）'}｜模型=${resolved.model ?? '（空）'}` +
+    `｜profiles 里 ${resolved.profilesInStore ?? '?'} 条（匹配那条字段名=[${resolved.matchedFields ?? '?'}]）` +
+    `｜密钥${resolved.keyConfigured === true ? '已配置' : '未配置'}${resolved.fellBackToLegacy === true ? '｜已回退到旧字段' : ''}`
+  );
+}
+
 /** 向量自检：只嵌一句，返回维度与耗时（给设置里的「测试向量来源」按钮用）。 */
 export async function probeEmbedding(
   options: HostEmbeddingOptions,
-): Promise<{ ok: true; dimensions: number; ms: number } | { ok: false; message: string }> {
+): Promise<{ ok: true; dimensions: number; ms: number; resolved: WireEmbedResolved } | { ok: false; message: string; resolved?: WireEmbedResolved }> {
   const started = Date.now();
+  const client = new WireClient(options.transport);
+  const model = options.model?.trim() ?? '';
   try {
-    const port = createHostEmbeddingPort(options);
-    const vectors = await port.embed(['铜铃是父亲留下来的遗物。']);
-    const first = vectors[0];
+    // 直接调宿主命令（不走端口）：这样才能把 resolved 诊断一起拿到并显示出来
+    const result = await client.call<{ status: number; body: string; resolved?: WireEmbedResolved }>('chat', 'embed', {
+      ...(options.profileId === undefined || options.profileId === '' ? {} : { profileId: options.profileId }),
+      ...(model === '' ? {} : { model }),
+      input: ['铜铃是父亲留下来的遗物。'],
+    });
+    if (result.status < 200 || result.status >= 300) {
+      return { ok: false, message: `HTTP ${result.status}：${result.body.slice(0, 200)}`, ...(result.resolved === undefined ? {} : { resolved: result.resolved }) };
+    }
+    const parsed = parseEmbeddingResponse(result.body);
+    const first = parsed.vectors[0];
     if (first === undefined) return { ok: false, message: '没有返回向量' };
-    return { ok: true, dimensions: first.length, ms: Date.now() - started };
+    return { ok: true, dimensions: first.length, ms: Date.now() - started, resolved: result.resolved ?? {} };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : String(error) };
   }
