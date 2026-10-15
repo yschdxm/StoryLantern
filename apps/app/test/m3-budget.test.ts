@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createDevice, createMemoryBackend } from './sync-harness.ts';
 import { instrumentBackend } from '../../../packages/sync-core/src/backend.ts';
+import { estimateTokens } from '../src/data/prompt.ts';
 
 /**
  * M3 的性能预算（PLAN.md §11）：把"单次同步 ≤8 请求、≤1MB"和"段压缩 ≥3×"变成**可复跑**的断言。
@@ -84,4 +85,16 @@ test(
   assert.ok(segments.length >= 1, '应当至少有一个段文件');
   assert.ok(rawBytes > 0 && packedBytes > 0, '两边都要有字节数可算');
   assert.ok(ratio >= 3, `段压缩比应当 ≥3×，实际 ${ratio.toFixed(2)}×`);
+});
+﻿
+test('性能预算：10 万 token 计数 <300ms（用仓库里真实的 estimateTokens）', () => {
+  // 中文约 1 token/字（见 apps/app/src/data/prompt.ts 的 estimateTokens），这段 14 字 × 1 万 ≈ 14 万 token
+  const text = '风从北面来，带着雪线的味道。'.repeat(10_000);
+  const started = performance.now();
+  const tokens = estimateTokens(text);
+  const elapsed = performance.now() - started;
+  console.log(`  [token 计数] 文本 ${text.length} 字 → 估算 ${tokens} token，耗时 ${elapsed.toFixed(1)} ms`);
+
+  assert.ok(tokens >= 100_000, `这段文本应当估成 ≥10 万 token，实际 ${tokens}`);
+  assert.ok(elapsed < 300, `10 万 token 计数应当 <300ms，实际 ${elapsed.toFixed(1)}ms`);
 });
