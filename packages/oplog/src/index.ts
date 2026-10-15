@@ -131,6 +131,7 @@ export {
   priceOf,
   totalUsage,
   withinBudget,
+  wouldExceed,
   type BudgetState,
   type ModelPrice,
   type UsageRecord,

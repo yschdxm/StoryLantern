@@ -14,6 +14,7 @@ import {
   type ModelTask,
 } from '../data/model-routing.ts';
 import { SETTING_KEYS } from '../data/types.ts';
+import { createUsageStore, parseBudget, parsePriceTable } from '../data/usage-store.ts';
 import { Banner, Button, ConfirmDialog, Field, ListRow, Sheet, SheetItem, TextInput } from '../ui/components.tsx';
 
 /**
@@ -48,6 +49,37 @@ export function ModelProfilesPanel({ store, chat, settings }: { store: AppStore;
     await save(profiles.filter((item) => item.id !== id));
     // 顺手把密钥也清掉：删了配置还留着 key，属于"看不见的攻击面"
     await store.actions.setSetting(profileKeySetting(id), '');
+  };
+
+  // 用量与预算（M4 判据 3）：价格表/预算是用户手填的，非法输入必须当场说清楚，
+  // 不能静默当空——否则会以为「填了价格却没生效」。
+  const usage = createUsageStore({
+    settings: () => store.getState().settings,
+    setSetting: (key, value) => store.actions.setSetting(key, value),
+  });
+  const [pricesDraft, setPricesDraft] = useState(settings[SETTING_KEYS.usagePrices] ?? '');
+  const [budgetDraft, setBudgetDraft] = useState(settings[SETTING_KEYS.usageBudgetUsd] ?? '');
+  const [usageNote, setUsageNote] = useState<string | undefined>(undefined);
+  const [usageError, setUsageError] = useState<string | undefined>(undefined);
+  const usageTotals = usage.totals();
+
+  /** 用**刚填的内容**直接解析（而不是等设置回读），这样报错说的就是用户刚敲的那一行。 */
+  const saveUsageConfig = async (): Promise<void> => {
+    setUsageError(undefined);
+    setUsageNote(undefined);
+    const parsedPrices = parsePriceTable(pricesDraft);
+    const parsedBudget = parseBudget(budgetDraft);
+    if (parsedPrices.error !== undefined) {
+      setUsageError(parsedPrices.error);
+      return;
+    }
+    if (parsedBudget.error !== undefined) {
+      setUsageError(parsedBudget.error);
+      return;
+    }
+    await store.actions.setSetting(SETTING_KEYS.usagePrices, pricesDraft.trim());
+    await store.actions.setSetting(SETTING_KEYS.usageBudgetUsd, budgetDraft.trim());
+    setUsageNote(t('settings.usage.saved'));
   };
 
   const menu = profiles.find((item) => item.id === menuFor);
@@ -149,6 +181,30 @@ export function ModelProfilesPanel({ store, chat, settings }: { store: AppStore;
           if (id !== undefined) void remove(id);
         }}
       />
+
+      <h3 className='section__title'>{t('settings.usage.title')}</h3>
+      <Field label={t('settings.usage.prices')} hint={t('settings.usage.prices.hint')}>
+        <TextInput value={pricesDraft} onChange={setPricesDraft} placeholder='[{"modelId":"deepseek-chat","promptPer1k":0.00027,"completionPer1k":0.0011}]' />
+      </Field>
+      <Field label={t('settings.usage.budget')} hint={t('settings.usage.budget.hint')}>
+        <TextInput value={budgetDraft} onChange={setBudgetDraft} placeholder='5' />
+      </Field>
+      <div className='row'>
+        <Button onClick={() => void saveUsageConfig()}>{t('common.save')}</Button>
+      </div>
+      {usageError !== undefined && <p className='notice notice--warn'>{usageError}</p>}
+      {usageNote !== undefined && <p className='muted'>{usageNote}</p>}
+      <p className='muted'>
+        {t('settings.usage.summary', {
+          requests: usageTotals.requests,
+          cost: usageTotals.costUsd.toFixed(4),
+          prompt: usageTotals.promptTokens,
+          completion: usageTotals.completionTokens,
+        })}
+      </p>
+      {usageTotals.unpricedRequests > 0 && (
+        <p className='muted'>{t('settings.usage.unpriced', { count: usageTotals.unpricedRequests })}</p>
+      )}
     </>
   );
 }

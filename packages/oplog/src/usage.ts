@@ -113,6 +113,24 @@ export interface BudgetState {
 }
 
 /**
+ * 发送**之前**的预算判定：把"这一次还打算花多少"也一起算进去。
+ *
+ * 与 withinBudget 的区别：那个看"已经花了多少"，这个回答"再花这一笔会不会超"——
+ * 发送路径要的是后者，否则永远只能事后发现超支。
+ * 注意 estimateUsd 通常应当是**上界**（例如按 max_tokens 估输出），这样拦截不会漏。
+ */
+export function wouldExceed(records: readonly UsageRecord[], budgetUsd: number, estimateUsd: number): BudgetState {
+  const state = withinBudget(records, budgetUsd);
+  const projected = round6(state.spentUsd + Math.max(0, estimateUsd));
+  return {
+    ok: projected <= budgetUsd,
+    spentUsd: state.spentUsd,
+    remainingUsd: round6(Math.max(0, budgetUsd - projected)),
+    unpricedRequests: state.unpricedRequests,
+  };
+}
+
+/**
  * 预算判定。**注意**：`unpricedRequests > 0` 时 `spentUsd` 是**下界**，
  * 调用方应当把它显示出来，别让用户以为这是准确花费。
  */

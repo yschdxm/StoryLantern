@@ -4,7 +4,10 @@ import type { ScreenProps } from './screen-props.ts';
 import { useAppState, useAsync } from './screen-props.ts';
 import { useT } from '../i18n/context.tsx';
 import { formatTime, isModelConfigured } from '../data/repository.ts';
-import { buildChatRequest } from '../data/prompt.ts';
+import { buildChatRequest, estimateTokens } from '../data/prompt.ts';
+import { computeUsage } from '../../../../packages/oplog/src/index.ts';
+import { createUsageStore } from '../data/usage-store.ts';
+import { SETTING_KEYS } from '../data/types.ts';
 import { candidatesFor, targetLabel } from '../data/model-routing.ts';
 import type { ChatReplyResult } from '../data/chat-client.ts';
 import type { ScoredEntry } from '../../../../packages/lore/src/index.ts';
@@ -114,6 +117,28 @@ export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings }:
         throw new Error(t('chat.noModel'));
       }
 
+      // 预算闸门（M4 判据 3）：**发送前**判定。估算刻意取上界（输出按 max_tokens 估），
+      // 宁可高估、也不能让用户在不知不觉中超支。价格按**配置 id** 匹配（见 usage-store 的说明）。
+      const usage = createUsageStore({
+        settings: () => store.getState().settings,
+        setSetting: (key, value) => store.actions.setSetting(key, value),
+      });
+      const promptTokens =
+        request.trace.usedTokens + estimateTokens(request.messages.map((message) => message.content).join(String.fromCharCode(10)));
+      const maxOutputRaw = Number(fresh.settings[SETTING_KEYS.maxTokens] ?? '');
+      const maxOutput = Number.isFinite(maxOutputRaw) && maxOutputRaw > 0 ? maxOutputRaw : 1024;
+      const estimatedUsd = usage.estimateCost(candidates[0]?.id ?? '', promptTokens, maxOutput);
+      const budget = usage.gate(estimatedUsd);
+      if (!budget.ok) {
+        throw new Error(
+          t('chat.overBudget', {
+            spent: budget.spentUsd.toFixed(4),
+            estimate: estimatedUsd.toFixed(4),
+            total: (budget.spentUsd + estimatedUsd).toFixed(4),
+          }),
+        );
+      }
+
       let outcome: ChatReplyResult | undefined;
       for (const candidate of candidates) {
         // 换一个候选时把上一段的半截输出清掉：它不属于最终回复
@@ -132,6 +157,20 @@ export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings }:
             },
           );
           attempts.push({ label: targetLabel(candidate), ok: true, ms: Date.now() - attemptStarted });
+          // 记用量：**不记的话 spentUsd 永远是 0，闸门就是摆设**。口径是估算（不是账单）。
+          await usage
+            .record(
+              fresh.settings['device.id'] ?? 'unknown',
+              computeUsage({
+                at: Date.now(),
+                task: 'chat',
+                modelId: candidate.id === '' ? 'default' : candidate.id,
+                promptTokens,
+                completionTokens: estimateTokens(outcome.text),
+                prices: usage.prices().value,
+              }),
+            )
+            .catch(() => undefined);
           break;
         } catch (cause) {
           const message = describeError(cause);

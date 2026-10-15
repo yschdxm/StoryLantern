@@ -185,6 +185,10 @@ export const SETTING_KEYS = {
   theme: 'app.theme',
   fontScale: 'app.font_scale',
   developerMode: 'app.developer_mode',
+  // 用量与成本（M4 判据 3）：价格表是 JSON 数组 [{modelId,promptPer1k,completionPer1k}]，
+  // 预算单位是美元；两者留空都表示"不设"。用量本身按 usage.device.<设备>.<日期> 记（见 usage-store.ts）
+  usagePrices: 'usage.prices',
+  usageBudgetUsd: 'usage.budget_usd',
   // 同步：**非机密**配置进设置；同步口令与进度在设备本地 kv（见 app-sync.ts 的说明）
   syncKind: 'sync.kind',
   syncUrl: 'sync.url',
