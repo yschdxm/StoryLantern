@@ -54,7 +54,9 @@ export async function createJoinRequest(
   port: JoinProofPort,
   input: { deviceId: string; publicKey: string; agreementKey: string; at?: number; recoveryProof?: string },
 ): Promise<JoinRequest> {
-  if (input.publicKey === '') throw new Error('加入请求必须带签名公钥');
+  // 签名公钥**可以为空**：WebView 不支持 Ed25519 的设备处于「弱签名」模式，没有公钥可带
+  //（名单里本来就允许「没有公钥」的同伴，真机上就是这种设备要加入）。
+  // 真正不能少的是**协商公钥**——库主人要用它把数据钥匙包给你。
   if (input.agreementKey === '') throw new Error('加入请求必须带协商公钥（否则别人没法把钥匙包给你）');
   return {
     v: 1,
@@ -93,7 +95,7 @@ export async function verifyJoinRequest(
   if (options.revoked.has(request.deviceId)) {
     return { ok: false, reason: `设备 ${request.deviceId} 已被永久禁用（黑名单）` };
   }
-  if (request.publicKey === '' || request.agreementKey === '') {
+  if (request.agreementKey === '') {
     return { ok: false, reason: '加入请求缺少公钥' };
   }
   // 两条路：带正确口令的密码证明，或者恢复密钥签名的恢复证明。

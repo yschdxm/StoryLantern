@@ -98,5 +98,7 @@ test('加入请求的读写：缺字段要说清缺哪个', async () => {
 test('不给协商公钥就等于"别人没法把钥匙包给你"：直接拒绝生成', async () => {
   const port = fakePort('shared-secret');
   await assert.rejects(() => createJoinRequest(port, { ...device, agreementKey: '' }), /协商公钥/);
-  await assert.rejects(() => createJoinRequest(port, { ...device, publicKey: '' }), /签名公钥/);
+  // 空签名公钥是**合法**的：WebView 不支持 Ed25519 的设备处于弱签名模式，没有公钥可带
+  const weak = await createJoinRequest(port, { ...device, publicKey: '' });
+  assert.equal(weak.publicKey, '');
 });

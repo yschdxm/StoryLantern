@@ -159,3 +159,21 @@ test('恢复文件路径：放在共享目录根上的明文文件（公钥不�
   assert.equal(RECOVERY_FILE, 'recovery.json');
   assert.equal(recoveryPayload({ deviceId: 'a', at: 1 }).length > 0, true);
 });
+
+test("弱签名设备（没有签名公钥）也能写加入请求：只要带协商公钥与口令证明", async () => {
+  const proof = fakeProof("the-secret");
+  const request = await createJoinRequest(proof, {
+    deviceId: "weak-phone",
+    publicKey: "", // WebView 不支持 Ed25519 → 没有签名公钥
+    agreementKey: "agree-p256-key",
+    at: 100,
+  });
+  assert.equal(request.publicKey, "", "允许空签名公钥");
+  assert.equal(request.agreementKey, "agree-p256-key");
+  const accepted = await verifyJoinRequest(proof, request, { revoked: new Set() });
+  assert.equal(accepted.ok, true, "弱签名设备应当能被接纳（名单侧本来也允许没有公钥的同伴）");
+  const missing = await createJoinRequest(proof, { deviceId: "x", publicKey: "", agreementKey: "" }).catch(
+    (cause: unknown) => (cause instanceof Error ? cause.message : String(cause)),
+  );
+  assert.match(String(missing), /协商公钥/);
+});
