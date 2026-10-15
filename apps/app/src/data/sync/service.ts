@@ -206,10 +206,10 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
       ports,
       roster,
       blindKey: keys.blindKey,
-      clock: new HlcClock({ now }),
-      // 段攒够就发一份会话快照（引擎发布成功即删上一份，稳态有界）。取 4 而非默认 8：
-      // 手机会话普遍不长，8 段等太久。代价见 docs/M4-STATUS.md 第十五节（每次要传一整份状态）。
-      snapshotThreshold: 4,
+      clock: new HlcClock({ now }),      // 阈值 = 自上次快照以来攒多少段才再发一份**整份会话状态**。实测（snapshot-cost.test.ts）：
+      // 同一段工作量下 4→上传 11 次、8→5 次、16→1 次；400 条会话每份约 21 KB（1 万条即每份多半 MB），故取 16。
+      // 代价：新设备多重放十几个**很小的**段（段就是增量那份；10k op 合并实测 63 ms），可忽略。
+      snapshotThreshold: 16,
     };
     if (restored !== undefined) engineOptions.state = restored;
     // 协商密钥对（X25519）：收自己那份内容密钥要用它，管理方式与签名密钥一致
