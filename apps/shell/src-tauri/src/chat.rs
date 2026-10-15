@@ -318,6 +318,27 @@ let fell_back = target.base_url.trim().is_empty() || model.is_empty();
     let raw_profiles = setting(store, "model.profiles", "[]");
     let parsed_profiles: Value = serde_json::from_str(&raw_profiles).unwrap_or(Value::Null);
     let profiles_count = parsed_profiles.as_array().map(|items| items.len()).unwrap_or(0);
+    // 存储里那条的 baseUrl **值**（URL 不是秘密；密钥仍然绝不回显）
+    let matched_base_url = parsed_profiles
+        .as_array()
+        .and_then(|items| {
+            items.iter().find(|item| {
+                item.get("id").and_then(Value::as_str) == request.get("profileId").and_then(Value::as_str)
+            })
+        })
+        .and_then(|entry| entry.get("baseUrl").and_then(Value::as_str))
+        .unwrap_or("（没有这个字段）")
+        .to_string();
+    let matched_model_value = parsed_profiles
+        .as_array()
+        .and_then(|items| {
+            items.iter().find(|item| {
+                item.get("id").and_then(Value::as_str) == request.get("profileId").and_then(Value::as_str)
+            })
+        })
+        .and_then(|entry| entry.get("model").and_then(Value::as_str))
+        .unwrap_or("（没有这个字段）")
+        .to_string();
     let matched_fields = parsed_profiles
         .as_array()
         .and_then(|items| {
@@ -332,6 +353,8 @@ let fell_back = target.base_url.trim().is_empty() || model.is_empty();
         "model": effective_model,
         "profilesInStore": profiles_count,
         "matchedFields": matched_fields,
+        "storedBaseUrl": matched_base_url,
+        "storedModel": matched_model_value,
         "keyConfigured": !api_key.is_empty(),
         "fellBackToLegacy": fell_back,
     });
