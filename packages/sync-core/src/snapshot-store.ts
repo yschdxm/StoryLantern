@@ -21,7 +21,7 @@ export function snapshotSignaturePayload(
 
 export async function encodeSessionSnapshot(
   snapshot: SessionSnapshot,
-  options: { ports: CryptoPorts; encrypt?: boolean },
+  options: { ports: CryptoPorts; encrypt?: boolean; format?: 1 | 2 },
 ): Promise<EncodedSnapshot> {
   const inner = JSON.stringify(snapshot);
   const bytes = await encodeEnvelope(inner, {
@@ -30,6 +30,7 @@ export async function encodeSessionSnapshot(
     // AAD 绑定到会话：把密文搬到另一个会话目录后解密必然失败。
     aad: `snapshot|${snapshot.blindSessionId}`,
     sign: (contentHash) => snapshotSignaturePayload(snapshot, contentHash),
+    ...(options.format === undefined ? {} : { format: options.format }),
   });
   const hash = toHex(await options.ports.digest.sha256(bytes));
   return { path: snapshotPath(snapshot.blindSessionId, hash), bytes, hash };

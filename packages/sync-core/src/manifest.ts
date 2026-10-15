@@ -54,6 +54,8 @@ export interface EncodedManifest {
 export interface EncodeManifestOptions {
   ports: CryptoPorts;
   encrypt?: boolean;
+  /** 写哪种信封格式：默认 2；1 只用于"造老文件验证双读"与迁移期。 */
+  format?: 1 | 2;
 }
 
 /** 签名覆盖的元组：绑定设备、序号与内容哈希。 */
@@ -70,6 +72,7 @@ export async function encodeManifest(manifest: Manifest, options: EncodeManifest
     encrypt: options.encrypt === true,
     aad: `manifest|${manifest.deviceId}`,
     sign: (contentHash) => manifestSignaturePayload(manifest, contentHash),
+    ...(options.format === undefined ? {} : { format: options.format }),
   });
 
   const blobHash = toHex(await ports.digest.sha256(bytes));
