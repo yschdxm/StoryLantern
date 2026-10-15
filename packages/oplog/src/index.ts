@@ -108,6 +108,14 @@ export {
   type SummaryPlanInput,
   type SummaryTarget,
 } from './summary-plan.ts';
+export {
+  runSummaries,
+  runSummariesFor,
+  type SummarizeRequest,
+  type SummaryRunInput,
+  type SummaryRunResult,
+  type SummaryRunnerOptions,
+} from './summary-runner.ts';
 export type { SummaryRecord } from './state-types.ts';
 export {
   Materializer,
