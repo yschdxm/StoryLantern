@@ -5,6 +5,10 @@ import { execFileSync } from 'node:child_process';
  *
  * 用 Node 直接调 adb：PowerShell 传引号/花括号会变形，而这段 JSON 全是引号。
  * 文本必须是 ASCII（`input text` 不支持中文），所以内容用英文，界面文案由代码给。
+ *
+ * 用法：node scripts/verify-import-candidates.mjs（需要一台已连接的设备）
+ *
+ * 为什么用 Node 调 adb：PowerShell 传引号/花括号会变形，而这段 JSON 全是引号。
  */
 const ADB = `${process.env.LOCALAPPDATA}\\Android\\Sdk\\platform-tools\\adb.exe`;
 const SERIAL = '127.0.0.1:6555';
