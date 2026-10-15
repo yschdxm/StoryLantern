@@ -113,7 +113,19 @@ const DEFAULT_MAX_PER_DAY = 500;
 export function createUsageStore(deps: UsageStoreDeps): UsageStore {
   const maxPerDay = deps.maxPerDay ?? DEFAULT_MAX_PER_DAY;
 
+  /**
+   * 当天记录的**内存叠加层**。
+   *
+   * 为什么必须有：调用方可能传进来一份**过期的设置快照**（摘要那条就是这样：`settings` 是渲染时的
+   * 值，而 `setSetting` 写的是仓里的新值）。那样"读设置 → 追加 → 写回"的第二步读到的永远是旧值，
+   * 于是每写一次都把前一条**覆盖**掉 —— 真机实测：24 次摘要调用最后只剩 **1** 条记录。
+   * 有了叠加层，同一个仓实例内的写入一定累加，预算闸门当次运行内也看得到已花。
+   */
+  const overlay = new Map<string, UsageRecord[]>();
+
   const readDay = (key: string): UsageRecord[] => {
+    const cached = overlay.get(key);
+    if (cached !== undefined) return cached;
     const raw = deps.settings()[key];
     if (raw === undefined || raw === '') return [];
     try {
@@ -125,7 +137,9 @@ export function createUsageStore(deps: UsageStoreDeps): UsageStore {
     }
   };
 
-  const allKeys = (): string[] => Object.keys(deps.settings()).filter((key) => key.startsWith(USAGE_KEY_PREFIX));
+  const allKeys = (): string[] =>
+    // 设置里的键 + 叠加层里的键（后者在"调用方传了过期快照"时是唯一能看到当天记录的地方）
+    [...new Set([...Object.keys(deps.settings()).filter((key) => key.startsWith(USAGE_KEY_PREFIX)), ...overlay.keys()])];
 
   return {
     prices: () => parsePriceTable(deps.settings()['usage.prices']),
@@ -134,6 +148,7 @@ export function createUsageStore(deps: UsageStoreDeps): UsageStore {
     async record(deviceId, record) {
       const key = usageKey(deviceId, localDay(record.at));
       const kept = [...readDay(key), record].slice(-maxPerDay);
+      overlay.set(key, kept);
       await deps.setSetting(key, JSON.stringify(kept));
     },
 
