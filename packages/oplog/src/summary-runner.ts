@@ -35,6 +35,13 @@ export interface SummaryRunnerOptions {
   /** 生成摘要文本。真机=模型客户端，评估=回放客户端，测试=桩。 */
   summarize: (request: SummarizeRequest) => Promise<string>;
   /** 生成的来源标记，便于回溯（例如 'mock' / 'gpt-x' 这类配置名）。 */
+  /**
+   * 一次最多生成多少个单元（默认 24）。
+   *
+   * 为什么必须有：1 万条消息的会话按 20 条/scene 规划是 620 个单元 —— 620 次模型调用既不便宜也不快。
+   * 计划器顺序稳定、已完成的单元指纹一致不会重做，所以分批是安全的。
+   */
+  limit?: number;
   modelId?: string;
   sceneSize?: number;
   arcSize?: number;
@@ -50,8 +57,10 @@ export interface SummaryRunInput {
 }
 
 export interface SummaryRunResult {
-  /** 计划出来的目标（顺序 = 自底向上）。 */
+  /** 本次真正处理的目标（顺序 = 自底向上）。 */
   targets: SummaryTarget[];
+  /** 还有多少单元这次没做（受 limit 限制）——界面据此告诉用户"再点一次继续"。 */
+  remaining: number;
   /** 该写的 op（顺序与 targets 一致）。 */
   ops: Array<Op<SummaryUpsertPayload>>;
 }
@@ -66,7 +75,7 @@ export async function runSummaries(input: SummaryRunInput): Promise<SummaryRunRe
   const { sessionId, messages, existing, options } = input;
   const { hash, summarize, clock, deviceId } = options;
 
-  const targets = await planSummaries({
+  const allTargets = await planSummaries({
     sessionId,
     messages,
     existing,
@@ -74,6 +83,10 @@ export async function runSummaries(input: SummaryRunInput): Promise<SummaryRunRe
     ...(options.sceneSize === undefined ? {} : { sceneSize: options.sceneSize }),
     ...(options.arcSize === undefined ? {} : { arcSize: options.arcSize }),
   });
+
+  const limit = options.limit ?? 24;
+  const targets = allTargets.slice(0, Math.max(0, limit));
+  const remaining = allTargets.length - targets.length;
 
   const messageById = new Map(messages.map((message) => [message.id, message]));
   // 子摘要文本：先用磁盘上已有的，生成了新的就覆盖 —— 父层必须看到**本次**的文本
@@ -112,7 +125,7 @@ export async function runSummaries(input: SummaryRunInput): Promise<SummaryRunRe
     );
   }
 
-  return { targets, ops };
+  return { targets, ops, remaining };
 }
 
 /** 便捷入口：直接给物化状态（调用方通常只有 state）。 */

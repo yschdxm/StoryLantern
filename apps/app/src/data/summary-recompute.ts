@@ -22,6 +22,7 @@ export interface SummaryRecomputeInput {
 
 export interface SummaryRecomputeResult {
   planned: number;
+  remaining: number;
   drafts: Awaited<ReturnType<typeof organizeSummaries>>['drafts'];
 }
 
@@ -40,7 +41,7 @@ export async function recomputeSummaries(input: SummaryRecomputeInput): Promise<
         summarize: (request) => input.reply(candidate.id === '' ? undefined : candidate.id, request),
         ...(candidate.id === '' ? {} : { modelId: candidate.id }),
       });
-      return { planned: result.planned, drafts: result.drafts };
+      return { planned: result.planned, remaining: result.remaining, drafts: result.drafts };
     } catch (cause) {
       errors.push(`${targetLabel(candidate)}：${describeError(cause)}`);
     }

@@ -5,9 +5,8 @@ import { useAppState } from './screen-props.ts';
 import { useT } from '../i18n/context.tsx';
 import type { Memory } from '../data/types.ts';
 import { candidatesFor, targetLabel } from '../data/model-routing.ts';
+import { useSummaries } from './use-summaries.ts';
 
-/** 分层摘要的指令：只要它把给定材料浓缩成一段事实性的摘要，不要续写剧情。 */
-const SUMMARY_INSTRUCTION = '把给你的材料压缩成一段简短、事实性的摘要：只保留人物、地点、关键事件与已经确立的设定，不要续写、不要评价、不要加戏。';
 import { PROPOSAL_INSTRUCTION, buildProposalMessages, parseProposals, proposalToDraft, type MemoryProposal } from '../data/memory-proposals.ts';
 import { Banner, Button, ConfirmDialog, EmptyState, Field, ListRow, Sheet, SheetItem, TextInput } from '../ui/components.tsx';
 
@@ -43,6 +42,21 @@ export function MemoriesScreen({ store, characterId, chat }: MemoriesScreenProps
   const session = state.sessions
     .filter((item) => item.characterId === characterId)
     .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+
+  /**
+   * 分层摘要（M4）：一次做一批（执行器默认上限 24 个单元），写完如实报"做了几条、还剩几条"。
+   * 幂等由计划器保证：内容没变就一条 op 都不写。
+   */
+  const summaries = useSummaries({
+    sessionId: session?.id,
+    settings: state.settings,
+    loadHistory: (id) => store.actions.messagesOf(id),
+    loadExisting: (id) => store.actions.summariesOf(id),
+    save: async (id, drafts) => (await store.actions.saveSummaries(id, drafts)).length,
+    chat,
+    t,
+    onError: (message) => setOrganizeError(message),
+  });
 
   /**
    * 整理：让模型给出**建议**，用户确认后才写。
@@ -121,6 +135,14 @@ export function MemoriesScreen({ store, characterId, chat }: MemoriesScreenProps
       {organizeError !== undefined && <Banner tone="error">{organizeError}</Banner>}
       {session !== undefined && (
         <div className="row">
+          <Button variant="ghost" disabled={summaries.running || !chat.available || session === undefined} onClick={() => void summaries.run()}>
+
+            {summaries.running ? t('summary.recompute.running') : t('summary.recompute')}
+
+          </Button>
+
+          {summaries.note !== undefined && <span className="muted">{summaries.note}</span>}
+
           <Button variant="ghost" disabled={organizing || !chat.available} onClick={() => void organize()}>
             {organizing ? t('memory.organize.running') : t('memory.organize')}
           </Button>

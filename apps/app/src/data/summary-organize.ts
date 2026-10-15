@@ -27,6 +27,8 @@ export interface OrganizeSummariesInput {
 
 export interface OrganizeSummariesResult {
   drafts: SummaryDraft[];
+  /** 受一次运行的上限限制，还有多少单元没做（界面据此提示"再点一次继续"）。 */
+  remaining: number;
   /** 计划出来的目标数（= drafts 数；写出来是为了界面能说清"为什么一条都没写"）。 */
   planned: number;
 }
@@ -34,7 +36,7 @@ export interface OrganizeSummariesResult {
 export async function organizeSummaries(input: OrganizeSummariesInput): Promise<OrganizeSummariesResult> {
   // 设备 id / 时钟在这里只是 op 的戳，由调用方最终写库时决定；执行器需要它们才能造 op，
   // 而我们只取 payload（草稿），所以给一组占位值即可——真正的 HLC 由仓储写入时生成。
-  const { ops } = await runSummaries({
+  const { ops, remaining } = await runSummaries({
     sessionId: input.sessionId,
     messages: input.messages,
     existing: input.existing,
@@ -70,5 +72,5 @@ export async function organizeSummaries(input: OrganizeSummariesInput): Promise<
     };
   });
 
-  return { drafts, planned: drafts.length };
+  return { drafts, planned: drafts.length, remaining };
 }
