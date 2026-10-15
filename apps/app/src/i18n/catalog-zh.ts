@@ -332,6 +332,7 @@ export const zhCN: AppMessages = {
   'settings.models.untitled': '未命名配置',
   'settings.models.incomplete': '还没填模型名',
   'settings.models.chain': '当前「对话」顺序：{{chain}}',
+  'settings.models.chain.incomplete': '「{{names}}」标了「对话」，但接口地址或模型名是空的（或已停用）——改好它，或把任务标记去掉。',
   'settings.models.chain.none': '当前「对话」没有可用配置：至少给一份标上「对话」（或不标任务当通用兜底）',
   'chat.trace.block.memory': '长期记忆',
   'chat.trace.memory': '本次注入的长期记忆',

@@ -15,6 +15,7 @@ import {
   serializeProfiles,
   type ModelProfile,
   type ModelTask,
+unusableProfiles,
 } from '../data/model-routing.ts';
 import { SETTING_KEYS } from '../data/types.ts';
 import { createUsageStore, parseBudget, parsePriceTable } from '../data/usage-store.ts';
@@ -87,8 +88,7 @@ export function ModelProfilesPanel({ store, chat, settings, transport }: { store
 
   const menu = profiles.find((item) => item.id === menuFor);
   const deleting = profiles.find((item) => item.id === confirmDelete);
-  // 当前"对话"会用哪一份（让"顺序即回退链"这句话有具体所指）
-  const chatChain = candidatesFor(settings, 'chat');
+  const chatChain = candidatesFor(settings, 'chat'); const chatBroken = unusableProfiles(settings, 'chat');
 
   return (
     <>
@@ -97,7 +97,9 @@ export function ModelProfilesPanel({ store, chat, settings, transport }: { store
       {profiles.length > 0 && (
         <p className="muted">
           {chatChain.length === 0
-            ? t('settings.models.chain.none')
+            ? chatBroken.length > 0
+              ? t('settings.models.chain.incomplete', { names: chatBroken.map((item) => item.name).join('、') })
+              : t('settings.models.chain.none')
             : t('settings.models.chain', { chain: chatChain.map((item) => item.name).join(' → ') })}
         </p>
       )}

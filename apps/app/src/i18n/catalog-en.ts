@@ -321,6 +321,7 @@ export const en: AppMessages = {
   'settings.models.untitled': 'Untitled profile',
   'settings.models.incomplete': 'Model name is missing',
   'settings.models.chain': 'Current chat order: {{chain}}',
+  'settings.models.chain.incomplete': '{{names}} is marked for chat, but its endpoint or model name is empty (or it is disabled) — fix it, or clear the task mark.',
   'settings.models.chain.none': 'No profile is usable for chat: tag one "chat" (or leave tasks empty to act as a general fallback)',
   'chat.trace.block.memory': 'Long-term memory',
   'chat.trace.memory': 'Memories injected',

@@ -116,6 +116,20 @@ export function candidatesFor(settings: Record<string, string>, task: ModelTask)
 }
 
 /** 候选的展示名：给可解释性面板与错误信息用。 */
+/**
+ * 标了这个任务（或不标任务 = 通用兜底）、但**用不了**的配置。
+ *
+ * 为什么要单独挑出来：界面上原来只说"当前「对话」没有可用配置：至少给一份标上「对话」"——
+ * 可用户明明标了，只是那份的接口地址或模型名是空的（或停用了）。那句话会把排查方向带偏。
+ */
+export function unusableProfiles(settings: Record<string, string>, task: ModelTask): ModelProfile[] {
+  return readProfiles(settings).filter(
+    (profile) =>
+      (profile.tasks.length === 0 || profile.tasks.includes(task)) &&
+      (profile.baseUrl === '' || profile.model === '' || !profile.enabled),
+  );
+}
+
 export function targetLabel(profile: ModelProfile): string {
   if (profile.id === '') return `${profile.name}（${profile.model}）`;
   return profile.tasks.length === 0 ? `${profile.name}（${profile.model}·兜底）` : `${profile.name}（${profile.model}）`;
