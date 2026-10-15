@@ -103,6 +103,19 @@ test('⑤ 宽限期可调：填 0 时应当真的出现可回收段，并且能�
   const real = await a.service.collect(false);
   console.log('  [宽限期 0 · 真回收] candidates=' + real.candidates.length + ' moved=' + real.moved.length);
   assert.ok(real.moved.length >= 1, '应当真的把段移进 trash，实际 ' + JSON.stringify(real));
+
+  // 关键加强：**看后端实际内容**，而不是只看引擎自己报的 moved。
+  // 以前这条只断言 moved.length，于是"只删一个不存在的 trash 路径"也能绿——
+  // 真机上点完「确认回收」，共享目录里其实什么都没少。
+  for (const path of real.moved) {
+    await assert.rejects(() => backend.get(path), '回收之后原路径必须真的读不到了：' + path);
+  }
+  const trashed = await backend.list('trash/');
+  console.log('  [回收后] trash 里的副本数=' + trashed.entries.length);
+  assert.ok(
+    trashed.entries.length >= real.moved.length,
+    'trash 里应当有 ' + real.moved.length + ' 个副本，实际 ' + trashed.entries.length,
+  );
 });
 ﻿
 test('⑤ 复现（后加入者路径）：加入已有库之后再发布自己的段，分析必须能看见它们', async () => {

@@ -69,7 +69,7 @@ test('GC：默认只分析——列出候选但一次都不删', async () => {
   assert.ok(result.reasons.every((line) => line.includes('仅分析')));
 });
 
-test('GC：显式 dryRun=false 才真的动（先进 trash）', async () => {
+test('GC：显式 dryRun=false 才真的动（先写一份进 trash，再删原段）', async () => {
   const calls: string[] = [];
   const target = backend(calls);
   const result = await collectTrash({
@@ -86,8 +86,17 @@ test('GC：显式 dryRun=false 才真的动（先进 trash）', async () => {
   });
 
   assert.equal(result.moved.length, 3);
+  // 正确行为（真机踩到过旧的假行为）：**删的是原路径**，trash 里留的是副本。
+  // 以前这里断言"删的是 trash/… 路径"——那正好把一个 bug 写成了规范：删除一个从来没被创建过的路径，
+  // 却报告成功，于是用户点完「确认回收」，共享目录里什么都没少。
   assert.equal(target.deleted.length, 3);
-  for (const path of target.deleted) assert.match(path, /trash\//, '先放进 trash，不是直接抹掉');
+  for (const path of target.deleted) assert.doesNotMatch(path, /trash\//, '删的是原段；trash 里存的是副本');
+  const trashed = calls.filter((line) => line.startsWith('put:trash/'));
+  assert.equal(trashed.length, 3, '每个被回收的段都要先写一份进 trash');
+  for (const path of result.moved) {
+    const name = path.split('/').pop() ?? '';
+    assert.ok(trashed.some((line) => line.endsWith(name)), 'trash 里要有 ' + path + ' 的副本');
+  }
 });
 
 test('GC：还有设备没并入时，一个都不回收（宁可多占空间）', async () => {

@@ -92,7 +92,12 @@ export async function collectTrash(input: CollectInput): Promise<CollectResult> 
         if (dryRun) {
           reasons.push(`${path}：${decision.reason}（仅分析）`);
         } else if (input.backend.delete) {
-          await input.backend.delete(trashPath(new Date(input.now()), path));
+          // 两步式的第一步：**先把段搬进 trash**（读原段 → 写 trash 副本），再删掉原路径。
+          // 真机踩到：以前这里只 delete(trashPath(...)) —— 删一个从来没被创建过的路径，
+          // 然后照样把 moved 记为成功（假报告）；于是"确认回收"点完，共享目录里什么都没少。
+          const trashed = trashPath(new Date(input.now()), path);
+          await input.backend.put(trashed, await input.backend.get(path));
+          await input.backend.delete(path);
           moved.push(path);
         } else {
           reasons.push(`${path}：${decision.reason}（后端不支持 delete，未移动）`);
