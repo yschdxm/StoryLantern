@@ -79,8 +79,12 @@ export async function ensureKeyring(input: EnsureKeyringInput): Promise<EnsureKe
   let existing: Keyring | undefined;
   try {
     existing = parseKeyring(new TextDecoder().decode(await backend.get(KEYRING_FILE)));
-  } catch {
-    existing = undefined; // 还没有 / 读不到：按"要新建"处理
+  } catch (cause) {
+    // 读不到 ≠ 还没有：网络/权限/格式类错误必须**抛出去**，
+    // 否则会被当成"要新建库"，本机就悄悄自立为库主人——既不加入也不报错（真机踩到：MuMu 读失败却显示"完成"）。
+    const message = cause instanceof Error ? cause.message : String(cause);
+    if (!/404|not[- ]?found|不存在|找不到/i.test(message)) throw cause;
+    existing = undefined; // 确实还没有：按"要新建"处理
   }
 
   if (existing !== undefined) {
