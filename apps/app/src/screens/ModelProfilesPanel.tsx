@@ -3,6 +3,7 @@ import { describeError } from '../data/error-text.ts';
 import { ulid } from '../../../../packages/oplog/src/index.ts';
 import type { AppStore } from '../app/state.ts';
 import { DEFAULT_EMBEDDING_MODEL, formatResolved, probeEmbedding } from '../data/embedding-host.ts';
+import { EmbeddingSourceFields } from './EmbeddingSourceFields.tsx';
 import { useT } from '../i18n/context.tsx';
 import type { WireTransport } from '../../../../packages/wire/src/index.ts';
 import type { ChatClient } from '../data/chat-client.ts';
@@ -185,6 +186,7 @@ export function ModelProfilesPanel({ store, chat, settings, transport }: { store
         }}
       />
 
+      <EmbeddingSourceFields store={store} settings={settings} {...(transport === undefined ? {} : { transport })} />
       <h3 className='section__title'>{t('settings.usage.title')}</h3>
       <Field label={t('settings.usage.prices')} hint={t('settings.usage.prices.hint')}>
         <TextInput value={pricesDraft} onChange={setPricesDraft} placeholder='[{"modelId":"deepseek-chat","promptPer1k":0.00027,"completionPer1k":0.0011}]' />

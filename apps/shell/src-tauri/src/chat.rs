@@ -241,7 +241,7 @@ pub fn chat_embed(store: &Store, args: &[Value]) -> Result<Value, WireErrorPaylo
         .first()
         .ok_or_else(|| WireErrorPayload::new("invalid-argument", "缺少请求体"))?;
     let target = resolve_target(store, request.get("profileId").and_then(Value::as_str))?;
-    let model = request
+    let mut model = request
         .get("model")
         .and_then(Value::as_str)
         .map(str::trim)
@@ -254,48 +254,38 @@ pub fn chat_embed(store: &Store, args: &[Value]) -> Result<Value, WireErrorPaylo
         .map(|items| items.iter().filter_map(|item| item.as_str().map(str::to_string)).collect())
         .unwrap_or_default();
 
-    // 配置没填全时**退回设置里那组默认**（M1 及以前就存在的字段）：
-    // 以前这里直接报"还没配置接口地址"，用户看不出到底读到了什么，也没法在只填了默认那组时用它。
+    // 向量来源与聊天来源**分开**：文本走哪家（例如 DeepSeek 官方）与向量走哪家（例如 moark）
+    // 常常不是同一家 —— 所以先读专用的 embedding.* 三格，再退到这份 profile，最后退到旧字段。
+    // 这样"文本用官方 DeepSeek、向量用 moark"两条链互不干扰。
+    let embedding_base = setting(store, "embedding.base_url", "");
+    let embedding_key = setting(store, "embedding.api_key", "");
+    let embedding_model_setting = setting(store, "embedding.model", "");
     let legacy = legacy_target(store);
-let fell_back = target.base_url.trim().is_empty() || model.is_empty();
-    let (base_url, api_key) = if fell_back {
-        if legacy.base_url.trim().is_empty() || legacy.model.trim().is_empty() {
-            // 诊断信息：把**读到了什么**说清楚（密钥只说有没有，绝不回显内容）
-            // 诊断：把 model.profiles 里**匹配到那条的字段名**列出来（只列字段名，绝不打印密钥内容），
-            // 这样能分清"存了个空串"还是"键名不同"。
-            let raw = setting(store, "model.profiles", "[]");
-            let parsed: Value = serde_json::from_str(&raw).unwrap_or(Value::Null);
-            let count = parsed.as_array().map(|items| items.len()).unwrap_or(0);
-            let fields = parsed
-                .as_array()
-                .and_then(|items| {
-                    items.iter().find(|item| {
-                        item.get("id").and_then(Value::as_str) == request.get("profileId").and_then(Value::as_str)
-                    })
-                })
-                .map(|entry| {
-                    entry
-                        .as_object()
-                        .map(|object| object.keys().cloned().collect::<Vec<_>>().join(","))
-                        .unwrap_or_default()
-                })
-                .unwrap_or_else(|| "（没找到该 id）".to_string());
-            return Err(WireErrorPayload::new(
-                "invalid-argument",
-                format!(
-                    "「{}」没有可用的接口地址（读到的 base_url=\"{}\"、model=\"{}\"；密钥{}）。\n诊断：model.profiles 里 {} 条，匹配那条的字段名=[{}]。请在设置里填好接口地址与模型名。",
-                    target.name,
-                    target.base_url,
-                    model,
-                    if target.api_key.is_empty() { "未配置" } else { "已配置" },
-                    count,
-                    fields,
-                ),
-            ));
-        }
-        (legacy.base_url, legacy.api_key)
+    if model.trim().is_empty() {
+        model = if !embedding_model_setting.trim().is_empty() {
+            embedding_model_setting.clone()
+        } else {
+            legacy.model.clone()
+        };
+    }
+    let (base_url, api_key, source) = if !embedding_base.trim().is_empty() {
+        (embedding_base, embedding_key, "embedding")
+    } else if !target.base_url.trim().is_empty() {
+        (target.base_url.clone(), target.api_key.clone(), "profile")
+    } else if !legacy.base_url.trim().is_empty() {
+        (legacy.base_url.clone(), legacy.api_key.clone(), "legacy")
     } else {
-        (target.base_url, target.api_key)
+        // 三路都空：把**读到了什么**说清楚（密钥只说有没有，绝不回显内容）
+        let raw = setting(store, "model.profiles", "[]");
+        let parsed: Value = serde_json::from_str(&raw).unwrap_or(Value::Null);
+        let count = parsed.as_array().map(|items| items.len()).unwrap_or(0);
+        return Err(WireErrorPayload::new(
+            "invalid-argument",
+            format!(
+                "没有可用的向量来源：embedding.base_url 为空、这份 profile 的 base_url=\"{}\"、旧字段 base_url=\"{}\"；model.profiles 里 {} 条。请在设置里填好向量来源（或在 profile/旧字段里配一个）。",
+                target.base_url, legacy.base_url, count,
+            ),
+        ));
     };
     if input.is_empty() {
         return Err(WireErrorPayload::new("invalid-argument", "input 不能为空"));
@@ -356,7 +346,8 @@ let fell_back = target.base_url.trim().is_empty() || model.is_empty();
         "storedBaseUrl": matched_base_url,
         "storedModel": matched_model_value,
         "keyConfigured": !api_key.is_empty(),
-        "fellBackToLegacy": fell_back,
+        "fellBackToLegacy": source == "legacy",
+        "source": source,
     });
     match http.send() {
         Ok(response) => {

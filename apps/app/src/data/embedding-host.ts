@@ -63,6 +63,8 @@ export interface WireEmbedResolved {
   /** 存储里那条 profile 的 baseUrl/model 值（URL 不是秘密；密钥永远不回显）。 */
   storedBaseUrl?: string;
   storedModel?: string;
+  /** 宿主实际用了哪一路来源：embedding（专用三格）/ profile / legacy（旧字段）。 */
+  source?: string;
   baseUrl?: string;
   model?: string;
   profilesInStore?: number;
@@ -77,7 +79,7 @@ export function formatResolved(resolved: WireEmbedResolved | undefined): string 
   return (
     `宿主用的地址=${resolved.baseUrl ?? '（空）'}｜模型=${resolved.model ?? '（空）'}` +
     `｜profiles 里 ${resolved.profilesInStore ?? '?'} 条（字段名=[${resolved.matchedFields ?? '?'}]；存储里的 baseUrl="${resolved.storedBaseUrl ?? '?'}"、model="${resolved.storedModel ?? '?'}"）` +
-    `｜密钥${resolved.keyConfigured === true ? '已配置' : '未配置'}${resolved.fellBackToLegacy === true ? '｜已回退到旧字段' : ''}`
+    `｜密钥${resolved.keyConfigured === true ? '已配置' : '未配置'}｜来源=${resolved.source ?? '?'}`
   );
 }
 
