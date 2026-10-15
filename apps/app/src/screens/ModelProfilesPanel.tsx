@@ -28,6 +28,13 @@ import { Banner, Button, ConfirmDialog, Field, ListRow, Sheet, SheetItem, TextIn
  *  - 密钥框**只写**：不回显明文也不回显掩码，留空表示不改；
  *  - 列表顺序**就是**回退顺序，界面上直接写出来，而不是让用户猜。
  */
+/**
+ * 默认向量模型：实测（eval/long-chat/embedding-recall.test.ts）Qwen3-Embedding-8B/4B/0.6B 与
+ * bge-large-zh-v1.5 在**本项目的检索任务**上打平，故按"质量优先 + 多语言"取 8B；
+ * 想省延迟/成本可在设置里改 embedding.model（0.6B 单条 306ms vs 8B 856ms）。
+ */
+const DEFAULT_EMBEDDING_MODEL = 'Qwen3-Embedding-8B';
+
 export function ModelProfilesPanel({ store, chat, settings, transport }: { store: AppStore; chat: ChatClient; settings: Record<string, string>; transport?: WireTransport }): ReactNode {
   const t = useT();
   const profiles = readProfiles(settings);
@@ -349,9 +356,12 @@ function ProfileForm({
               setVectorProbe(t('settings.vector.testing'));
               void probeEmbedding({
                 transport,
-                ...(id === '' ? {} : { profileId: id }),
-                // 向量模型 id 取自设置（默认 Qwen3-Embedding-8B）；密钥与地址沿用当前这份配置
-                ...(settings[SETTING_KEYS.embeddingModel] === undefined ? {} : { model: settings[SETTING_KEYS.embeddingModel] }),
+                // 必须用 profile.id：表单里的 id 不是这份配置的 id（真机上因此把空 profileId 传给了宿主，
+                // 宿主退回到空地址的兜底配置，报「还没有配置接口地址与模型名」）
+                ...(profile === undefined || profile.id === '' ? {} : { profileId: profile.id }),
+                // 向量模型 id：设置里没有就用默认（否则宿主会拿**聊天**模型去调 /embeddings，必然失败）
+                // 地址与密钥都沿用当前这份配置 —— 密钥不进前端，宿主自己读
+                model: settings[SETTING_KEYS.embeddingModel] ?? DEFAULT_EMBEDDING_MODEL,
               }).then((result) =>
                 setVectorProbe(result.ok ? t('settings.vector.ok', { dims: result.dimensions, ms: result.ms }) : result.message),
               );
