@@ -138,6 +138,10 @@ export class SyncEngine {
     const pull = await pullChanges(this.#pullContext(), materializer);
     this.#mergePullOutcome(pull);
     warnings.push(...pull.warnings);
+    // 清单放在**并入之后**发布：它声明的是"我已并入别人到第几段"，GC 的 safeThrough 直接读它。
+    // 真机踩到：发布发生在 pull 之前 → 清单里的 ack 永远落后一轮 → 两台设备都已同步，
+    // 分析出来的 safeThrough 却一直是 0，回收按钮根本出不来（复现见 apps/app/test/gc-ack-repro.test.ts）。
+    await this.#publishManifest(warnings);
 
     return {
       requests: counters.list + counters.get + counters.put + counters.delete - before.requests,
@@ -236,8 +240,9 @@ export class SyncEngine {
     }
 
     // 只有确认发布成功的 op 才离开 outbox。
+    // 注意：manifest **不在这里发**——它要写在 pull 之后，否则清单里声明的
+    // "我已并入到哪"（ack）会永远落后于实际并入，对端的 GC 就永远算 0。
     this.#state.outbox = this.#state.outbox.filter((op) => !published.has(op.opId));
-    await this.#publishManifest(warnings);
   }
 
   /** 手动发布某个会话的快照（用户点"立即压缩"、或换机前准备）。 */
