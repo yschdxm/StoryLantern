@@ -82,12 +82,16 @@ export async function ensureKeyring(input: EnsureKeyringInput): Promise<EnsureKe
   ];
 
   let existing: Keyring | undefined;
+  // 临时诊断：把"读钥匙包到底发生了什么"记下来，建库失败时一并带出去（查完即删）
+  let readNote = "没读到";
   try {
     existing = parseKeyring(new TextDecoder().decode(await backend.get(KEYRING_FILE)));
+    readNote = "读到并解析成功（epoch " + existing.epoch + "，entries " + existing.entries.length + "）";
   } catch (cause) {
     // 读不到 ≠ 还没有：网络/权限/格式类错误必须**抛出去**，
     // 否则会被当成"要新建库"，本机就悄悄自立为库主人——既不加入也不报错（真机踩到：MuMu 读失败却显示"完成"）。
     const message = cause instanceof Error ? cause.message : String(cause);
+    readNote = "读失败：" + message;
     if (!/404|not[- ]?found|不存在|找不到/i.test(message)) throw cause;
     existing = undefined; // 确实还没有：按"要新建"处理
   }
@@ -118,7 +122,13 @@ export async function ensureKeyring(input: EnsureKeyringInput): Promise<EnsureKe
   }
 
   // 走到这里只可能是"确实还没有钥匙包"（有库的两种情况上面都已返回）→ 新建 epoch 1
-  const created = await createKeyring(keyWrap, recipients, 1);
+  let created;
+  try {
+    created = await createKeyring(keyWrap, recipients, 1);
+  } catch (cause) {
+    // 把读钥匙包的真实情况带出去（临时诊断，查完即删）
+    throw new Error(readNote + "｜建库失败：" + (cause instanceof Error ? cause.message : String(cause)));
+  }
   await backend.put(KEYRING_FILE, new TextEncoder().encode(serializeKeyring(created.keyring)));
   return { mine: true, epoch: created.keyring.epoch, keyring: created.keyring, contentKey: created.contentKey };
 }
