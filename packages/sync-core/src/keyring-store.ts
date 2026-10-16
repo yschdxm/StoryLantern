@@ -75,10 +75,23 @@ export async function ensureKeyring(input: EnsureKeyringInput): Promise<EnsureKe
       // 还是失败：下次同步再试（黑名单已生效）
     }
   }
+  // 只包给**名单里的人**：`peerAgreementKeys` 是本机历史累积"认识过的对端"，
+  // 里面可能留着早就被移除/换掉的旧设备。它们的公钥本机可能根本包不了（例如旧 X25519），
+  // 一并包进去会让"建库"直接硬失败，而且报错会误导成"这台设备不行"（真机上踩到过）。
+  const inRoster =
+    input.roster === undefined
+      ? undefined
+      : new Set(
+          input.roster
+            .list()
+            .filter((record) => record.bannedAt === undefined)
+            .map((record) => record.deviceId),
+        );
   const recipients = [
     { deviceId, publicKey: agreement.publicKey },
     ...Object.entries(input.peerAgreementKeys)
       .filter(([peerId, publicKey]) => peerId !== deviceId && publicKey !== '')
+      .filter(([peerId]) => inRoster === undefined || inRoster.has(peerId))
       .map(([peerId, publicKey]) => ({ deviceId: peerId, publicKey })),
   ];
 
