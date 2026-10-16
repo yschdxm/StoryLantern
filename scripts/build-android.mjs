@@ -28,6 +28,16 @@ const flag = (name, fallback) => {
 };
 const abiFilter = flag('abi', 'both');
 const skipFrontend = args.includes('--skip-frontend');
+
+/**
+ * 跨平台：CI 跑在 ubuntu 上，而开发机是 Windows。
+ * 第一版把这些写死成 `gradlew.bat` 与 `windows-x86_64`，于是**只有本机能用**（CI 上必然失败）。
+ */
+const platformKey = process.platform === 'win32' ? 'win32' : process.platform === 'darwin' ? 'darwin' : 'linux';
+const ndkHostTag = { win32: 'windows-x86_64', darwin: 'darwin-x86_64', linux: 'linux-x86_64' }[platformKey];
+/** NDK 里的 clang 在 Windows 上是 `.cmd` 包装，其它平台没有后缀。 */
+const ccSuffix = process.platform === 'win32' ? '.cmd' : '';
+const gradlewName = process.platform === 'win32' ? 'gradlew.bat' : './gradlew';
 /**
  * `--release` 产**签名** release APK：
  *  - 先跑 `scripts/android-signing-setup.mjs` 把发布签名接进生成的 Gradle 工程；
@@ -38,12 +48,13 @@ const profile = args.includes('--release') ? 'release' : 'debug';
 
 const sdk = process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT ?? join(process.env.LOCALAPPDATA ?? '', 'Android', 'Sdk');
 const ndkVersion = process.env.NDK_VERSION ?? 'android-ndk-r27d';
-const ndkBin = join(sdk, 'ndk', ndkVersion, 'toolchains', 'llvm', 'prebuilt', 'windows-x86_64', 'bin');
-const javaHome = process.env.JAVA_HOME ?? 'C:\\Program Files\\Android\\Android Studio\\jbr';
+const ndkBin = join(sdk, 'ndk', ndkVersion, 'toolchains', 'llvm', 'prebuilt', ndkHostTag, 'bin');
+/** Windows 上默认用 Android Studio 自带的 JDK；其它平台必须由 JAVA_HOME 指过来（CI 里 setup-java 会设）。 */
+const javaHome = process.env.JAVA_HOME ?? (process.platform === 'win32' ? 'C:\\Program Files\\Android\\Android Studio\\jbr' : '');
 
 const ABIS = [
-  { name: 'arm64', target: 'aarch64-linux-android', jni: 'arm64-v8a', gradleTask: 'assembleArm64Debug', releaseTask: 'assembleArm64Release', skipTask: '-x rustBuildArm64Debug', releaseSkipTask: '-x rustBuildArm64Release', apk: join('app/build/outputs/apk/arm64/debug/app-arm64-debug.apk'), apkRelease: join('app/build/outputs/apk/arm64/release/app-arm64-release.apk'), cc: 'aarch64-linux-android24-clang.cmd' },
-  { name: 'x86_64', target: 'x86_64-linux-android', jni: 'x86_64', gradleTask: 'assembleX86_64Debug', releaseTask: 'assembleX86_64Release', skipTask: '-x rustBuildX86_64Debug', releaseSkipTask: '-x rustBuildX86_64Release', apk: join('app/build/outputs/apk/x86_64/debug/app-x86_64-debug.apk'), apkRelease: join('app/build/outputs/apk/x86_64/release/app-x86_64-release.apk'), cc: 'x86_64-linux-android24-clang.cmd' },
+  { name: 'arm64', target: 'aarch64-linux-android', jni: 'arm64-v8a', gradleTask: 'assembleArm64Debug', releaseTask: 'assembleArm64Release', skipTask: '-x rustBuildArm64Debug', releaseSkipTask: '-x rustBuildArm64Release', apk: join('app/build/outputs/apk/arm64/debug/app-arm64-debug.apk'), apkRelease: join('app/build/outputs/apk/arm64/release/app-arm64-release.apk'), cc: `aarch64-linux-android24-clang${ccSuffix}` },
+  { name: 'x86_64', target: 'x86_64-linux-android', jni: 'x86_64', gradleTask: 'assembleX86_64Debug', releaseTask: 'assembleX86_64Release', skipTask: '-x rustBuildX86_64Debug', releaseSkipTask: '-x rustBuildX86_64Release', apk: join('app/build/outputs/apk/x86_64/debug/app-x86_64-debug.apk'), apkRelease: join('app/build/outputs/apk/x86_64/release/app-x86_64-release.apk'), cc: `x86_64-linux-android24-clang${ccSuffix}` },
 ];
 
 for (const [label, path] of [['Android SDK', sdk], ['NDK 工具链', ndkBin], ['JDK', javaHome]]) {
@@ -76,7 +87,7 @@ const rustEnv = {
         [`CARGO_TARGET_${upper}_LINKER`, join(ndkBin, abi.cc)],
         [`CC_${abi.target.replace(/-/g, '_')}`, join(ndkBin, abi.cc)],
         [`CXX_${abi.target.replace(/-/g, '_')}`, join(ndkBin, abi.cc.replace('-clang.cmd', '-clang++.cmd'))],
-        [`AR_${abi.target.replace(/-/g, '_')}`, join(ndkBin, 'llvm-ar.exe')],
+        [`AR_${abi.target.replace(/-/g, '_')}`, join(ndkBin, process.platform === 'win32' ? 'llvm-ar.exe' : 'llvm-ar')],
       ];
     }),
   ),
@@ -119,7 +130,7 @@ for (const abi of wanted) {
   console.log(`  已放入 jniLibs：${abi.jni}（${(statSync(dest).size / 1024 / 1024).toFixed(2)} MB）`);
 
   // Android 15+ 要求 16KB 页对齐；不对齐的 .so 会在新设备上直接装不上，所以在这里就拦下来。
-  const readelf = spawnSync(join(ndkBin, 'llvm-readelf.exe'), ['-l', so], { encoding: 'utf8', shell: true }).stdout ?? '';
+  const readelf = spawnSync(join(ndkBin, process.platform === 'win32' ? 'llvm-readelf.exe' : 'llvm-readelf'), ['-l', so], { encoding: 'utf8', shell: true }).stdout ?? '';
   const load = readelf.split('\n').find((line) => line.includes('LOAD'));
   const align = load === undefined ? '?' : load.trim().split(/\s+/).at(-1);
   if (align !== '0x4000') {
@@ -132,7 +143,7 @@ for (const abi of wanted) {
 for (const abi of wanted) {
   const task = profile === 'release' ? abi.releaseTask : abi.gradleTask;
   const skip = profile === 'release' ? abi.releaseSkipTask : abi.skipTask;
-  run(`gradle ${task}`, 'gradlew.bat', [task, '--no-daemon', '--no-configuration-cache', '--console=plain', skip], join(root, 'apps/shell/src-tauri/gen/android'), gradleEnv);
+  run(`gradle ${task}`, gradlewName, [task, '--no-daemon', '--no-configuration-cache', '--console=plain', skip], join(root, 'apps/shell/src-tauri/gen/android'), gradleEnv);
 }
 
 /** 用 apksigner 验签：签名是"声称"还是"事实"，只看这一步。 */
