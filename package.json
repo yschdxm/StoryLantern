@@ -17,7 +17,9 @@
     "bundle": "node apps/shell/build-frontend.mjs && node scripts/check-bundle.mjs",
     "perf": "node eval/perf/budgets.mjs",
     "typecheck": "tsc -p tsconfig.json",
-    "check": "npm run gate && npm run bundle && npm test"
+    "check": "npm run gate && npm run bundle && npm test",
+    "reproducible": "node scripts/check-reproducible-build.mjs",
+    "release:check": "npm run gate && npm run typecheck && npm run bundle && npm test && npm run reproducible && cargo check --manifest-path apps/shell/src-tauri/Cargo.toml"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
