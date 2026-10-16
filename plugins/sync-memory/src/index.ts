@@ -17,6 +17,11 @@ export interface MemoryBackendFaults {
   corruptUploads: boolean;
   /** 模拟远端被误删/被 GC：读这些路径时抛 404。 */
   missingPaths: Set<string>;
+  /**
+   * 模拟"同步跑到一半进程被杀"：跑满 N 次访问后，之后每一次访问都抛错。
+   * 置回 `null` 时计数自动复位 —— 于是同一个世界里可以反复制造"中途死亡"。
+   */
+  failAfterRequests: number | null;
 }
 
 export interface MemoryBackendOptions {
@@ -54,13 +59,23 @@ export function createMemoryBackend(options: MemoryBackendOptions = {}): MemoryB
   const faults: MemoryBackendFaults = {
     offline: false,
     truncateUploadsAtPercent: null,
+    failAfterRequests: null,
     corruptUploads: false,
     missingPaths: new Set<string>(),
     ...options.faults,
   };
 
+  let requestsSeen = 0;
   const guard = (): void => {
     if (faults.offline) throw new Error('网络不可用（模拟离线）');
+    if (faults.failAfterRequests === null) {
+      requestsSeen = 0; // 清空故障即复位，便于在同一轮里反复制造"中途死亡"
+      return;
+    }
+    requestsSeen += 1;
+    if (requestsSeen > faults.failAfterRequests) {
+      throw new Error(`进程在第 ${faults.failAfterRequests} 次访问后被终止（模拟中途被杀）`);
+    }
   };
 
   const clone = (bytes: Uint8Array): Uint8Array => Uint8Array.from(bytes);
