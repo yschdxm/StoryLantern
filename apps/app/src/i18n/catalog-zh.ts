@@ -293,6 +293,8 @@ export const zhCN: AppMessages = {
   'settings.vector.apiKey': '向量 API Key',
   'settings.vector.apiKey.hint': '只写不读：已保存时显示占位，不会把掩码写回去覆盖真密钥。',
   'settings.vector.saveKey': '保存密钥',
+  'settings.vector.lastChat.ok': '上次聊天：向量挑中 {{count}} 条摘要（{{time}}）',
+  'settings.vector.lastChat.fallback': '上次聊天：退回词法检索 —— {{reason}}（{{time}}）',
   'settings.vector.test': '测试向量来源',
   'settings.vector.testing': '正在测向量来源…',
   'settings.vector.ok': '向量来源可用：{{dims}} 维，耗时 {{ms}} ms',

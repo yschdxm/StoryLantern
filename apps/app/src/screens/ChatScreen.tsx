@@ -85,9 +85,8 @@ export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings, t
     const current = fresh.sessions.find((item) => item.id === sessionId);
     const character = fresh.characters.find((item) => item.id === current?.characterId);
     // 检索（M4）：块渲染同步、embedding 异步 —— 所以检索必须在装配**之前**算好（见 selectSummariesForChat）。
-    const usage = createUsageStore({ settings: () => store.getState().settings, setSetting: (key, value) => store.actions.setSetting(key, value) });
-    const allSummaries = await store.actions.summariesOf(sessionId);
-    const preselected = await selectSummariesForChat({
+    const usage = createUsageStore({ settings: () => store.getState().settings, setSetting: (key, value) => store.actions.setSetting(key, value) }); const allSummaries = await store.actions.summariesOf(sessionId);
+    const preselected = await selectSummariesForChat({ onOutcome: (outcome) => void store.actions.setSetting(SETTING_KEYS.vectorOutcome, JSON.stringify({ ...outcome, at: Date.now() })),
       transport,
       ...(candidatesFor(fresh.settings, 'chat')[0]?.id === undefined ? {} : { profileId: candidatesFor(fresh.settings, 'chat')[0]?.id }),
       model: fresh.settings[SETTING_KEYS.embeddingModel],

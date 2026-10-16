@@ -1,4 +1,4 @@
-﻿import { useState, type ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { WireTransport } from '../../../../packages/wire/src/index.ts';
 import type { AppStore } from '../app/state.ts';
 import { formatResolved, probeEmbedding, type WireEmbedResolved } from '../data/embedding-host.ts';
@@ -36,6 +36,26 @@ export function EmbeddingSourceFields({
   const [note, setNote] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const hasKey = (settings[SETTING_KEYS.embeddingApiKey] ?? '') !== '';
+  /**
+   * 上一次聊天按向量挑摘要的结果（聊天屏写进设置）。
+   *
+   * 为什么要显示它：这条链路的失败是**静默**的（拿不到向量就退回词法，刻意不抛错），
+   * 于是"向量到底跑没跑"在真机上无从判断 —— 实测就卡在这里。把结果摆出来，
+   * 一次聊天之后就能看出走的是向量还是词法、以及为什么。
+   */
+  const outcomeRaw = settings[SETTING_KEYS.vectorOutcome] ?? '';
+  let outcomeLine: string | undefined;
+  try {
+    const parsed = JSON.parse(outcomeRaw) as { ok?: boolean; count?: number; reason?: string; at?: number };
+    if (typeof parsed.ok === 'boolean') {
+      const time = new Date(parsed.at ?? Date.now()).toLocaleTimeString();
+      outcomeLine = parsed.ok
+        ? t('settings.vector.lastChat.ok', { count: String(parsed.count ?? 0), time })
+        : t('settings.vector.lastChat.fallback', { reason: (parsed.reason ?? '').slice(0, 80), time });
+    }
+  } catch {
+    outcomeLine = undefined;
+  }
 
   /** 把草稿落库（失焦或点按钮时调用；空串也照写，以便清空）。 */
   const commit = async (): Promise<void> => {
@@ -109,6 +129,7 @@ export function EmbeddingSourceFields({
         )}
       </div>
       {note !== undefined && <Banner tone="info">{note}</Banner>}
+      {outcomeLine !== undefined && <p className="muted">{outcomeLine}</p>}
     </div>
   );
 }

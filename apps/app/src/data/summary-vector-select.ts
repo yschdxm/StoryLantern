@@ -50,6 +50,14 @@ export interface ChatSummarySelectionInput {
   profileId?: string | undefined;
   /** 每完成一次嵌入请求回调一次（调用方据此记账，与摘要那条同一条路）。 */
   recordUsage?: ((call: { modelId: string; promptTokens: number }) => Promise<void>) | undefined;
+  /**
+   * 结果回调：成功挑了 count 条，或**退回词法**并给出原因。
+   *
+   * 为什么要有：这条链路失败是**静默**的（刻意不抛错），于是向量到底跑没跑在真机上无从判断 ——
+   * 实测就卡在这里（用量只 +1，分不清是向量没跑还是记账没落）。把结果落到一处可显示的地方，
+   * 这条链路才可观测。
+   */
+  onOutcome?: ((outcome: { ok: boolean; count: number; reason?: string }) => void) | undefined;
   summaries: readonly PromptSummary[];
 }
 
@@ -84,9 +92,11 @@ export async function selectSummariesForChat(input: ChatSummarySelectionInput): 
       question,
       summaries: input.summaries,
     });
+    input.onOutcome?.({ ok: true, count: picked.length });
     return picked.length === 0 ? undefined : picked;
   } catch (cause) {
     console.warn('向量挑选摘要失败，退回词法检索：', cause);
+    input.onOutcome?.({ ok: false, count: 0, reason: cause instanceof Error ? cause.message : String(cause) });
     return undefined;
   }
 }

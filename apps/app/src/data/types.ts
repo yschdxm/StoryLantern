@@ -180,6 +180,8 @@ export const SETTING_KEYS = {
   embeddingBaseUrl: 'embedding.base_url',
   embeddingApiKey: 'embedding.api_key',
   embeddingModel: 'embedding.model',
+  /** 上一次聊天按向量挑摘要的结果（只用于可观测；不含密钥）。 */
+  vectorOutcome: 'debug.vector.outcome',
   model: 'model.name',
   temperature: 'model.temperature',
   maxTokens: 'model.max_tokens',

@@ -282,6 +282,8 @@ export const en: AppMessages = {
   'settings.vector.apiKey': 'Embedding API key',
   'settings.vector.apiKey.hint': 'Write-only: when saved, a placeholder is shown so a mask never overwrites the real key.',
   'settings.vector.saveKey': 'Save key',
+  'settings.vector.lastChat.ok': 'Last chat: vectors picked {{count}} summaries ({{time}})',
+  'settings.vector.lastChat.fallback': 'Last chat: fell back to lexical — {{reason}} ({{time}})',
   'settings.vector.test': 'Test embedding source',
   'settings.vector.testing': 'Testing embedding source…',
   'settings.vector.ok': 'Embedding source works: {{dims}} dims in {{ms}} ms',
