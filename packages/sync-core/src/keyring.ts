@@ -6,8 +6,8 @@
  *  - 对名单里每台设备，用"只有它能解"的方式把内容密钥包一份放进 `keyring`；
  *  - 有人被踢 → 换一把新的内容密钥、只包给剩下的人 → 被踢的那台**拿不到新钥匙**。
  *
- * 为什么用 X25519 而不是签名那把 Ed25519：Ed25519 只能签，不能做密钥协商。
- * 所以每台设备有**两对**密钥：Ed25519（证明"是谁写的"）+ X25519（收自己的那份钥匙）。
+ * 为什么协商密钥与签名密钥分开：签名那把 Ed25519 只能签，不能做密钥协商。
+ * 所以每台设备有**两对**密钥：Ed25519（证明"是谁写的"）+ P-256（收自己的那份钥匙）。
  *
  * 这一层**不实现密码学**（零第三方依赖，浏览器与 Node 的 WebCrypto 都能给实现），
  * 只定义"要能干什么"与 keyring 的数据形状，因此逻辑能在 Node 里用假实现测。
@@ -17,7 +17,7 @@ import { describeError } from './error-text.ts';
 
 /** 密钥协商与包装的端口。实现见 app 侧 `data/sync/envelope.ts`。 */
 export interface KeyWrapPort {
-  /** 生成一对 X25519 密钥；公钥（raw 十六进制）随设备清单发布。 */
+  /** 生成一对 P-256 密钥；公钥（raw 十六进制）随设备清单发布。 */
   generateAgreementKeys(): Promise<{ publicKey: string; privateKey: string }>;
   /** 生成 32 字节随机内容密钥。 */
   randomContentKey(): Promise<Uint8Array>;
@@ -120,3 +120,6 @@ export function parseKeyring(text: string): Keyring {
 export function serializeKeyring(keyring: Keyring): string {
   return JSON.stringify(keyring);
 }
+
+
+

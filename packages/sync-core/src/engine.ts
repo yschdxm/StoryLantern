@@ -43,7 +43,7 @@ export interface SyncEngineOptions {
    * 不给就等于"暂时不参与验签"：别人收到你的段会因拿不到公钥而拒绝（强模式下的正确行为）。
    */
   publicKey?: string;
-  /** 本机 X25519 公钥（十六进制）；发布在设备清单里，别人用它把内容密钥包给本机。 */
+  /** 本机协商公钥（P-256，十六进制）；发布在设备清单里，别人用它把内容密钥包给本机。 */
   agreementKey?: string;
   /**
    * 拉到远端 op 后的回调（落进调用方自己的日志）。
@@ -381,3 +381,4 @@ export class SyncEngine {
     this.#downloaded.push(...outcome.downloaded);
   }
 }
+

@@ -38,7 +38,7 @@ export interface Manifest {
    */
   publicKey?: string;
   /**
-   * 本机的 X25519 公钥（十六进制）：**收自己那份内容密钥**要用它。
+   * 本机的 P-256 协商公钥（十六进制）：**收自己那份内容密钥**要用它。
    *
    * 与签名公钥分开：Ed25519 只能签名，不能做密钥协商。
    */
@@ -134,3 +134,4 @@ export function parseInnerJson<T>(inner: string, label: string): T {
 }
 
 export { fromUtf8, utf8 };
+

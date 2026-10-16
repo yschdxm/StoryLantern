@@ -31,7 +31,7 @@ export interface JoinRequest {
   deviceId: string;
   /** 签名公钥（Ed25519，十六进制）：永久身份。 */
   publicKey: string;
-  /** 协商公钥（X25519，十六进制）：把数据钥匙包给它时要用。 */
+  /** 协商公钥（P-256，十六进制）：把数据钥匙包给它时要用。 */
   agreementKey: string;
   /** 密码证明（base64）：能解开就说明它知道门码。用恢复密钥加入时可以是空串。 */
   proof: string;
@@ -179,3 +179,4 @@ export function parseJoinRequest(text: string): JoinRequest {
 export function serializeJoinRequest(request: JoinRequest): string {
   return JSON.stringify(request);
 }
+

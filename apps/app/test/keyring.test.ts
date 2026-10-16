@@ -6,7 +6,7 @@ import { createMemoryKeyValue } from '../src/data/local-repository.ts';
 import type { DeviceStore } from '../src/data/op-ports.ts';
 
 /**
- * "一人一把锁"：**用真的 WebCrypto 跑**（X25519 + HKDF + AES-GCM，Node 与浏览器同一套 API）。
+ * "一人一把锁"：**用真的 WebCrypto 跑**（ECDH P-256 + HKDF + AES-GCM，Node 与浏览器同一套 API）。
  *
  * 要钉住的是三条：
  *  1. 名单里的人能解开自己那一份，拿到**同一把**内容密钥；
@@ -16,7 +16,7 @@ import type { DeviceStore } from '../src/data/op-ports.ts';
 
 const SUPPORTED = await detectKeyWrapSupport();
 
-test('运行环境支持 X25519（不支持的话这一层必须走另外的路，不能假装能用）', () => {
+test('运行环境支持 P-256 密钥协商（不支持的话这一层必须走另外的路，不能假装能用）', () => {
   assert.equal(SUPPORTED, true);
 });
 
@@ -120,3 +120,5 @@ test('协商密钥：第一次生成并落地，之后每次复用同一把（�
   const third = await loadOrCreateAgreementKeys(port, device);
   assert.notDeepEqual(third, first);
 });
+
+

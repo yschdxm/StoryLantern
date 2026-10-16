@@ -174,7 +174,7 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
     baseCursor: number;
     /** 有 keyring 但没包给我：已提交加入请求，等一台已授权设备接纳。 */
     waiting: boolean;
-      /** 有 keyring 但拿不到 X25519 协商密钥：加入这条路走不通，必须如实报出来。 */
+      /** 有 keyring 但拿不到 P-256 协商密钥：加入这条路走不通，必须如实报出来。 */
       joinBlocked: boolean;
   }> => {
     await options.repository.ready;
@@ -215,7 +215,7 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
       snapshotThreshold: 16,
     };
     if (restored !== undefined) engineOptions.state = restored;
-    // 协商密钥对（X25519）：收自己那份内容密钥要用它，管理方式与签名密钥一致
+    // 协商密钥对（P-256）：收自己那份内容密钥要用它，管理方式与签名密钥一致
     const keyWrapSupported = await detectKeyWrapSupport();
     const agreement = keyWrapSupported
       ? await loadOrCreateAgreementKeys(createWebCryptoKeyWrap(), options.device)
@@ -337,7 +337,7 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
       const summary = summarize(result, enqueued, imported, requestsSoFar() - requestsBefore);
       if (joinBlocked === true) {
         summary.warnings.push(
-          '这台设备的 WebView 不支持 X25519 协商密钥：无法加入共享目录、也无法替新设备发钥匙。请换一台支持该能力的设备。',
+          '这台设备的 WebView 不支持 P-256 协商密钥：无法加入共享目录、也无法替新设备发钥匙。请换一台支持该能力的设备。',
         );
       }
       return summary;
@@ -364,7 +364,7 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
       if (!roster.ban(deviceId, now())) return false;
       await saveRoster(options.device, roster);
 
-      if (!(await detectKeyWrapSupport())) return true; // 环境不支持 X25519：只拉黑，改不了钥匙
+      if (!(await detectKeyWrapSupport())) return true; // 环境不支持 P-256：只拉黑，改不了钥匙
       const agreement = await loadOrCreateAgreementKeys(createWebCryptoKeyWrap(), options.device);
       const peers = restored?.peerAgreementKeys ?? {};
       const kept = roster.list().filter((record) => record.bannedAt === undefined && record.revokedAt === undefined);

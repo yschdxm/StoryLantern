@@ -65,7 +65,7 @@ export interface LocalSyncState {
    * 验签发生在收段的时候，那时不一定刚好有清单在手边。
    */
   peerPublicKeys: Record<string, string>;
-  /** 对端的 X25519 公钥（deviceId -> 十六进制）：把内容密钥包给它时要用。 */
+  /** 对端的 P-256 协商公钥（deviceId -> 十六进制）：把内容密钥包给它时要用。 */
   peerAgreementKeys: Record<string, string>;
 }
 
@@ -93,3 +93,4 @@ export function clone<T>(value: T): T {
 }
 
 export const DEFAULT_GRACE_MS = 30 * 24 * 3600 * 1000;
+

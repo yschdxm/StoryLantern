@@ -20,7 +20,7 @@ import {
  * 规则（已与用户对齐）：
  *  - 共享目录里没有 keyring → **我建一份**，只包给我自己（epoch 1）；
  *  - 有，而且**能打开**（说明包里我）：如果它还覆盖了我认识的所有设备 → 直接用；
- *    不在成员侧换代（那等于自任库主人、要给每个对端重包一遍，真机上撞旧 X25519 对端就会失败）；
+ *    不在成员侧换代（那等于自任库主人、要给每个对端重包一遍，真机上撞旧曲线对端（32 字节公钥）就会失败）；
  *  - 有，但**打不开**（没包给我）→ **绝不换代**：换代要用名单里每台设备的协商公钥重新包，
  *    而我此刻并不知道别人的公钥，换出来会把其它设备锁在外面。
  *    正确做法是走加入流程（写 join 请求，等一台已授权设备接纳）——所以这里只如实报告"我不在里面"。
@@ -58,7 +58,7 @@ export interface EnsureKeyringInput {
   agreement: { publicKey: string; privateKey: string };
   /** 已认识的对端协商公钥（deviceId -> 十六进制）。 */
   peerAgreementKeys: Readonly<Record<string, string>>;
-  /** 包装/解包实现（app 侧是 WebCrypto 的 X25519 + HKDF + AES-GCM）。 */
+  /** 包装/解包实现（app 侧是 WebCrypto 的 ECDH P-256 + HKDF + AES-GCM）。 */
   keyWrap: KeyWrapPort;
   /** 设备名单：给了就先自愈（把已被永久禁用的设备从钥匙包里剔掉）。 */
   roster?: DeviceRosterList;
@@ -122,7 +122,7 @@ export async function ensureKeyring(input: EnsureKeyringInput): Promise<EnsureKe
       //
       // 新设备加入走的是 join/ + acceptJoinRequests（那条路会把新设备包进来，已被真机验证）；
       // 而在成员侧换代等于"自任库主人"、要给**每个**对端重包一遍——
-      // 真机上只要名单里有一个旧 X25519 对端，这一步就会直接失败（用户手机上踩到过）。
+      // 真机上只要名单里有一个旧曲线对端，这一步就会直接失败（用户手机上踩到过）。
       if (missing.length > 0) {
         return {
           mine: true,
@@ -227,3 +227,6 @@ export async function healBannedFromKeyring(input: HealKeyringInput): Promise<bo
   await rotateKeyring({ backend: input.backend, keyWrap: input.keyWrap, recipients: kept });
   return true;
 }
+
+
+
