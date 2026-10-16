@@ -37,21 +37,27 @@ function arg(name, fallback) {
   return hit === undefined ? fallback : hit.slice(name.length + 3);
 }
 
+const channel = arg('channel', 'prod');
+const isTest = channel === 'test';
+/** 测试渠道的口令是**故意公开**的：它写在本仓库文档里，只用来签"本地/CI 的测试包"。 */
+const TEST_PASSWORD = 'storylantern-dev';
+
 const outDir = path.resolve(arg('out', DEFAULT_DIR));
-const keystoreName = arg('name', DEFAULT_NAME);
-const propsPath = path.resolve(arg('props', path.join(outDir, 'keystore.properties')));
-const dname = arg('dname', 'CN=Story Lantern, O=Story Lantern, OU=personal, C=CN');
+const keystoreName = arg('name', isTest ? 'storylantern-dev.jks' : DEFAULT_NAME);
+const propsPath = path.resolve(arg('props', path.join(outDir, isTest ? 'dev.properties' : 'keystore.properties')));
+const dname = arg('dname', isTest ? 'CN=Story Lantern test key, O=Story Lantern, C=CN' : 'CN=Story Lantern, O=Story Lantern, OU=personal, C=CN');
 const validityDays = arg('validity', '10000');
+const keysize = arg('keysize', isTest ? '2048' : '4096');
 const keystorePath = path.join(outDir, keystoreName);
 
-const password = process.env.STORYLANTERN_KEYSTORE_PASSWORD ?? '';
+const password = process.env.STORYLANTERN_KEYSTORE_PASSWORD ?? (isTest ? TEST_PASSWORD : '');
 if (password === '') {
   console.error('  ✗ 请先把口令放进环境变量 STORYLANTERN_KEYSTORE_PASSWORD（不要把口令写在命令行上）');
   console.error('    Windows: $env:STORYLANTERN_KEYSTORE_PASSWORD = (Read-Host -AsSecureString | ConvertFrom-SecureString -AsPlainText)');
   console.error('    bash   : read -rs STORYLANTERN_KEYSTORE_PASSWORD && export STORYLANTERN_KEYSTORE_PASSWORD');
   process.exit(1);
 }
-if (password.length < 12) {
+if (!isTest && password.length < 12) {
   console.error(`  ✗ 口令太短（${password.length} 位）：这把密钥一旦丢失就再也升不了级，请用 ≥12 位随机串（建议 24+）`);
   process.exit(1);
 }
@@ -79,7 +85,7 @@ const result = spawnSync(
     '-keystore', keystorePath,
     '-alias', ALIAS,
     '-keyalg', 'RSA',
-    '-keysize', '4096',
+    '-keysize', keysize,
     '-validity', validityDays,
     '-storetype', 'PKCS12',
     '-dname', dname,
@@ -108,11 +114,17 @@ writeFileSync(
   'utf8',
 );
 
-console.log('  ✓ 发布密钥已生成（口令未打印、未进命令行）');
+console.log(`  ✓ ${isTest ? '测试' : '发布'}密钥已生成（口令未打印、未进命令行）`);
+console.log(`    渠道     : ${channel}`);
 console.log(`    keystore : ${keystorePath}`);
 console.log(`    properties: ${propsPath}`);
-console.log(`    别名 ${ALIAS} / RSA 4096 / 有效期 ${validityDays} 天 / PKCS12`);
-console.log('    自己核对（不需要口令就能看证书指纹）：');
-console.log(`      keytool -list -v -keystore "${keystorePath}" -alias ${ALIAS}`);
-console.log('    ⚠️ 立刻离机备份 keystore 与口令：Android 要求升级包同签名，丢了就只能卸载重装。');
+console.log(`    别名 ${ALIAS} / RSA ${keysize} / 有效期 ${validityDays} 天 / PKCS12`);
+if (isTest) {
+  console.log('    ⚠️ 这是**测试密钥**：口令是公开的（storylantern-dev），只用来签本机/CI 的测试包；');
+  console.log('       正式发布必须用发布密钥（不加 --channel=test），见 docs/PACKAGING.md 的密钥矩阵。');
+} else {
+  console.log('    自己核对（不需要口令就能看证书指纹）：');
+  console.log(`      keytool -list -v -keystore "${keystorePath}" -alias ${ALIAS}`);
+  console.log('    ⚠️ 立刻离机备份 keystore 与口令：Android 要求升级包同签名，丢了就只能卸载重装。');
+}
 void readFileSync;

@@ -1,0 +1,159 @@
+name: release-prod
+
+# 正式发布：**只有这条工作流产出生产包**（身份 app.storylantern + 生产密钥）。
+# 触发：打 `v*` tag，或手动。
+#
+# 说明（如实）：这条工作流**还没有在真 runner 上跑过**；macOS / Linux 的桌面包我在本机（Windows）
+# 也无法构建。Linux/macOS 分支的分支是按各平台官方前置条件写的，第一次运行才算验证。
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-prod-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+  ANDROID_KEYSTORE_PROPERTIES: ${{ secrets.ANDROID_KEYSTORE_PROPERTIES }}
+  NDK_VERSION: '27.3.13750724'
+  VERSION: ${{ github.ref_type == 'tag' && github.ref_name || '0.0.1' }}
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'ndk;27.3.13750724'
+      - run: pnpm install --no-frozen-lockfile
+
+      - name: 版本号取自 tag
+        shell: bash
+        run: |
+          node -e "const fs=require('fs');const f='apps/shell/src-tauri/tauri.conf.json';const j=JSON.parse(fs.readFileSync(f,'utf8'));j.version=process.env.VERSION.replace(/^v/,'');fs.writeFileSync(f,JSON.stringify(j,null,2)+'\n');"
+          node -e "console.log('version =', require('./apps/shell/src-tauri/tauri.conf.json').version)"
+
+      - name: 门禁 + 类型 + 全部测试 + cargo
+        run: |
+          node scripts/check-boundaries.mjs
+          pnpm run typecheck
+          node --test --test-reporter=spec packages plugins apps fixtures eval
+          cargo check --manifest-path apps/shell/src-tauri/Cargo.toml
+
+      - working-directory: apps/shell
+        run: pnpm exec tauri android init --ci --skip-targets-install
+
+      - name: 还原生产密钥（缺了就明确失败）
+        shell: bash
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ] || [ -z "$ANDROID_KEYSTORE_PROPERTIES" ]; then
+            echo "::error::缺少 ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PROPERTIES：正式发布必须用生产密钥签名（docs/PACKAGING.md）"
+            exit 1
+          fi
+          mkdir -p .keystore
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > .keystore/release.jks
+          printf '%s' "$ANDROID_KEYSTORE_PROPERTIES" > .keystore/keystore.properties
+
+      - name: 构建生产渠道 APK（生产密钥签）
+        env:
+          CI: 'true'
+        run: node scripts/build-android.mjs --channel=prod --key=prod --release --abi=arm64
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: storylantern-android-prod
+          path: |
+            .apk-out/storylantern-arm64-release.apk
+            .apk-out/build-info.json
+          if-no-files-found: error
+
+  desktop:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            name: windows
+          - os: macos-latest
+            name: macos
+          - os: ubuntu-latest
+            name: linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: pnpm/action-setup@v4
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Linux 桌面依赖（Tauri 官方前置）
+        if: matrix.name == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - run: pnpm install --no-frozen-lockfile
+
+      - name: 版本号取自 tag
+        shell: bash
+        run: |
+          node -e "const fs=require('fs');const f='apps/shell/src-tauri/tauri.conf.json';const j=JSON.parse(fs.readFileSync(f,'utf8'));j.version=process.env.VERSION.replace(/^v/,'');fs.writeFileSync(f,JSON.stringify(j,null,2)+'\n');"
+
+      # 桌面端不买代码签名证书（你定的）：产物**未签名**，靠 SHA256SUMS(+GPG) 让用户核对。
+      - name: 构建桌面包（未签名）
+        working-directory: apps/shell
+        run: pnpm exec tauri build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: storylantern-desktop-${{ matrix.name }}
+          path: |
+            apps/shell/src-tauri/target/release/bundle/**
+            apps/shell/src-tauri/target/release/storylantern-shell.exe
+          if-no-files-found: warn
+
+  checksums:
+    needs: [android, desktop]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: 把产物放回 release-checksums.mjs 默认扫描的位置（它不认 --dir 这类参数）
+        run: |
+          mkdir -p .apk-out apps/shell/src-tauri/target/release
+          find artifacts -type f -name '*.apk' -exec cp -v {} .apk-out/ \;
+          find artifacts -type f \( -name '*.msi' -o -name '*.exe' -o -name '*.dmg' -o -name '*.AppImage' -o -name '*.deb' -o -name '*.rpm' \) -exec cp -v {} apps/shell/src-tauri/target/release/ \;
+          ls -l .apk-out apps/shell/src-tauri/target/release | head -40
+      - name: 生成 SHA256SUMS（有 GnuPG 私钥时再签名）
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: node scripts/release-checksums.mjs --out release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: storylantern-checksums
+          path: release/SHA256SUMS*
+          if-no-files-found: error

@@ -44,6 +44,26 @@ if (text.includes(MARK)) {
   //    Java 的 Properties.load 把首键读成 "\uFEFFstoreFile"，于是 getProperty 返回 null，
   //    Gradle 只报一句 `getProperty(...) must not be null`，没法查）。
   let repaired = text.replaceAll('java.util.Properties()', 'Properties()');
+  // 让"生成工程 → 渠道/密钥"的关系彻底幂等（早就打过补丁的仓库也要能升上来）：
+  //  - 测试渠道的 release 包（`-PslTestSigning=1`）用**测试密钥**（dev 配置），因此不需要发布密钥；
+  //  - 对应的守卫要放它过去（否则"没 keystore.properties 就失败"会把测试渠道也拦住）；
+  //  - debug 一律引用 dev 配置：Tauri 的新模板可能写 `debug`（它自己生成的临时调试密钥），
+  //    那会导致"覆盖安装签名不一致"，统一过来。
+  const upgrades = [
+    [
+      '            signingConfig = signingConfigs.getByName("release")',
+      '            signingConfig = if (project.hasProperty("slTestSigning")) signingConfigs.getByName("dev") else signingConfigs.getByName("release")',
+    ],
+    [
+      `            if (!file("${REL}/keystore.properties").exists()) {`,
+      `            if (!file("${REL}/keystore.properties").exists() && !project.hasProperty("slTestSigning")) {`,
+    ],
+    [
+      '            signingConfig = signingConfigs.getByName("debug")',
+      '            signingConfig = signingConfigs.getByName("dev")',
+    ],
+  ];
+  for (const [from, to] of upgrades) if (repaired.includes(from)) repaired = repaired.replace(from, to);
   const guardMarker = 'val required = listOf(';
   if (!text.includes(guardMarker)) {
     const oldHead = [
@@ -97,9 +117,10 @@ if (signingEnd < 0) fail('signingConfigs 块没有正常闭合');
 
 const signingBlock = [
   '    signingConfigs {',
-  '        // debug 用开发密钥（口令写在 .keystore/README.md 里，只用于本机测试）：',
-  '        // debug 与 release 用同一把密钥是为了避免覆盖安装时 INSTALL_FAILED_UPDATE_INCOMPATIBLE、',
-  '        // 以及每次切换签名就清掉测试数据——排查问题时非常费时间。',
+  '        // dev = 测试密钥（口令写在仓库文档里，只用于本机/CI 测试）：debug 恒用它；',
+  '        // 测试渠道的 release（-PslTestSigning=1）也用它 —— 同一把密钥能避免覆盖安装时',
+  '        // INSTALL_FAILED_UPDATE_INCOMPATIBLE，也不会每次切换签名就清掉测试数据。',
+  '        // 正式发布用下面的 release 配置（生产密钥，只从 CI secrets 还原，见 docs/PACKAGING.md）。',
   '        create("dev") {',
   `            storeFile = file("${REL}/storylantern-dev.jks")`,
   '            storePassword = "storylantern-dev"',
@@ -141,7 +162,8 @@ if (optimization < 0) fail('release buildType 里找不到 optimization 块（�
 const releaseBlock = [
   '        getByName("release") {',
   `            // ${MARK}：没有 keystore.properties 就**不许**出包 —— 明确报错，而不是静默用开发密钥签。`,
-  `            if (!file("${REL}/keystore.properties").exists()) {`,
+  `            // 例外：测试渠道（-PslTestSigning=1）本来就该用测试密钥，不需要发布密钥。`,
+  `            if (!file("${REL}/keystore.properties").exists() && !project.hasProperty("slTestSigning")) {`,
   '                val asked = gradle.startParameter.taskNames.any { it.contains("release", ignoreCase = true) }',
   '                if (asked) {',
   '                    throw GradleException(',
@@ -150,16 +172,19 @@ const releaseBlock = [
   '                    )',
   '                }',
   '            }',
-  '            signingConfig = signingConfigs.getByName("release")',
+  '            signingConfig = if (project.hasProperty("slTestSigning")) signingConfigs.getByName("dev") else signingConfigs.getByName("release")',
 ];
 
-const patched = [
+// Tauri 的新模板里 debug 可能引用它自己生成的那把临时调试密钥；统一到 dev 配置，
+// 免得"同名换签名装不上"（这正是当初把 debug/release 都指到同一把测试密钥的原因）。
+let patched = [
   ...lines.slice(0, signingStart),
   ...signingBlock,
   ...lines.slice(signingEnd + 1, releaseStart),
   ...releaseBlock,
   ...lines.slice(optimization),
 ].join(eol);
+patched = patched.replace('signingConfig = signingConfigs.getByName("debug")', 'signingConfig = signingConfigs.getByName("dev")');
 
 writeFileSync(GRADLE, patched, 'utf8');
 console.log(`  ✓ 已接入发布签名：${path.relative(ROOT, GRADLE)}`);

@@ -34,24 +34,20 @@ jobs:
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm run typecheck
 
-  # Android APK：**默认就能产出未签名（开发密钥签）的 debug 包**；
-  # 仓库里配了 ANDROID_KEYSTORE_* 三个 secret 时，再产出**用发布密钥签名的 release 包**。
+  # Android：只跑**测试渠道的 debug 包**（`app.storylantern.test`，测试密钥签）—— 不需要任何 secret，
+  # 这是"机器行为可验证"的那一半。用**生产密钥**签名（测试身份 / 生产身份）的包在
+  # release-test.yml 与 release-prod.yml 里，身份与密钥的分工见 docs/PACKAGING.md。
   #
-  # 两件在 CI 上必须自己造的东西（它们都被 gitignore，干净 checkout 里没有）：
+  # 两件 CI 上必须自己造的东西（都被 gitignore，干净 checkout 里没有）：
   #  1. `apps/shell/src-tauri/gen/android` —— Tauri 生成物，先 `tauri android init --ci`；
-  #  2. 开发密钥 `.keystore/storylantern-dev.jks` —— 它的口令本来就写在仓库文档里（只用于本机测试），
-  #     所以在 CI 上用同一串口令现场生成一把，不涉及任何真正的秘密。
+  #  2. 测试密钥 —— 口令就是仓库文档里那串公开值，用脚本现场生成，不涉及真正的秘密。
   #
-  # 注意：这个 job 是**照着本机验证过的命令写的**，我在本机跑的是同一组命令（Windows）；
-  # Linux runner 上的差异（NDK 的 linux-x86_64 工具链、`./gradlew`、JAVA_HOME）
-  # 已按平台分支写好但**没有在真 runner 上跑过**，第一次 CI 运行才算验证。
+  # 如实：这个 job 是**照着本机验证过的命令写的**（本机是 Windows，我跑的是同一组命令）；
+  # Linux runner 上的差异（NDK 的 linux-x86_64 工具链、`./gradlew`、JAVA_HOME）已按平台分支写好，
+  # 但**没有在真 runner 上跑过**，第一次 CI 运行才算验证。
   android:
     runs-on: ubuntu-latest
     needs: [test, typecheck]
-    # secrets 不能直接出现在 `if:` 里（那一层上下文没有 secrets），所以先落到 job 级 env 再判断。
-    env:
-      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-      ANDROID_KEYSTORE_PROPERTIES: ${{ secrets.ANDROID_KEYSTORE_PROPERTIES }}
     steps:
       - uses: actions/checkout@v4
 
@@ -82,40 +78,23 @@ jobs:
         working-directory: apps/shell
         run: pnpm exec tauri android init --ci --skip-targets-install
 
-      - name: 造一把 CI 用的开发密钥（口令是仓库文档里那串，仅供本机/CI 测试，不是秘密）
-        shell: bash
-        run: |
-          mkdir -p .keystore
-          export STORYLANTERN_CI_DEV_PASSWORD=storylantern-dev
-          "$JAVA_HOME/bin/keytool" -genkeypair -keystore .keystore/storylantern-dev.jks \
-            -alias storylantern -keyalg RSA -keysize 2048 -validity 3650 -storetype PKCS12 \
-            -dname "CN=CI throwaway, O=Story Lantern, C=CN" \
-            -storepass:env STORYLANTERN_CI_DEV_PASSWORD -keypass:env STORYLANTERN_CI_DEV_PASSWORD
-          ls -l .keystore
+      - name: 造测试密钥（口令是仓库文档里那串公开值，不是秘密）
+        run: node scripts/make-android-keystore.mjs --channel=test
 
-      - name: 构建未签名（开发密钥签）的 debug APK —— 不需要任何 secret
+      - name: 构建测试渠道 debug APK —— 不需要任何 secret
         # 不能加 --skip-frontend：干净 checkout 里没有 apps/app/dist，而 Tauri 要把前端产物编进 .so
         env:
           NDK_VERSION: '27.3.13750724'
-        run: node scripts/build-android.mjs --abi=arm64
-
-      - name: 有发布密钥就出**签名 release 包**
-        if: env.ANDROID_KEYSTORE_BASE64 != '' && env.ANDROID_KEYSTORE_PROPERTIES != ''
-        env:
-          NDK_VERSION: '27.3.13750724'
-        run: |
-          mkdir -p .keystore
-          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > .keystore/release.jks
-          printf '%s' "$ANDROID_KEYSTORE_PROPERTIES" > .keystore/keystore.properties
-          node scripts/build-android.mjs --release --abi=arm64
+        run: node scripts/build-android.mjs --channel=test --abi=arm64
 
       - name: 发布校验和（产物 + SHA256SUMS；有 GnuPG 时还会签名）
         run: node scripts/release-checksums.mjs
 
       - uses: actions/upload-artifact@v4
         with:
-          name: storylantern-android
+          name: storylantern-android-test
           path: |
-            .apk-out/*.apk
+            .apk-out/storylantern-test-*.apk
+            .apk-out/build-info.json
             release/SHA256SUMS*
           if-no-files-found: error

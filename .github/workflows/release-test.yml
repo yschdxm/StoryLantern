@@ -1,0 +1,96 @@
+name: release-test
+
+# 测试渠道：**身份是测试的（app.storylantern.test），密钥是生产密钥**（从 secrets 还原）。
+# 为什么这么做：发布的坑几乎都在密钥链上（keystore 还原、keystore.properties、apksigner、校验和），
+# 换一把测试密钥就等于换了一条链去验。身份（包名）负责"能不能与正式包共存"，密钥负责"是不是同一把锁"。
+#
+# 说明（如实）：这条工作流**还没有在真 runner 上跑过** —— 本机是 Windows，我没有 GitHub runner。
+# Linux 分支（NDK 工具链、./gradlew、JAVA_HOME）都是照文档写的，第一次运行才算验证。
+on:
+  workflow_dispatch:
+    inputs:
+      abi:
+        description: 'ABI（arm64 / x86_64 / both）'
+        required: false
+        default: 'arm64'
+
+concurrency:
+  group: release-test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android-test:
+    runs-on: ubuntu-latest
+    env:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PROPERTIES: ${{ secrets.ANDROID_KEYSTORE_PROPERTIES }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Rust + Android 目标
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Android SDK 与 NDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'ndk;27.3.13750724'
+
+      - run: pnpm install --no-frozen-lockfile
+
+      - name: 门禁 + 类型 + 全部测试 + cargo
+        run: |
+          node scripts/check-boundaries.mjs
+          pnpm run typecheck
+          node --test --test-reporter=spec packages plugins apps fixtures eval
+          cargo check --manifest-path apps/shell/src-tauri/Cargo.toml
+
+      - name: 生成 Android 工程（gen/ 被 gitignore，干净 checkout 里没有）
+        working-directory: apps/shell
+        run: pnpm exec tauri android init --ci --skip-targets-install
+
+      - name: 从 secrets 还原生产密钥（口令只经环境变量/文件，不进日志）
+        if: env.ANDROID_KEYSTORE_BASE64 != '' && env.ANDROID_KEYSTORE_PROPERTIES != ''
+        run: |
+          mkdir -p .keystore
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 -d > .keystore/release.jks
+          printf '%s' "$ANDROID_KEYSTORE_PROPERTIES" > .keystore/keystore.properties
+
+      - name: 缺少生产密钥就明确失败（不产出"看起来正常"的包）
+        if: env.ANDROID_KEYSTORE_BASE64 == '' || env.ANDROID_KEYSTORE_PROPERTIES == ''
+        run: |
+          echo "::error::缺少 ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PROPERTIES 两个 secret；测试渠道也要求生产密钥签名（见 docs/PACKAGING.md）"
+          exit 1
+
+      - name: 构建测试渠道 APK（生产密钥签）
+        env:
+          NDK_VERSION: '27.3.13750724'
+          CI: 'true'
+        run: node scripts/build-android.mjs --channel=test --key=prod --release --abi=${{ inputs.abi }}
+
+      - name: 发布校验和（有 GnuPG 时给 SHA256SUMS 签名）
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: node scripts/release-checksums.mjs
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: storylantern-test
+          path: |
+            .apk-out/storylantern-test-*.apk
+            .apk-out/build-info.json
+            release/SHA256SUMS*
+          if-no-files-found: error

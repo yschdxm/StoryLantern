@@ -166,7 +166,9 @@ function makeOps(count, deviceId) {
   }
   if (found === 0) throw new Error('检索没有返回结果');
   console.log(`  （int8 检索：冷跑 ${cold.toFixed(2)} ms / 热跑 best-of-3 ${warm.toFixed(2)} ms）`);
-  record('int8 暴力检索（5 万 × 768 维，热）', warm, 30, '产品实现 vector-int8.ts（内层 ×4 展开）；冷跑约 ' + cold.toFixed(1) + 'ms');
+  // 按用户 2026-10-16 的决定：**不再追这条预算**（它属于"想让数字更准"，不是正确性）。
+  // 仍然测量，是把它当**回归信号** —— 真实现就在 packages/oplog/src/vector-int8.ts，退化会被看见。
+  record('int8 暴力检索（5 万 × 768 维，热）', warm, 30, '产品实现 vector-int8.ts（内层 ×4 展开）；实测在 29.4–30.1ms 之间抖动（就在预算线上）；按用户决定不再追这条，只留作回归信号；冷跑 ' + cold.toFixed(1) + 'ms');
 }
 
 // ---------------------------------------------------------------- 7. 设置类 LWW 写入

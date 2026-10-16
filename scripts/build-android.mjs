@@ -11,10 +11,17 @@ import { spawnSync } from 'node:child_process';
  *   node scripts/build-android.mjs --abi=arm64     # 只编手机那个 ABI
  *   node scripts/build-android.mjs --skip-frontend # 前端没改时跳过（省 1-2 分钟）
  *
- * 步骤（顺序不能变）：前端产物 → cargo(每个 ABI) → 拷 .so 进 jniLibs → gradle → 汇总 APK + 校验 16KB 对齐。
+ * 步骤（顺序不能变）：渠道（包名/显示名）→ 前端产物 → cargo(每个 ABI) → 拷 .so 进 jniLibs →
+ * gradle → 汇总 APK + 校验 16KB 对齐。
  *
- * **环境限制（照实说，不伪造）**：本仓库没有 CI、也没有发布签名密钥，所以这个脚本只产出 **debug** APK，
- * 从不假装"已签名发布"。要做 release 得先有 keystore（见 README 的说明），脚本不会替你造签名。
+ * **渠道**（见 docs/PACKAGING.md 的矩阵）：
+ *  - `--channel=test`（**默认**）：包名 `app.storylantern.test`，用**测试密钥**签（口令在仓库文档里），
+ *    只做"打包后功能测试"，能与正式包同时装在手机上；
+ *  - `--channel=prod`：包名 `app.storylantern`，release 用 `.keystore/keystore.properties` 指向的
+ *    **生产密钥**（正式发布按计划由 GA 的 release-prod.yml 产出，本机跑会给出警告）。
+ *
+ * **环境限制（照实说，不伪造）**：没有 keystore 时 `--channel=prod --release` 会**明确失败**，
+ * 这个脚本从不假装"已签名发布"，也不会回退到测试密钥去签一个看起来正常的包。
  *
  * 前置：Android SDK（ANDROID_HOME 或 %LOCALAPPDATA%\Android\Sdk）、NDK r27d、Rust 的
  * aarch64/x86_64-linux-android target、JDK（Android Studio 的 jbr 或 JAVA_HOME）。
@@ -28,6 +35,15 @@ const flag = (name, fallback) => {
 };
 const abiFilter = flag('abi', 'both');
 const skipFrontend = args.includes('--skip-frontend');
+/** 渠道：默认 `test`（本地/CI 的测试包）。生产渠道的构建只该由 GA 触发，见 docs/PACKAGING.md。 */
+const channel = flag('channel', 'test');
+if (channel !== 'test' && channel !== 'prod') {
+  console.error(`--channel 只能是 test / prod，收到 ${channel}`);
+  process.exit(1);
+}
+if (channel === 'prod' && process.env.CI === undefined) {
+  console.log('  ⚠️ 你在本机跑生产渠道：正式发布按计划由 GitHub Actions 的 release-prod.yml 产出（见 docs/PACKAGING.md）。');
+}
 
 /**
  * 跨平台：CI 跑在 ubuntu 上，而开发机是 Windows。
@@ -45,6 +61,23 @@ const gradlewName = process.platform === 'win32' ? 'gradlew.bat' : './gradlew';
  *  - 出包后用 apksigner 验签，并把证书指纹写进 build-info.json —— 签名是"声称"还是"事实"，看这一步。
  */
 const profile = args.includes('--release') ? 'release' : 'debug';
+
+/**
+ * 签名用哪把密钥 —— **与渠道（身份）无关**，这是两件事：
+ *  - `--key=test`（默认）：测试密钥（口令写在仓库文档里，只用于本机/CI 的测试包）；
+ *  - `--key=prod`：生产密钥，必须能从 `.keystore/keystore.properties` 读到（CI 里由 secrets 还原）。
+ * GA 的测试渠道用 `--channel=test --key=prod`：**身份是测试的、密钥是生产的** ——
+ * 这样验的才是真正那条密钥链（keystore 还原 / apksigner / 校验和），而不是另一条。
+ */
+const keySource = flag('key', 'test');
+if (keySource !== 'test' && keySource !== 'prod') {
+  console.error(`--key 只能是 test / prod，收到 ${keySource}`);
+  process.exit(1);
+}
+if (profile === 'release' && keySource === 'prod' && !existsSync(join(root, '.keystore', 'keystore.properties'))) {
+  console.error('  ✗ --key=prod 需要 .keystore/keystore.properties（生成/还原方式见 docs/PACKAGING.md）');
+  process.exit(1);
+}
 
 const sdk = process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT ?? join(process.env.LOCALAPPDATA ?? '', 'Android', 'Sdk');
 const ndkVersion = process.env.NDK_VERSION ?? 'android-ndk-r27d';
@@ -111,6 +144,9 @@ if (wanted.length === 0) {
 // 这一步以前是手工跑的，忘了就会用旧的覆盖去构建，产物看起来"成功"但行为没变。
 run('套用原生覆盖（MainActivity.kt / SafPlugin.kt → gen/android）', 'node', ['apps/shell/android/apply-overrides.mjs'], root, {});
 
+// 渠道（包名 + 显示名）也是"生成工程上的改动"，同样每次构建前重放一次（脚本幂等）。
+run(`设定渠道（${channel === 'test' ? '测试' : '生产'}：包名与显示名）`, 'node', ['scripts/android-channel.mjs', `--channel=${channel}`], root, {});
+
 // 发布签名也是"生成工程上的改动"，同样要先套（gen/ 是 Tauri 生成的、本仓库把它 gitignore 了，
 // 所以补丁必须每次构建前重放一次；脚本是幂等的）。
 if (profile === 'release') {
@@ -143,7 +179,9 @@ for (const abi of wanted) {
 for (const abi of wanted) {
   const task = profile === 'release' ? abi.releaseTask : abi.gradleTask;
   const skip = profile === 'release' ? abi.releaseSkipTask : abi.skipTask;
-  run(`gradle ${task}`, gradlewName, [task, '--no-daemon', '--no-configuration-cache', '--console=plain', skip], join(root, 'apps/shell/src-tauri/gen/android'), gradleEnv);
+  // 签名密钥：测试密钥靠 -PslTestSigning 选 dev 配置；生产密钥走 keystore.properties（Gradle 里已有守卫）。
+  const extra = keySource === 'test' && profile === 'release' ? ['-PslTestSigning=1'] : [];
+  run(`gradle ${task}`, gradlewName, [task, '--no-daemon', '--no-configuration-cache', '--console=plain', skip, ...extra], join(root, 'apps/shell/src-tauri/gen/android'), gradleEnv);
 }
 
 /** 用 apksigner 验签：签名是"声称"还是"事实"，只看这一步。 */
@@ -190,32 +228,36 @@ const apks = wanted.map((abi) => {
   };
 });
 
+/** 产物文件名带渠道标记：下载下来一眼能分清"测试包"与"正式包"。 */
+const apkName = (abi) => `storylantern-${channel === 'test' ? 'test-' : ''}${abi}-${profile}.apk`;
 const outDir = join(root, '.apk-out');
 mkdirSync(outDir, { recursive: true });
 for (const apk of apks) {
-  writeFileSync(
-    join(outDir, `storylantern-${apk.abi}-${profile}.apk`),
-    readFileSync(join(root, 'apps/shell/src-tauri/gen/android', apk.path)),
-  );
+  writeFileSync(join(outDir, apkName(apk.abi)), readFileSync(join(root, 'apps/shell/src-tauri/gen/android', apk.path)));
 }
 const info = {
   builtAt,
   abis: apks,
   profile,
+  channel,
+  applicationId: channel === 'test' ? 'app.storylantern.test' : 'app.storylantern',
   // 应用里显示的"构建 {{stamp}}"来自前端构建注入的 __BUILD_STAMP__（见 apps/shell/build-frontend.mjs），
   // 这里只记下这次构建的时间与产物指纹，方便回溯"手机上装的是哪一次构建"。
   signed: profile === 'release' && apks.every((apk) => apk.signature.ok),
   // 签名不是"声称"：release 由 apksigner 验过（证书 DN 与方案记在上面），debug 用仓库里那把开发密钥。
   note:
     profile === 'release'
-      ? 'release：已用 .keystore/keystore.properties 指向的密钥签名，并经 apksigner verify 验证'
-      : 'debug：用 .keystore/storylantern-dev.jks 签名（口令写在仓库文档里，只用于本机测试）',
+      ? keySource === 'test'
+        ? 'release：用测试密钥 .keystore/storylantern-dev.jks 签名，并经 apksigner verify 验证'
+        : 'release：已用 .keystore/keystore.properties 指向的生产密钥签名，并经 apksigner verify 验证'
+      : 'debug：用 .keystore/storylantern-dev.jks 签名（口令写在仓库文档里，只用于本机/CI 测试）',
 };
 writeFileSync(join(outDir, 'build-info.json'), `${JSON.stringify(info, null, 2)}\n`, 'utf8');
 
 console.log('\n=== 完成 ===');
+console.log(`  渠道：${channel}（${channel === 'test' ? 'app.storylantern.test / 叙灯·测试' : 'app.storylantern / 叙灯'}）`);
 for (const apk of apks) {
-  console.log(`  ${apk.abi}: .apk-out/storylantern-${apk.abi}-${profile}.apk  ${apk.mb} MB  sha256:${apk.sha256}…`);
+  console.log(`  ${apk.abi}: .apk-out/${apkName(apk.abi)}  ${apk.mb} MB  sha256:${apk.sha256}…`);
   if (apk.signature.ok) {
     console.log(`    签名 ✓ ${apk.signature.schemes.join('/') || '(方案未解析)'}  DN: ${apk.signature.dn}`);
   }
