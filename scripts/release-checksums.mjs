@@ -80,17 +80,24 @@ const sumsPath = path.join(outDir, 'SHA256SUMS');
 writeFileSync(sumsPath, `${lines.join('\n')}\n`, 'utf8');
 console.log(`  ✓ 校验和：${path.relative(ROOT, sumsPath)}（${lines.length} 个产物）`);
 
-// GPG 是**可选**的：没有也不该挡路，但要明确告诉用户"现在这份清单是不可验证来源的"
+// GPG 是**可选**的：没有也不该挡路，但要明确告诉用户"现在这份清单是不可验证来源的"。
+// 关键区分（CI 上第一次真跑教我的）：**没配密钥**时失败的是"签名"这件事本身（runner 里装了 gpg 但没密钥），
+// 这不该让整个打包失败 —— 跳过并说清即可；而我**明确要求**了某把密钥（RELEASE_GPG_KEY / GPG_PRIVATE_KEY）
+// 却签不成，那才是真问题，必须硬报错。
 const gpg = spawnSync('gpg', ['--version'], { encoding: 'utf8' });
 if (gpg.status === 0) {
   const keyId = process.env.RELEASE_GPG_KEY ?? '';
+  const askedForSigning = keyId !== '' || (process.env.GPG_PRIVATE_KEY ?? '') !== '';
   const argsForSign = ['--detach-sign', '--armor', ...(keyId === '' ? [] : ['--local-user', keyId]), sumsPath];
   const signed = spawnSync('gpg', argsForSign, { stdio: 'inherit' });
   if (signed.status === 0) {
     console.log(`  ✓ 已签名：${path.relative(ROOT, `${sumsPath}.asc`)}（公钥请发布到仓库/官网）`);
-  } else {
-    console.error('  ✗ GPG 签名失败：先 `gpg --gen-key`，或设 RELEASE_GPG_KEY 指定密钥');
+  } else if (askedForSigning) {
+    console.error('  ✗ 明确要求了签名（RELEASE_GPG_KEY / GPG_PRIVATE_KEY）却签不成：检查密钥是否已导入、口令是否正确');
     process.exitCode = 1;
+  } else {
+    console.log('  ⚠️ 本机装了 GnuPG 但**没有可用密钥** → 只有未签名的 SHA256SUMS：用户能查"文件有没有损坏"，但**无法**验证清单本身有没有被替换');
+    console.log('    想签名：导入发布者私钥（CI 用 GPG_PRIVATE_KEY secret），或本地 `gpg --gen-key` 后重跑');
   }
 } else {
   console.log('  ⚠️ 本机没有 GnuPG → 只有未签名的 SHA256SUMS：用户能查"文件有没有损坏"，但**无法**验证清单本身有没有被替换');
