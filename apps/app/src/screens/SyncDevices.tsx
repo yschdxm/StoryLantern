@@ -152,6 +152,20 @@ export function SyncDevices({
           variant="ghost"
           onClick={() => {
             void sync
+              .roster?.stamp(recoveryDraft)
+              .then((outcome) => setError(outcome.ok ? outcome.message : outcome.error))
+              .catch((cause: unknown) => setError(describeError(cause)));
+          }}
+        >
+          {t('sync.roster.stamp.action')}
+        </Button>
+      </div>
+      <p className="muted">{t('sync.roster.stamp.hint')}</p>
+      <div className="row">
+        <Button
+          variant="ghost"
+          onClick={() => {
+            void sync
               .createRecovery()
               .then((pair) => setRecovery(pair))
               .catch((cause: unknown) => setError(describeError(cause)));

@@ -97,6 +97,14 @@ export interface SyncAdmin {
     | { ok: true; name: string; total: number; applied: number; duplicates: number }
     | { ok: false; error: string }
   >;
+  /**
+   * 名单盖章（管理密钥背书）：看当前信任状态、用恢复密钥给本机名单盖章。
+   * 盖章保护的是**本机名单文件**（增删设备、改吊销状态都能被发现）。
+   */
+  roster?: {
+    status(): Promise<string>;
+    stamp(privateKeyHex: string): Promise<{ ok: true; message: string } | { ok: false; error: string }>;
+  };
 }
 
 export interface SyncDevice {

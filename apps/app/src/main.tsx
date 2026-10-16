@@ -19,6 +19,8 @@ import { createHostFetch } from './data/sync/host-fetch.ts';
 import { createHostFolderBackend } from './data/sync/folder-backend.ts';
 import { createSafFolderBackend } from './data/saf-folder.ts';
 import { createBackupAdmin } from './data/sync/backup-admin.ts';
+import { createRosterAdminSurface } from './data/sync/roster-admin.ts';
+import { createWebCryptoRecoveryProof } from './data/sync/recovery-key.ts';
 import { registerPromptBlocks } from './data/prompt-blocks.ts';
 import type { BlockRegistry } from '../../../plugins/context-blocks/src/index.ts';
 import { createHostClient, type HostClient } from './host-panel.ts';
@@ -245,6 +247,8 @@ function Root(): ReturnType<typeof AppShell> {
               ? { ok: false, reason: "已提交带恢复证明的加入请求：等一台已授权设备接纳。" }
               : { ok: true };
           },
+          // 名单盖章（管理密钥背书）：状态与盖章都在 data/sync/roster-admin.ts 里
+          roster: createRosterAdminSurface({ device: ports.device, backend: async () => (await buildSyncService(syncInput(await readSyncConfig(store.getState().settings, ports.device)))).backend, port: () => createWebCryptoRecoveryProof(), now: () => Date.now() }),
           collect: async (dryRun: boolean) => {
             const built = await buildSyncService(syncInput(await readSyncConfig(store.getState().settings, ports.device)));
             return built.service.collect(dryRun);

@@ -258,6 +258,8 @@ export function capabilityNotes(capabilities: BackendCapabilities | undefined): 
 
 export interface BuiltSyncService {
   service: SyncService;
+  /** 本次用的后端：名单盖章要读远端已发布的恢复公钥（`recovery.json`），所以得把它交出去。 */
+  backend: SyncBackend;
   /** 本地文件夹同步时，宿主解析出来的根目录（给界面显示）。 */
   root?: string;
   /** 探测到的后端能力（缺能力时要在界面说明；探测不到就是 undefined）。 */
@@ -327,6 +329,7 @@ export async function buildSyncService(input: RunSyncInput): Promise<BuiltSyncSe
 
   return {
     service,
+    backend,
     ...(root === undefined ? {} : { root }),
     ...(capabilities === undefined ? {} : { capabilities }),
   };
