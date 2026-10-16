@@ -86,7 +86,11 @@ export async function runTwoPeers(input) {
   const hasSizes = input.remoteFiles !== undefined || !noDisk;
 
   const backend = input.backend ?? createWebDavBackend({ baseUrl: url });
-  const capabilities = await backend.probe();
+  // 与产品同一条规则（apps/app/src/data/sync/app-sync.ts）：后端没有 `probe` 就用它**声明**的能力。
+  // 文件夹后端就是这种形状 —— 它的能力是保守声明（没有条件写、没有范围读），不假装探测过。
+  const probe = backend.probe;
+  const capabilities =
+    typeof probe === 'function' ? await probe.call(backend) : { ...backend.capabilities, probed: false };
 
   const blindKey = new Uint8Array(32).fill(7);
   const cipher = createAesGcmCipher({ key: new Uint8Array(32).fill(9) });
