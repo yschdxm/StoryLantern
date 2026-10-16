@@ -146,7 +146,11 @@ if (wanted.length === 0) {
 run('套用原生覆盖（MainActivity.kt / SafPlugin.kt → gen/android）', 'node', ['apps/shell/android/apply-overrides.mjs'], root, {});
 
 // 渠道（包名 + 显示名）也是"生成工程上的改动"，同样每次构建前重放一次（脚本幂等）。
-run(`设定渠道（${channel === 'test' ? '测试' : '生产'}：包名与显示名）`, 'node', ['scripts/android-channel.mjs', `--channel=${channel}`], root, {});
+run(`设定渠道（${{ dev: '本地测试 dev', test: 'GA 测试 test', prod: '生产 prod' }[channel]}：包名与显示名）`, 'node', ['scripts/android-channel.mjs', `--channel=${channel}`], root, {});
+
+// 我们绕过 `tauri android build` 直接调 gradle（为了自己控签名与渠道），所以要把 CLI 生成的两个文件补齐：
+// 缺 tauri.settings.gradle 时 Gradle 在 **settings 求值阶段**就失败（干净机器/CI 上实测过）。
+run('补齐 Tauri 生成物（tauri.settings.gradle / tauri.properties）', 'node', ['scripts/android-tauri-settings.mjs'], root, {});
 
 // 发布签名也是"生成工程上的改动"，同样要先套（gen/ 是 Tauri 生成的、本仓库把它 gitignore 了，
 // 所以补丁必须每次构建前重放一次；脚本是幂等的）。
