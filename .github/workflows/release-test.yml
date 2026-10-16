@@ -50,12 +50,13 @@ jobs:
 
       - run: pnpm install --no-frozen-lockfile
 
-      - name: 门禁 + 类型 + 全部测试 + cargo
+      - name: 门禁 + 类型 + 全部测试
+        # 这里**不要**加 `cargo check`：它在 Linux 上会去编桌面依赖（glib/GTK），runner 没装那些库，
+        # 实测报 `Package glib-2.0 was not found`。Android 侧的 Rust 编译由下面的 CLI 构建负责（那是一定要编的）。
         run: |
           node scripts/check-boundaries.mjs
           pnpm run typecheck
           node --test --test-reporter=spec "packages/**/*.test.ts" "apps/**/*.test.ts" "plugins/**/*.test.ts" "fixtures/**/*.test.ts" "eval/**/*.test.ts"
-          cargo check --manifest-path apps/shell/src-tauri/Cargo.toml
 
       - name: 生成 Android 工程（gen/ 被 gitignore，干净 checkout 里没有）
         working-directory: apps/shell

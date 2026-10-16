@@ -71,16 +71,18 @@ if (!gradle.includes(wantId)) {
 
 // ---- 2) versionName（显示用）+ 3) versionCode（升级判断用：只有生产渠道固定）----
 const wantName = `${baseVersion}${target.versionSuffix}`;
-const nameLine = /versionName = tauriProperties\.getProperty\("tauri\.android\.versionName", "[^"]*"\)/;
+// 两种形态都要认：**原始模板**是 `tauriProperties.getProperty(...)`，而我们改过一次之后是字面量
+// `versionName = "0.0.1-dev"` —— 只认前者的话，切渠道时不会生效（实测：切到 test 后包里还写着 0.0.1-dev）。
+const nameLine = /versionName = (?:"[^"]*"|tauriProperties\.getProperty\("tauri\.android\.versionName", "[^"]*"\))/;
 // test 与 prod 都用**由版本号算出来的** versionCode（两者包名不同，各自单调即可）；
 // dev 是本地 debug 包，不参与升级判断，保持生成时的默认值。
 if (channel !== 'dev') {
   const code = versionCodeOf(baseVersion);
   if (code === undefined) fail(`tauri.conf.json 里的 version 不是 x.y.z 形式：${baseVersion}`);
-  const codeLine = /versionCode = tauriProperties\.getProperty\("tauri\.android\.versionCode", "\d+"\)\.toInt\(\)/;
+  // 同样两种形态都要认（原始模板 / 我们改过的字面量），否则切渠道时会误报"结构变了"并中止。
+  const codeLine = /versionCode = (?:\d+|tauriProperties\.getProperty\("tauri\.android\.versionCode", "\d+"\)\.toInt\(\))/;
   if (!codeLine.test(gradle)) fail('生成文件里找不到 versionCode 行（Tauri 的结构变了）');
   gradle = gradle.replace(codeLine, `versionCode = ${code}`);
-  gradle = gradle.replace(/versionCode = \d+/, `versionCode = ${code}`);
   changes.push(`versionCode = ${code}（由 ${baseVersion} 算出）`);
 }
 if (nameLine.test(gradle)) {

@@ -54,12 +54,12 @@ jobs:
         shell: bash
         run: node scripts/check-version-no-rollback.mjs --version="$VERSION"
 
-      - name: 门禁 + 类型 + 全部测试 + cargo
+      - name: 门禁 + 类型 + 全部测试
+        # 同 release-test：这里不加 cargo check（Linux 上会去编 glib/GTK 桌面依赖而 runner 没装）。
         run: |
           node scripts/check-boundaries.mjs
           pnpm run typecheck
           node --test --test-reporter=spec "packages/**/*.test.ts" "apps/**/*.test.ts" "plugins/**/*.test.ts" "fixtures/**/*.test.ts" "eval/**/*.test.ts"
-          cargo check --manifest-path apps/shell/src-tauri/Cargo.toml
 
       - working-directory: apps/shell
         run: pnpm exec tauri android init --ci --skip-targets-install
