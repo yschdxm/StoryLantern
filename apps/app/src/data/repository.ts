@@ -26,6 +26,7 @@ import type {
 import type { SummaryStore } from './summary-types.ts';
 import type { FactStore } from './fact-types.ts';
 import type { TunerStore } from './op-tuner-store.ts';
+import type { BackupPorts } from '../../../../packages/oplog/src/backup.ts';
 
 export interface Repository {
   /** 分层摘要（M4）：内容，进 op 日志、跟同步走。 */
@@ -47,6 +48,11 @@ export interface Repository {
   readonly settings: SettingsStore;
   /** 只读诊断信息（浏览器实现返回 undefined）。 */
   probe?(): Promise<ProbeInfo>;
+  /**
+   * 「导出全部为一个文件」：整份 op 日志 → 自包含备份（与同步目录无关）。
+   * 只有 op-log 仓储（宿主实现）有它。
+   */
+  exportBackup?(ports: BackupPorts): Promise<Uint8Array>;
 }
 
 export interface CharacterStore {

@@ -12,7 +12,7 @@ import { S3Fields, S3_SETTING_KEYS } from './S3Fields.tsx';
 import { WebDavFields } from './WebDavFields.tsx';
 import { PairingPanel } from './PairingPanel.tsx';
 import { TunerPanel } from './TunerPanel.tsx';
-import { Button, Field, TextInput } from '../ui/components.tsx';
+import { BackupPanel } from './BackupPanel.tsx';import { Button, Field, TextInput } from '../ui/components.tsx';
 export interface SettingsScreenProps extends ScreenProps {
   plugins: Array<{ id: string; status: string }>;
   locales: string[];
@@ -273,8 +273,7 @@ export function SettingsScreen({ store, router, host, chat, ops, sync, tuner, pl
               />
             </Field>
             <p className="muted">{t('settings.sync.note')}</p>
-            {/* 设备名单 / 吊销 / 永久禁用 / 回收 / 恢复密钥：**只要配了同步就该出现**。
-                以前它被放在"本地文件夹"分支里，于是用 WebDAV 的人根本看不到设备管理（真机踩到）。 */}
+            {/* 设备名单 / 吊销 / 永久禁用 / 回收 / 恢复密钥：**只要配了同步就该出现**（以前放在"本地文件夹"分支里，用 WebDAV 的人根本看不到设备管理——真机踩到）。 */}
             {sync !== undefined && (
               <SyncDevices
                 sync={sync}
@@ -360,6 +359,7 @@ export function SettingsScreen({ store, router, host, chat, ops, sync, tuner, pl
       </section>
 
       {tuner !== undefined && <TunerPanel tuner={tuner} />}
+      {sync !== undefined && <BackupPanel sync={sync} />}
 
       <section className="settings-group">
         <h2 className="settings-group__title">{t('settings.data')}</h2>

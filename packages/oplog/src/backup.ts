@@ -1,6 +1,6 @@
 import { toHex, utf8 } from './bytes.ts';
 import type { Op } from './op.ts';
-import type { CryptoPorts } from './ports.ts';
+import type { Compressor, Digest } from './ports.ts';
 
 /**
  * 「导出全部为一个文件」的整体备份。
@@ -22,6 +22,15 @@ import type { CryptoPorts } from './ports.ts';
  * 整个文本**一次压缩**；摘要覆盖 `头（digest 置空） + "\n" + 主体` —— 把 digest 字段排除在摘要之外，
  * 是为了避免"摘要算摘要"的循环。任何一处不对劲都明确失败，绝不返回半个 op 列表。
  */
+
+/**
+ * 备份只需要两件事：内容摘要与压缩。**不要求整个 CryptoPorts** —— 备份不签名也不加密
+ * （它是用户自己保管的整份数据，不是要放进哑存储的段），伪造一个 hmac 端口只会让人误会。
+ */
+export interface BackupPorts {
+  digest: Pick<Digest, 'sha256'>;
+  compressor: Compressor;
+}
 
 export const BACKUP_MAGIC = 'SLBAK1';
 export const BACKUP_VERSION = 1;
@@ -46,7 +55,7 @@ export interface BackupHeader {
 }
 
 export interface CreateBackupInput {
-  ports: CryptoPorts;
+  ports: BackupPorts;
   createdAt: number;
   deviceId?: string;
 }
@@ -55,7 +64,7 @@ export interface CreateBackupInput {
 async function digestOf(
   header: BackupHeader,
   body: string,
-  ports: CryptoPorts,
+  ports: BackupPorts,
 ): Promise<string> {
   const canonical = `${JSON.stringify({ ...header, digest: '' })}\n${body}`;
   return toHex(await ports.digest.sha256(utf8(canonical)));
@@ -79,7 +88,7 @@ export async function createBackup(ops: readonly Op[], input: CreateBackupInput)
 /** 读回备份：解压 → 校验魔数/版本/压缩算法/摘要/条数 → 返回 op。 */
 export async function readBackup(
   bytes: Uint8Array,
-  options: { ports: CryptoPorts },
+  options: { ports: BackupPorts },
 ): Promise<{ header: BackupHeader; ops: Op[] }> {
   let raw: Uint8Array;
   try {

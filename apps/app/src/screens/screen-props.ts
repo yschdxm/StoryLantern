@@ -84,6 +84,11 @@ export interface SyncAdmin {
   createJoinLink(): Promise<{ link: string; expiresAt: number }>;
   /** 应用对方给的配对链接：非机密写设置、机密（口令 / S3 密钥）只写设备本地。 */
   applyJoinLink(link: string): Promise<{ ok: true } | { ok: false; error: string }>;
+  /**
+   * 「导出全部为一个文件」：先让用户选一个目录（系统选择器），再把**整份 op 日志**写成**一个**备份文件。
+   * 与同步目录无关（计划里写明"远端 op 日志不是 SQLite 备份"），所以走系统选择器而不是宿主私有目录。
+   */
+  exportBackup?(): Promise<{ ok: true; name: string } | { ok: false; error: string }>;
 }
 
 export interface SyncDevice {
