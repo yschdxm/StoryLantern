@@ -52,3 +52,4 @@ eval/long-chat/.cache/
 .env
 .env.*
 *.local
+*.log
