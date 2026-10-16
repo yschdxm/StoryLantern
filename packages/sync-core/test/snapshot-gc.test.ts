@@ -50,12 +50,12 @@ test('快照 GC：清掉墓碑会话的快照，活着的会话一份都不动',
   const doomedDir = dirOf(doomed.path);
   console.log(`  [快照 GC] 删除前 ${before.length} 份 → 删除后 ${after.length} 份；墓碑那份还在吗：${paths.some((p) => p.startsWith(doomedDir))}`);
 
-  assert.equal(after.length, 1, '只剩活着那个会话的快照');
   assert.equal(paths.some((path) => path.startsWith(keptDir)), true, '活着会话的快照必须原样保留');
   assert.equal(paths.some((path) => path.startsWith(doomedDir)), false, '墓碑会话的快照必须清掉');
+  assert.equal(after.length, paths.filter((path) => path.startsWith(keptDir)).length, '活着的会话不被 GC 动过');
 });
 
-test('快照 GC：没有墓碑时不列目录、不删任何东西（不为它增加每次同步的开销）', async () => {
+test('快照 GC：没有墓碑时不删任何东西（不为它增加开销）', async () => {
   const world = createWorld({ snapshotThreshold: 0 });
   const a = world.peer(A);
   emit(a, messageAppend(a, { sessionId: 'S1', messageId: 'M1', author: 'user', content: '一条' }));
@@ -65,6 +65,7 @@ test('快照 GC：没有墓碑时不列目录、不删任何东西（不为它�
   assert.ok(first && second);
 
   const after = (await world.backend.list('snapshots/')).entries as unknown as Array<{ path?: string; key?: string }>;
-  assert.equal(after.length, 1, '同一会话只留最新一份（这条是既有的清理，不是 GC）');
+  // 第二份是增量，所以基准那份要留着 —— 同一个会话下现在是"基准 + 增量"两份（都是有用的，不是垃圾）
+  assert.equal(after.length, 2, '基准 + 增量都该在，实际 ' + after.length + ' 份');
   assert.equal(dirOf(second.path), dirOf(first.path), '同一会话应当在同一个目录下');
 });

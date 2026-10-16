@@ -32,41 +32,52 @@ async function publishSegments(world: World, count: number, contentLength = 12):
   }
 }
 
-async function snapshotBytes(world: World): Promise<{ count: number; maxBytes: number }> {
+async function snapshotBytes(
+  world: World,
+): Promise<{ count: number; maxBytes: number; minBytes: number; totalBytes: number }> {
   const result = await world.backend.list('snapshots/');
   // 后端条目字段名由实现决定：按 path/key 都试一遍，取不到再从 get 拿长度（不猜就崩过一次）
   const entries = result.entries as unknown as Array<{ path?: string; key?: string; size?: number }>;
-  let maxBytes = 0;
+  const sizes: number[] = [];
   for (const entry of entries) {
     const path = entry.path ?? entry.key;
     if (typeof entry.size === 'number') {
-      maxBytes = Math.max(maxBytes, entry.size);
+      sizes.push(entry.size);
       continue;
     }
-    if (path !== undefined) maxBytes = Math.max(maxBytes, (await world.backend.get(path)).length);
+    if (path !== undefined) sizes.push((await world.backend.get(path)).length);
   }
-  return { count: entries.length, maxBytes };
+  const maxBytes = sizes.length === 0 ? 0 : Math.max(...sizes);
+  const minBytes = sizes.length === 0 ? 0 : Math.min(...sizes);
+  const totalBytes = sizes.reduce((sum, size) => sum + size, 0);
+  return { count: entries.length, maxBytes, minBytes, totalBytes };
 }
 
-test('快照成本：同一段工作量（24 次发布）在不同阈值下的全量上传次数（如实打印）', async () => {
+test('快照成本：24 次发布下，整份 + 增量的份数与体积（如实打印）', async () => {
   const rows: string[] = [];
   for (const threshold of [4, 8, 16]) {
     const world = createWorld({ snapshotThreshold: threshold });
     await publishSegments(world, 24);
     const a = world.peer(A);
     const uploads = a.engine.counters.paths.filter((path) => path.startsWith('snapshots/'));
-    const { count, maxBytes } = await snapshotBytes(world);
+    const { count, maxBytes, minBytes, totalBytes } = await snapshotBytes(world);
+    // 链长 = 这份整份后面接了几段增量（发布方自己记的，比按体积猜可靠）
+    const deltas = Object.values(a.engine.state.hosted).reduce(
+      (sum, hosted) => sum + (hosted.snapshot?.chainLength ?? 0),
+      0,
+    );
     const segments = a.engine.counters.paths.filter((path) => path.startsWith('logs/'));
     rows.push(
-      `阈值 ${threshold}：全量快照上传 ${uploads.length} 次｜现存 ${count} 份（清理只留最新）｜` +
-        `最大一份 ${maxBytes} B｜同时发布了 ${segments.length} 个段`,
+      `阈值 ${threshold}：快照上传 ${uploads.length} 次｜现存 ${count} 份（整份 1 + 增量 ${deltas}）｜` +
+        `最大一份 ${maxBytes} B｜最小一份 ${minBytes} B｜合计 ${totalBytes} B｜同时发布了 ${segments.length} 个段`,
     );
-    assert.ok(count <= 1, '同一个会话只应留最新一份快照');
+    // 注意：这里**不**断言"增量比整份小" —— 24 条的小会话里，整份只装几条、增量也装几条，
+    // 体积本来就相当。增量的收益出现在"大会话 + 这一轮只改了几条"，那由下面那条测试负责量。
   }
   for (const row of rows) console.log('  [快照成本] ' + row);
 
-  // 阈值越大，全量上传次数应当单调不增（这就是"省下来"的定义）
-  const counts = rows.map((row) => Number.parseInt(/上传 (\d+) 次/.exec(row)?.[1] ?? '-1', 10));
+  // 阈值越大，快照上传次数应当单调不增（这就是"省下来"的定义）
+  const counts = rows.map((row) => Number.parseInt(/快照上传 (\d+) 次/.exec(row)?.[1] ?? '-1', 10));
   assert.ok(counts.every((value) => value >= 0), '要能解析出次数');
   assert.ok(counts[0] !== undefined && counts[2] !== undefined && counts[0] >= counts[2], '阈值变大不该让上传变多');
 });
@@ -82,4 +93,26 @@ test('快照成本：会话越大，每一份全量快照越贵（1 万条量级
       `（换算到 1 万条量级即"每次多半 MB"，这正是要按增量而不是按次数的理由）`,
   );
   assert.ok(maxBytes > 0, '应当能量到快照字节数');
+});
+
+test('快照成本：大会话 + 小改动时，增量远小于整份（字节级增量的收益）', async () => {
+  const world = createWorld({ snapshotThreshold: 4 });
+  await publishSegments(world, 400, 80); // 先把会话堆大
+  const a = world.peer(A);
+  const before = await snapshotBytes(world);
+  await publishSegments(world, 4, 80); // 再只改 4 条
+  const after = await snapshotBytes(world);
+  const deltas = Object.values(a.engine.state.hosted).reduce(
+    (sum, hosted) => sum + (hosted.snapshot?.chainLength ?? 0),
+    0,
+  );
+  console.log(
+    `  [快照成本] 400 条后整份约 ${after.maxBytes} B；接着只改 4 条 → 最小一份（增量）${after.minBytes} B，` +
+      `现存 ${after.count} 份、链上增量 ${deltas} 段（改动前 ${before.count} 份）`,
+  );
+  assert.ok(
+    after.minBytes * 4 <= after.maxBytes,
+    `增量应当远小于整份：最小 ${after.minBytes} B 对最大 ${after.maxBytes} B`,
+  );
+  assert.ok(after.count >= 2, '至少要有一份基准 + 一份增量才谈得上比较');
 });

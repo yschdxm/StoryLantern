@@ -1,5 +1,6 @@
 import { compareOpOrder, type Hlc } from './hlc.ts';
 import { freezeSnapshot } from './freeze.ts';
+import { countSessionMessages as countMessagesOf, exportSessionSnapshot as exportSnapshotOf } from './snapshot-export.ts';
 import { applyCharacterDelete, applyCharacterUpsert, listCharacters } from './character-projection.ts';
 import { applySessionDelete, applySessionUpsert, liveSessions } from './session-projection.ts';
 import {
@@ -224,8 +225,8 @@ export class Materializer {
   }
 
   /**
-   * 导出某个会话的快照（换机/首次同步用）。
-   * `watermarks` 由调用方给出：它知道"该会话已并入各设备的第几号段"。
+   * 导出某个会话的快照（换机/首次同步用）。给了 `since` 就导出**增量**。
+   * 实现抽到了 `snapshot-export.ts`（纯逻辑，也为了守住"每文件 400 行"这条门禁）。
    */
   exportSessionSnapshot(input: {
     deviceId: string;
@@ -233,26 +234,14 @@ export class Materializer {
     sessionId: string;
     watermarks: Record<string, number>;
     now?: number;
+    since?: { hash: string; wall: number };
   }): SessionSnapshot {
-    const messages = Object.values(this.#state.messages).filter((message) => message.sessionId === input.sessionId);
-    const appliedOpIds: string[] = [];
-    for (const message of messages) {
-      appliedOpIds.push(message.appendOpId);
-      for (const revision of message.revisions) appliedOpIds.push(revision.opId);
-      for (const candidate of message.candidates) appliedOpIds.push(candidate.opId);
-    }
+    return exportSnapshotOf(this.#state, input);
+  }
 
-    const session = this.#state.sessions[input.sessionId];
-    return {
-      v: 1,
-      deviceId: input.deviceId,
-      blindSessionId: input.blindSessionId,
-      createdAt: input.now ?? Date.now(),
-      watermarks: { ...input.watermarks },
-      appliedOpIds,
-      ...(session === undefined ? {} : { session }),
-      messages,
-    };
+  /** 某个会话当前有多少条**存活**消息（发布方据此判断"这一轮有没有删除"）。 */
+  countSessionMessages(sessionId: string): number {
+    return countMessagesOf(this.#state, sessionId);
   }
 
   /**

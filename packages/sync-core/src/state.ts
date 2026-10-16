@@ -20,6 +20,15 @@ export interface HostedSession {
     epoch: number;
     watermarks: Record<string, number>;
     bytes: number;
+    /**
+     * 这份快照的生成时间。下一次发布用它当增量基准的"墙钟水位"：只带这之后动过的消息。
+     * 缺这个字段（老状态）时下一次发整份 —— 宁可多传一份，也不能拿不准的基准去算差量。
+     */
+    createdAt?: number;
+    /** 这份快照里有多少条存活消息：下一次发现有删除（变少）就改发整份。 */
+    messageCount?: number;
+    /** 从最近一份整份到这里已经接了几段增量：太长就发整份，免得读取方要串一长串。 */
+    chainLength?: number;
   };
 }
 

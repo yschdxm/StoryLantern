@@ -106,8 +106,8 @@ test('懒加载：shouldPull 之外的会话本轮完全不拉（不下载、不
   assert.equal(result.hydratedSessions, 0);
   assert.deepEqual(messageIds(b), []);
 });
-test('只留最新一份快照：发布新的之后，旧的那份必须被删掉（否则存储只增不减）', async () => {
-  // 阈值 1：每发一个段就触发一次快照，便于观察"旧的有没有被清掉"
+test('增量快照：第二份是相对第一份的增量，基准**必须留着**（否则谁也还原不了）', async () => {
+  // 阈值 1：每发一个段就触发一次快照，便于观察"新旧两份的关系"
   const world = createWorld({ snapshotThreshold: 1 });
   const a = world.peer(A);
 
@@ -118,17 +118,32 @@ test('只留最新一份快照：发布新的之后，旧的那份必须被删�
   assert.ok(firstHash !== undefined, '第一份快照应当已发布');
   const firstPath = 'snapshots/' + blind + '/' + firstHash + '.json.gz';
   assert.equal(world.backend.files.has(firstPath), true, '第一份快照应当在存储里');
+  assert.equal(a.engine.state.hosted[blind]?.snapshot?.chainLength, 0, '第一份是整份，链长 0');
 
   emit(a, messageAppend(a, { sessionId: 'S1', messageId: 'M1', author: 'user', content: '二' }));
   await world.sync(A);
-  const secondHash = a.engine.state.hosted[blind]?.snapshot?.hash;
-  assert.ok(secondHash !== undefined && secondHash !== firstHash, '第二份快照应当是另一个内容地址');
-  const secondPath = 'snapshots/' + blind + '/' + secondHash + '.json.gz';
+  const snapshotRef = a.engine.state.hosted[blind]?.snapshot;
+  assert.ok(snapshotRef !== undefined && snapshotRef.hash !== firstHash, '第二份快照应当是另一个内容地址');
+  assert.equal(snapshotRef.chainLength, 1, '第二份应当是接在整份后面的**增量**');
+  const secondPath = 'snapshots/' + blind + '/' + snapshotRef.hash + '.json.gz';
   assert.equal(world.backend.files.has(secondPath), true, '新快照在');
-  assert.equal(world.backend.files.has(firstPath), false, '旧快照必须被删掉（它是纯优化、可丢弃的文件）');
+  assert.equal(
+    world.backend.files.has(firstPath),
+    true,
+    '基准必须留着：增量要靠它才能还原（旧策略"只留最新一份"在增量下会直接把链弄断）',
+  );
 
-  // 只剩一份快照文件：将来若有人把清理去掉，这条会红
   const snapshotFiles = [...world.backend.files.keys()].filter((path) => path.startsWith('snapshots/'));
-  assert.equal(snapshotFiles.length, 1, '快照文件应当只剩一份，实际 ' + snapshotFiles.length + ' 份');
-  console.log('  快照清理：发布第二份后，存储里只剩 1 份快照文件');
+  assert.equal(snapshotFiles.length, 2, '基准 + 一份增量 = 2 份，实际 ' + snapshotFiles.length + ' 份');
+
+  // 再把链接到上限（snapshot-publish.ts 里的 MAX_DELTA_CHAIN = 12）之外，应当改发整份并清旧链
+  for (let index = 2; index <= 13; index += 1) {
+    emit(a, messageAppend(a, { sessionId: 'S1', messageId: `M${index}`, author: 'user', content: `${index}` }));
+    await world.sync(A);
+  }
+  const finalRef = a.engine.state.hosted[blind]?.snapshot;
+  assert.equal(finalRef?.chainLength, 0, '链到上限后应当发一份整份收口（链长归零）');
+  const afterCap = [...world.backend.files.keys()].filter((path) => path.startsWith('snapshots/'));
+  assert.equal(afterCap.length, 1, '整份取代整条链：该会话下只剩这一份，实际 ' + afterCap.length + ' 份');
+  console.log('  增量快照：链上 2 份 → 到 12 段上限后整份收口，只剩 1 份');
 });

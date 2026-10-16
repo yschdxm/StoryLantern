@@ -7,6 +7,7 @@ import type { SyncBackend } from './backend.ts';
 import { decodeManifest, type Manifest, type SessionRef } from './manifest.ts';
 import { DEVICES_PREFIX, parseManifestPath, segmentPath, snapshotPath } from './paths.ts';
 import { decodeSessionSnapshot, encodeSessionSnapshot } from './snapshot-store.ts';
+import { mergeSnapshotChain, type SessionSnapshot } from '../../oplog/src/index.ts';
 import type { LocalSyncState } from './state.ts';
 
 /**
@@ -41,6 +42,11 @@ export interface PullOutcome {
   hydratedMessages: number;
   downloaded: string[];
   warnings: string[];
+  /**
+   * 最近一次用快照补课时，链上一共取了几份（≥2 说明走的是**增量**：基准 + 若干段）。
+   * 记下来是为了让"增量到底有没有生效"可观测，而不是只能靠体积猜。
+   */
+  snapshotChainLength?: number;
 }
 
 /** 只列 `devices/`，按 manifest 精确 GET 缺失段；从不遍历 `logs/` 目录树。 */
@@ -202,18 +208,34 @@ export async function hydrateFromSnapshot(
 
   const path = snapshotPath(ref.blindSessionId, snapshotRef.hash);
   try {
-    const bytes = await ctx.backend.get(path);
-    outcome.downloaded.push(path);
-    const snapshot = await decodeSessionSnapshot(bytes, {
-      ports: ctx.ports,
-      expect: { blindSessionId: ref.blindSessionId, deviceId: owner },
-    });
-    const restored = materializer.restoreSessionSnapshot(snapshot);
+    // 增量快照要先把它依赖的基准取回来：**基准在前、增量按序在后**，最后合并成一份整份状态。
+    // 任何一环取不到（被 GC 掉了、基线设备没发上来）、或链深得离谱，都在这里抛错 ——
+    // 于是走下面的兜底：**不应用水位**、告警"退回逐段重放"，由段自己把状态补齐（快照只是优化）。
+    const chain: SessionSnapshot[] = [];
+    let currentPath = path;
+    let hops = 0;
+    for (;;) {
+      const bytes = await ctx.backend.get(currentPath);
+      outcome.downloaded.push(currentPath);
+      const decoded = await decodeSessionSnapshot(bytes, {
+        ports: ctx.ports,
+        expect: { blindSessionId: ref.blindSessionId, deviceId: owner },
+      });
+      chain.unshift(decoded);
+      if (decoded.v !== 2) break;
+      if (decoded.base === undefined) throw new Error('增量快照缺少 base');
+      hops += 1;
+      if (hops > MAX_CHAIN_HOPS) throw new Error(`增量链过长（超过 ${MAX_CHAIN_HOPS} 段），改走逐段重放`);
+      currentPath = snapshotPath(ref.blindSessionId, decoded.base);
+    }
+    const merged = mergeSnapshotChain(chain);
+    const restored = materializer.restoreSessionSnapshot(merged);
     outcome.hydratedSessions += 1;
     outcome.hydratedMessages += restored.restoredMessages;
+    if (chain.length > 1) outcome.snapshotChainLength = chain.length;
 
     // 应用水位：这些段已包含在快照里，不再下载。
-    for (const [watermarkOwner, seq] of Object.entries(snapshot.watermarks)) {
+    for (const [watermarkOwner, seq] of Object.entries(merged.watermarks)) {
       const watermarkKey = `${watermarkOwner}|${ref.blindSessionId}`;
       if (seq > (ctx.state.cursors[watermarkKey] ?? 0)) ctx.state.cursors[watermarkKey] = seq;
       ctx.state.ack[watermarkOwner] = Math.max(ctx.state.ack[watermarkOwner] ?? 0, seq);
@@ -227,126 +249,24 @@ export async function hydrateFromSnapshot(
 
 // ---------------------------------------------------------------- 快照发布
 
-export interface SnapshotContext {
-  backend: SyncBackend;
-  ports: CryptoPorts;
-  deviceId: string;
-  state: LocalSyncState;
-  now(): number;
-}
-
-export interface UploadedSnapshot {
-  path: string;
-  hash: string;
-  bytes: Uint8Array;
-}
-
-/** 生成并上传一个会话快照；失败只告警（下次同步会再试）。 */
-export async function buildAndUploadSnapshot(
-  ctx: SnapshotContext,
-  materializer: Materializer,
-  sessionId: string,
-  blindSessionId: string,
-  warnings: string[],
-): Promise<UploadedSnapshot | undefined> {
-  const hosted = ctx.state.hosted[blindSessionId];
-  if (!hosted) return undefined;
-
-  // 上一份快照的路径（内容寻址，所以从 hash 就能算出来）。发布成功后要把它删掉：
-  // 快照是一整份会话状态，只增不减的话存储会一直涨（paths.ts 自己写着"纯优化，可丢弃"）。
-  const previousSnapshotPath =
-    hosted.snapshot === undefined ? undefined : snapshotPath(blindSessionId, hosted.snapshot.hash);
-
-  // 水位 = 各设备在该会话上"已并入"的最高段序号（读取方据此跳过这些段）。
-  const watermarks: Record<string, number> = {};
-  for (const [key, seq] of Object.entries(ctx.state.cursors)) {
-    const [owner, blind] = key.split('|');
-    if (blind === blindSessionId && owner !== undefined && seq > 0) {
-      watermarks[owner] = Math.max(watermarks[owner] ?? 0, seq);
-    }
-  }
-  watermarks[ctx.deviceId] = Math.max(watermarks[ctx.deviceId] ?? 0, hosted.lastSeq);
-
-  const snapshot = materializer.exportSessionSnapshot({
-    deviceId: ctx.deviceId,
-    blindSessionId,
-    sessionId,
-    watermarks,
-    now: ctx.now(),
-  });
-
-  const encoded = await encodeSessionSnapshot(snapshot, {
-    ports: ctx.ports,
-    encrypt: ctx.ports.cipher !== undefined,
-  });
-  const result = await ctx.backend.put(encoded.path, encoded.bytes, { ifNoneMatch: true });
-  if (!result.ok && result.exists !== true) {
-    warnings.push(`快照上传失败：${encoded.path}`);
-    return undefined;
-  }
-
-  hosted.snapshot = { hash: encoded.hash, epoch: hosted.epoch, watermarks, bytes: encoded.bytes.length };
-  hosted.segmentsSinceSnapshot = 0;
-
-  // 清理旧快照：尽力而为。删不掉只是多占一点存储，绝不能让整次同步失败。
-  if (
-    previousSnapshotPath !== undefined &&
-    previousSnapshotPath !== encoded.path &&
-    ctx.backend.capabilities.delete &&
-    ctx.backend.delete !== undefined
-  ) {
-    try {
-      await ctx.backend.delete(previousSnapshotPath);
-    } catch (error) {
-      warnings.push(
-        `旧快照清理失败（不影响同步，下次同步还会试）：${previousSnapshotPath} —— ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-  }
-
-  return { path: encoded.path, hash: encoded.hash, bytes: encoded.bytes };
-}
+/**
+ * 快照的发布与 GC 搬到了 `snapshot-publish.ts`（只为守住"每文件 400 行"这条门禁）；
+ * 这里保持对外导出不变，调用方（engine.ts）不用改。
+ */
+export {
+  buildAndUploadSnapshot,
+  garbageCollectSnapshots,
+  type SnapshotContext,
+  type UploadedSnapshot,
+} from './snapshot-publish.ts';
 
 /**
- * 快照 GC：清掉**墓碑会话**留下的快照。
+ * 读取方最多沿基准链走多深。
  *
- * 为什么按墓碑而不是按"当前状态里还有没有这个会话"：某台设备可能还没拉到那个会话的元数据，
- * 按"我现在没有"去删就会误删别人正要用的快照。**墓碑是跟着 op 同步的事实**，各设备一致 ——
- * 按它清是安全的。删不掉只告警，绝不让整次同步失败（快照本来就是可丢弃的优化）。
+ * 为什么还要一个（比写入方那个更大的）上限：链是**对方**写上去的，读取方不能假设它一定合理 ——
+ * 遇到环或超长链要能停下来退回逐段重放，而不是把首次同步卡死。
  */
-export async function garbageCollectSnapshots(
-  ctx: { backend: SyncBackend },
-  blindSessionIds: readonly string[],
-  warnings: string[],
-): Promise<string[]> {
-  if (blindSessionIds.length === 0) return [];
-  if (!ctx.backend.capabilities.delete || ctx.backend.delete === undefined) return [];
-
-  let entries: Array<{ path?: string; key?: string }>;
-  try {
-    const listed = await ctx.backend.list('snapshots/');
-    entries = listed.entries as unknown as Array<{ path?: string; key?: string }>;
-  } catch (error) {
-    warnings.push(`快照 GC 跳过（列目录失败）：${error instanceof Error ? error.message : String(error)}`);
-    return [];
-  }
-
-  const prefixes = blindSessionIds.map((blind) => `snapshots/${blind}/`);
-  const removed: string[] = [];
-  for (const entry of entries) {
-    const path = entry.path ?? entry.key;
-    if (path === undefined || !prefixes.some((prefix) => path.startsWith(prefix))) continue;
-    try {
-      await ctx.backend.delete(path);
-      removed.push(path);
-    } catch (error) {
-      warnings.push(
-        `快照 GC 删除失败（不影响同步）：${path} —— ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-  }
-  return removed;
-}
+const MAX_CHAIN_HOPS = 64;
 
 // ---------------------------------------------------------------- 发布校验与清理
 
