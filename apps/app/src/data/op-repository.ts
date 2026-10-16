@@ -18,6 +18,7 @@ import { pickOpening } from './greeting.ts';
 import { createLoreStore } from './op-lore-store.ts';
 import { createMessageStore } from './op-message-store.ts';
 import { createMemoryStore } from './op-memory-store.ts';
+import { createTunerStore, type TunerStore } from './op-tuner-store.ts';
 import { createSummaryStore } from './op-summary-store.ts';
 import { createFactStore } from './op-fact-store.ts';
 import { loadOps, migrateLegacyOnce } from './op-load.ts';
@@ -266,12 +267,9 @@ export function createOpLogRepository(options: OpLogRepositoryOptions): OpLogRep
   });
   const summaries = createSummaryStore({ withReady, materializer: () => materializer, appendAndApply, base });
   const facts = createFactStore({ withReady, materializer: () => materializer, appendAndApply, base });
-  const memories: MemoryStore = createMemoryStore({
-    withReady,
-    materializer: () => materializer,
-    appendAndApply,
-    base,
-  });
+  // 记忆与调优助手共用同一套依赖：于是"应用建议"走的就是普通本地写入那条路
+  const memories: MemoryStore = createMemoryStore({ withReady, materializer: () => materializer, appendAndApply, base });
+  const tuner: TunerStore = createTunerStore({ withReady, materializer: () => materializer, appendAndApply, base });
   const liveMessageCount = (): number =>
     Object.values(materializer.state.messages).filter((message) => message.deleted === undefined).length;
   return {
@@ -282,6 +280,7 @@ export function createOpLogRepository(options: OpLogRepositoryOptions): OpLogRep
     messages,
     lorebooks,
     memories,
+    tuner,
     summaries,
     facts,
     // 设备配置不进 op 日志：密钥不该离开本机，主题/语言属于设备偏好

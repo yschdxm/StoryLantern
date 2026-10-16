@@ -25,6 +25,7 @@ import type {
  */
 import type { SummaryStore } from './summary-types.ts';
 import type { FactStore } from './fact-types.ts';
+import type { TunerStore } from './op-tuner-store.ts';
 
 export interface Repository {
   /** 分层摘要（M4）：内容，进 op 日志、跟同步走。 */
@@ -37,6 +38,12 @@ export interface Repository {
   readonly messages: MessageStore;
   readonly lorebooks: LorebookStore;
   readonly memories: MemoryStore;
+  /**
+   * 调优助手（M5，ADR-0003 侧信道）：只看不改地给建议；应用与撤销都走既有的 op 写入路径。
+   *
+   * 可选：只有 op-log 仓储（宿主实现）才有它 —— 浏览器里的最小实现不做调优。
+   */
+  readonly tuner?: TunerStore;
   readonly settings: SettingsStore;
   /** 只读诊断信息（浏览器实现返回 undefined）。 */
   probe?(): Promise<ProbeInfo>;
