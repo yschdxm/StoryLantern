@@ -94,7 +94,12 @@ export async function readBackup(
   try {
     raw = await options.ports.compressor.decompress(bytes);
   } catch (cause) {
-    throw new BackupError('format', `备份解压失败：${cause instanceof Error ? cause.message : String(cause)}`);
+    // 真机上验到过这条：选到一个不是备份的文件时，底层会丢出英文的 zlib 报错（"incorrect header check"）。
+    // 中文用户看不懂那半截，所以把**可能的原因**补在前面，底层原因照旧带上（不吞）。
+    throw new BackupError(
+      'format',
+      `备份解压失败：文件不是有效的 .slbak，或在传输中损坏（底层原因：${cause instanceof Error ? cause.message : String(cause)}）`,
+    );
   }
   const text = new TextDecoder().decode(raw);
 
