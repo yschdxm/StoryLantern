@@ -268,13 +268,31 @@ const verifySignature = (apkPath) => {
 };
 
 const builtAt = new Date().toISOString();
-const apks = wanted.map((abi) => {
-  const relative = profile === 'release' ? abi.apkRelease : abi.apk;
-  const path = join(root, 'apps/shell/src-tauri/gen/android', relative);
-  if (!existsSync(path)) {
-    console.error(`没找到产出的 APK：${path}`);
+/**
+ * **搜索**产物，不要猜路径：`tauri android build` 把单 ABI 的包放在 `apk/<abi>/<profile>/`，
+ * 但只有它自己知道这次叫 `arm64` 还是 `universal`（CI 上实测是 `universal/debug/app-universal-debug.apk`，
+ * 而我原来写死了 `arm64/` —— 于是"构建成功、脚本却报没找到"）。所以扫 `<abi>/<profile>/` 下的 .apk。
+ */
+const apkRoot = join(root, 'apps/shell/src-tauri/gen/android/app/build/outputs/apk');
+const findApk = () => {
+  if (!existsSync(apkRoot)) return undefined;
+  const found = [];
+  for (const abiDir of readdirSync(apkRoot)) {
+    const dir = join(apkRoot, abiDir, profile);
+    if (!existsSync(dir)) continue;
+    for (const name of readdirSync(dir)) if (name.endsWith('.apk')) found.push({ abi: abiDir, path: join(dir, name) });
+  }
+  return found.sort((a, b) => a.path.localeCompare(b.path)).at(-1);
+};
+const apks = wanted.map(() => {
+  const hit = findApk();
+  if (hit === undefined) {
+    console.error(`没找到产出的 APK（${profile}）：${apkRoot}/<abi>/${profile}/ 下没有 .apk`);
     process.exit(1);
   }
+  const path = hit.path;
+  const abi = { name: hit.abi };
+  const relative = path.slice(join(root, 'apps/shell/src-tauri/gen/android').length + 1);
   const bytes = readFileSync(path);
   const signature = verifySignature(path);
   if (profile === 'release' && !signature.ok) {
