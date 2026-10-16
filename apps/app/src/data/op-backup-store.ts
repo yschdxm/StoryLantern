@@ -46,6 +46,16 @@ export interface BackupImportResult {
   duplicates: number;
 }
 
+/**
+ * 一次追加多少条。
+ *
+ * 这个数字是**真机逼出来的**：宿主对 `ops.append` 有"一次最多 5000 条"的限制，
+ * 而一份真实日志有 3 万多条 op —— 第一次在手机上点恢复，界面直接报
+ * 「一次最多追加 5000 条 op，收到 30313」。分批是必须的，不是优化。
+ * 取 1000 而不是 5000：留余量，且分批后单批失败的影响面更小。
+ */
+const IMPORT_CHUNK = 1000;
+
 export function createBackupImporter(
   deps: BackupImporterDeps,
 ): (bytes: Uint8Array, ports: BackupPorts) => Promise<BackupImportResult> {
@@ -53,8 +63,11 @@ export function createBackupImporter(
     const { header, ops } = await readBackup(bytes, { ports });
     const known = await deps.knownOpIds();
     const fresh = ops.filter((op) => !known.has(op.opId));
-    // 全部交给事实源：幂等由 opId 保证，这里不自己挑挑拣拣（少一条判断就少一处能出错的地方）
-    await deps.appendAndApply(ops);
+    // 全部交给事实源：幂等由 opId 保证，这里不自己挑挑拣拣（少一条判断就少一处能出错的地方）。
+    // 必须**分批**：宿主的 append 有单次条数上限（见上）。
+    for (let start = 0; start < ops.length; start += IMPORT_CHUNK) {
+      await deps.appendAndApply(ops.slice(start, start + IMPORT_CHUNK));
+    }
     return { header, total: ops.length, applied: fresh.length, duplicates: ops.length - fresh.length };
   };
 }

@@ -105,3 +105,35 @@ test('坏文件必须拒绝，且**一条都不写**（不能"导一半"）', as
   await assert.rejects(() => target.importer(tampered, ports));
   assert.equal([...target.materializer.snapshot().appliedOpIds].length, 0, '失败时不应写入任何 op');
 });
+
+test('大批量必须分批追加（真机上抓到的回归：宿主的 append 单次上限 5000 条）', async () => {
+  // 造一份"超过 5000 条"的日志：真机上的真实日志是 30313 条，一次全塞会被宿主拒绝
+  const clock = new HlcClock({ now: () => 1_700_000_000_000 });
+  const base = { deviceId: 'dev-a', clock };
+  const ops: Op[] = [];
+  for (let index = 0; index < 6_500; index += 1) {
+    ops.push(messageAppend(base, { sessionId: 'S1', messageId: `M${index}`, author: 'user', content: `第 ${index} 条` }));
+  }
+  const bytes = await createBackup(ops, { ports, createdAt: 1_700_000_000_000 });
+
+  // 追加器**模拟宿主的硬限制**：一次超过 5000 条就报错（正如真机上那样）
+  const materializer = new Materializer();
+  const batches: number[] = [];
+  const importer = createBackupImporter({
+    appendAndApply: async (incoming) => {
+      if (incoming.length > 5000) {
+        throw new Error(`一次最多追加 5000 条 op，收到 ${incoming.length}`);
+      }
+      batches.push(incoming.length);
+      materializer.applyAll(incoming);
+    },
+    knownOpIds: async () => new Set(materializer.snapshot().appliedOpIds),
+  });
+
+  const result = await importer(bytes, ports);
+  assert.equal(result.total, 6_500);
+  assert.equal(result.applied, 6_500);
+  assert.ok(batches.length >= 7, `6500 条应当分批成多次追加，实际 ${batches.length} 次`);
+  assert.ok(Math.max(...batches) <= 5000, `单批不得超过 5000，实际最大 ${Math.max(...batches)}`);
+  assert.equal([...materializer.snapshot().appliedOpIds].length, 6_500, '分批之后一条都不能少');
+});
