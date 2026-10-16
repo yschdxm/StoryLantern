@@ -1,4 +1,4 @@
-import type { SyncBackend } from '../../../../../packages/sync-core/src/backend.ts';
+import type { BackendCapabilities, SyncBackend } from '../../../../../packages/sync-core/src/backend.ts';
 import { emptyState, type LocalSyncState } from '../../../../../packages/sync-core/src/state.ts';
 import type { DeviceStore } from '../op-ports.ts';
 import type { OpLogRepository } from '../op-repository.ts';
@@ -196,13 +196,72 @@ export interface RunSyncOutcome extends SyncSummary {
 export async function runSync(input: RunSyncInput): Promise<RunSyncOutcome> {
   const built = await buildSyncService(input);
   const summary = await built.service.sync();
-  return built.root === undefined ? summary : { ...summary, root: built.root };
+  // 能力降级要**说出来**：只读挂载不删旧快照（空间会涨）、不认条件写的网盘只能靠内容寻址兜底 ——
+  // 不说的话，用户只会看到"同步完成"却发现存储一直涨。
+  const notes = capabilityNotes(built.capabilities);
+  const merged = notes.length === 0 ? summary : { ...summary, warnings: [...summary.warnings, ...notes] };
+  return built.root === undefined ? merged : { ...merged, root: built.root };
+}
+
+/** 探测结果缓存的键：按远端分桶（换远端不能沿用）。 */
+const SYNC_CAPS_PREFIX = 'sync.caps.v1:';
+const SYNC_CAPS_TTL_MS = 24 * 3600 * 1000;
+
+interface CachedCapabilities {
+  at: number;
+  capabilities: BackendCapabilities;
+}
+
+async function readCachedCapabilities(input: RunSyncInput): Promise<BackendCapabilities | undefined> {
+  const key = `${SYNC_CAPS_PREFIX}${remoteIdOf(input.config, undefined)}`;
+  try {
+    const parsed = JSON.parse((await input.device.get(key)) ?? '') as CachedCapabilities;
+    if (typeof parsed.at !== 'number' || Date.now() - parsed.at > SYNC_CAPS_TTL_MS) return undefined;
+    return parsed.capabilities;
+  } catch {
+    return undefined;
+  }
+}
+
+/** 探测并返回能力（失败/后端没有 probe 就返回 undefined：能力未知时按后端声明的默认值处理）。 */
+async function refreshCapabilities(
+  input: RunSyncInput,
+  backend: SyncBackend,
+): Promise<BackendCapabilities | undefined> {
+  const probe = (backend as { probe?: () => Promise<BackendCapabilities> }).probe;
+  if (typeof probe !== 'function') return undefined;
+  try {
+    const cached = await readCachedCapabilities(input);
+    if (cached !== undefined) return cached;
+    const capabilities = await probe.call(backend);
+    const key = `${SYNC_CAPS_PREFIX}${remoteIdOf(input.config, undefined)}`;
+    await input.device.set(key, JSON.stringify({ at: Date.now(), capabilities } satisfies CachedCapabilities));
+    return capabilities;
+  } catch {
+    // 探测失败不影响同步：能力未知时按"都能做"处理，与后端声明的默认值一致
+    return undefined;
+  }
+}
+
+/** 缺哪个能力就说哪一句（有删除/有条件写时什么都不说）。导出来是为了能单测这段"必须说出来"的话。 */
+export function capabilityNotes(capabilities: BackendCapabilities | undefined): string[] {
+  if (capabilities === undefined) return [];
+  const notes: string[] = [];
+  if (!capabilities.delete) {
+    notes.push('这个远端不支持删除：旧快照与旧段都不会被回收，占用只涨不降（同步本身不受影响）');
+  }
+  if (!capabilities.conditionalPut) {
+    notes.push('这个远端不认条件写：并发写入靠内容寻址兜底（同名即同内容），只是可能多传一次');
+  }
+  return notes;
 }
 
 export interface BuiltSyncService {
   service: SyncService;
   /** 本地文件夹同步时，宿主解析出来的根目录（给界面显示）。 */
   root?: string;
+  /** 探测到的后端能力（缺能力时要在界面说明；探测不到就是 undefined）。 */
+  capabilities?: BackendCapabilities;
 }
 
 /**
@@ -249,6 +308,11 @@ export async function buildSyncService(input: RunSyncInput): Promise<BuiltSyncSe
   const graceDays = graceDaysText === '' ? Number.NaN : Number(graceDaysText);
   const graceMs = Number.isFinite(graceDays) && graceDays >= 0 ? Math.round(graceDays * 24 * 3600 * 1000) : undefined;
 
+  // 能力探测：后端有 `probe` 就真发几个请求问一遍（条件写 / 范围读 / 删除），结果按**远端**缓存一天。
+  // 为什么要缓存：探测本身要写一个探针对象再删掉，每次开面板都探会白花请求（计划的预算也盯着这个）。
+  // 为什么要探测：真实世界的哑存储差异很大 —— 只读挂载删不了、网盘目录不认条件写；不探测就只能假设。
+  const capabilities = await refreshCapabilities(input, backend);
+
   const service = await createSyncService({
     repository: input.repository,
     backend,
@@ -261,7 +325,11 @@ export async function buildSyncService(input: RunSyncInput): Promise<BuiltSyncSe
     ...(graceMs === undefined ? {} : { graceMs }),
   });
 
-  return root === undefined ? { service } : { service, root };
+  return {
+    service,
+    ...(root === undefined ? {} : { root }),
+    ...(capabilities === undefined ? {} : { capabilities }),
+  };
 }
 
 /** 同步用的设备 id 与 op 里的 deviceId 是同一个：先由 op-ports 的解析器生成过。 */

@@ -21,6 +21,20 @@ const user = process.env.WEBDAV_USER ?? '';
 const password = process.env.WEBDAV_PASSWORD ?? '';
 let requests = 0;
 
+/**
+ * 可降级开关 —— 用来验证"能力探测与降级"这条路（M6 计划里的一项）。
+ *
+ * 真实世界的哑存储差异很大：网盘目录常常没有条件写、老 NAS 没有范围读、只读挂载不能删。
+ * 光在代码里写"支持降级"不算数，得能把这些档位**真的造出来**跑一遍同步。
+ *
+ *   node scripts/mock-webdav.mjs 15197 .webdav-out --no-conditional
+ *   node scripts/mock-webdav.mjs 15197 .webdav-out --no-range --no-delete
+ */
+const flags = new Set(process.argv.slice(4));
+const noConditional = flags.has('--no-conditional') || process.env.WEBDAV_NO_CONDITIONAL === '1';
+const noRange = flags.has('--no-range') || process.env.WEBDAV_NO_RANGE === '1';
+const noDelete = flags.has('--no-delete') || process.env.WEBDAV_NO_DELETE === '1';
+
 const xmlEscape = (text) => text.replace(/[<>&'"]/g, (ch) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' })[ch]);
 
 /** URL 路径 → 磁盘路径；拒绝任何越界（`..`）访问。 */
@@ -135,6 +149,26 @@ const server = http.createServer((request, response) => {
         log(404);
         return;
       }
+      // 范围读：`--no-range` 时故意不支持，用来验证"探测到没有范围读"这一档。
+      const range = noRange ? null : /^bytes=(\d+)-(\d*)$/.exec(request.headers.range ?? '');
+      if (range !== null) {
+        const start = Number(range[1]);
+        const end = range[2] === '' ? bytes.length - 1 : Math.min(Number(range[2]), bytes.length - 1);
+        if (start > end || start >= bytes.length) {
+          response.writeHead(416, { 'content-range': `bytes */${bytes.length}` }).end();
+          log(416);
+          return;
+        }
+        const slice = bytes.subarray(start, end + 1);
+        response.writeHead(206, {
+          'content-type': 'application/octet-stream',
+          'content-length': String(slice.length),
+          'content-range': `bytes ${start}-${end}/${bytes.length}`,
+        });
+        response.end(method === 'HEAD' ? undefined : slice);
+        log(206);
+        return;
+      }
       response.writeHead(200, { 'content-type': 'application/octet-stream', 'content-length': String(bytes.length) });
       response.end(method === 'HEAD' ? undefined : bytes);
       log(200);
@@ -146,7 +180,7 @@ const server = http.createServer((request, response) => {
       for await (const chunk of request) chunks.push(chunk);
       const body = Buffer.concat(chunks);
       const exists = await stat(full).then(() => true).catch(() => false);
-      if (exists && request.headers['if-none-match'] !== undefined) {
+      if (exists && !noConditional && request.headers['if-none-match'] !== undefined) {
         response.writeHead(412).end('precondition failed');
         log(412);
         return;
@@ -159,6 +193,12 @@ const server = http.createServer((request, response) => {
     }
 
     if (method === 'DELETE') {
+      if (noDelete) {
+        // 真实世界里的只读挂载/不允许删的网盘：必须能"如实拒绝"，而不是假装删掉了
+        response.writeHead(403).end('delete disabled');
+        log(403);
+        return;
+      }
       const removed = await rm(full, { force: true }).then(() => true).catch(() => false);
       response.writeHead(removed ? 204 : 404).end();
       log(removed ? 204 : 404);
