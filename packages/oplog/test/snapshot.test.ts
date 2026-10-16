@@ -121,7 +121,9 @@ test('快照只含目标会话：其它会话与设置不受影响', () => {
 
 test('畸形快照必须整体拒绝', () => {
   assert.throws(() => validateSessionSnapshot(null), SnapshotError);
-  assert.throws(() => validateSessionSnapshot({ v: 2 }), /版本/);
+  // 版本 2 现在是合法的**增量**（相对 base）；"不支持的版本"要用别的号来试。
+  assert.throws(() => validateSessionSnapshot({ v: 99 }), /版本/);
+  assert.throws(() => validateSessionSnapshot({ v: 2, deviceId: 'a', blindSessionId: 'b', createdAt: 1, watermarks: {}, appliedOpIds: [], messages: [] }), /base/);
   assert.throws(() => validateSessionSnapshot({ v: 1, deviceId: 'a' }), /blindSessionId/);
   assert.throws(
     () => validateSessionSnapshot({ v: 1, deviceId: 'a', blindSessionId: 'b', createdAt: 1, watermarks: { x: 'nope' }, appliedOpIds: [], messages: [] }),
