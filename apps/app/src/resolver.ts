@@ -25,6 +25,9 @@ export const resolver: CompositionHost = {
       case '@storylantern/plugin-sync-s3':
         // S3 兼容对象存储（MinIO / R2 / B2 / AWS）：同样只用全局 fetch，SigV4 在插件里自实现
         return import('../../../plugins/sync-s3/src/index.ts');
+      case '@storylantern/plugin-tuner-agent':
+        // 调优助手（ADR-0003 侧信道）：只产出建议，写入必须经用户批准
+        return import('../../../plugins/tuner-agent/src/index.ts');
       // 注意：`plugin-sync-folder`（以及将来的 SMB/FTP 后端）依赖 node:fs / node:path，
       // 属于**桌面/移动壳**的能力，浏览器产物里刻意不提供。core bundle 把它标成 disabled，
       // 因此不会被解析；哪天真的在浏览器里启用它，激活会明确失败而不是静默降级。

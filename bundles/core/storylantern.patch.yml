@@ -46,6 +46,10 @@
     - id: sync-s3
       name: '@storylantern/plugin-sync-s3'
 
+    # 调优助手：侧信道（ADR-0003）——只产出建议，写入必须经用户批准
+    - id: tuner-agent
+      name: '@storylantern/plugin-tuner-agent'
+
     # 文件夹后端默认关闭：单机用户不需要，启用方式是在自己的 patch 里
     # 覆盖这一行为 disabled: false。
     - id: sync-folder

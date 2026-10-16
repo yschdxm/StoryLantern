@@ -40,6 +40,8 @@ const host: CompositionHost = {
         return import('../../../plugins/sync-webdav/src/index.ts');
       case '@storylantern/plugin-sync-s3':
         return import('../../../plugins/sync-s3/src/index.ts');
+      case '@storylantern/plugin-tuner-agent':
+        return import('../../../plugins/tuner-agent/src/index.ts');
       default:
         throw new Error(`未知插件包 ${name}`);
     }
@@ -53,10 +55,10 @@ test('bundle 清单：从 package.json 读出 patch 路径', async () => {
   assert.equal(bundlePatchOf({ name: 'x' }), undefined);
 });
 
-test('组合：core bundle 铺出 9 行，依赖驱动激活，禁用行不加载', async () => {
+test('组合：core bundle 铺出 10 行，依赖驱动激活，禁用行不加载', async () => {
   const patch = parseYaml(await readText('bundles/core/storylantern.patch.yml'));
   const composition = composeProfile([{ source: '@storylantern/bundle-core', rows: patch }]);
-  assert.equal(composition.size, 9);
+  assert.equal(composition.size, 10);
   assert.deepEqual(composition.warnings, []);
 
   const ctx = createContext();
@@ -73,6 +75,7 @@ test('组合：core bundle 铺出 9 行，依赖驱动激活，禁用行不加�
     'sync-memory': 'active',
     'sync-webdav': 'active',
     'sync-s3': 'active',
+    'tuner-agent': 'active',
     'sync-folder': 'disabled',
   });
 
@@ -137,7 +140,7 @@ test('bundle 叠加：sync bundle 覆盖 core 的禁用行并新增远端后端'
   assert.deepEqual(composition.warnings, [], '跨 bundle 覆盖不得产生警告');
   assert.equal(composition.get('sync-folder')?.disabled, false, 'sync bundle 打开 core 默认关闭的行');
   assert.equal(composition.get('sync-folder')?.source, '@storylantern/bundle-sync');
-  assert.equal(composition.size, 9, 'core 的 8 行 + 新增 1 行');
+  assert.equal(composition.size, 10, 'core 的 9 行 + 新增 1 行');
 
   const ctx = createContext();
   const tracker = new ActivationTracker();

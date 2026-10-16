@@ -1,0 +1,10 @@
+{
+  "name": "@storylantern/plugin-tuner-agent",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "调优助手（侧信道）：只看不改地给建议，经用户批准才写入，且可逐字节撤销",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}
