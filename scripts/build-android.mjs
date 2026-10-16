@@ -11,8 +11,17 @@ import { spawnSync } from 'node:child_process';
  *   node scripts/build-android.mjs --abi=arm64     # 只编手机那个 ABI
  *   node scripts/build-android.mjs --skip-frontend # 前端没改时跳过（省 1-2 分钟）
  *
- * 步骤（顺序不能变）：渠道（包名/显示名）→ 前端产物 → cargo(每个 ABI) → 拷 .so 进 jniLibs →
- * gradle → 汇总 APK + 校验 16KB 对齐。
+ * 步骤（顺序不能变）：原生覆盖 → 渠道（包名/显示名）→ 前端产物 → cargo(每个 ABI) → 拷 .so 进 jniLibs →
+ * **`tauri android build`**（由 CLI 驱动它自己的生成物 + gradle）→ 汇总 APK + 校验 16KB 对齐 + 验签。
+ *
+ * 为什么构建交给 `tauri android build` 而不是直接调 gradle：**CLI 会生成一批只有它会写的文件**
+ * （`tauri.settings.gradle`、`app/tauri.build.gradle.kts`、`generated/*.kt` …）。直接调 gradle 的写法
+ * 在我的机器上能跑，只是因为 `gen/` 里恰好留着以前 CLI 构建的产物；干净机器（CI）上会依次报
+ * "Could not read script …"、"Unresolved reference 'TauriActivity'"。**这是第一次真 runner 运行教我的事。**
+ * 我的补丁（渠道/签名）写在 `gen/android` 里，CLI 的 build **不会**覆盖那些文件（只有 init 会），所以照旧生效。
+ *
+ * 注：`--skip-frontend` 只能跳过本脚本自己那步前端构建；CLI 会按 tauri.conf.json 的 beforeBuildCommand
+ * 再跑一次（约 20 秒），这是为了"让 CLI 自己管自己的生成流程"付出的代价，换来的是干净机器上不再踩空。
  *
  * **渠道**（见 docs/PACKAGING.md 的矩阵）：
  *  - `--channel=test`（**默认**）：包名 `app.storylantern.test`，用**测试密钥**签（口令在仓库文档里），
@@ -75,8 +84,24 @@ if (keySource !== 'test' && keySource !== 'prod') {
   console.error(`--key 只能是 test / prod，收到 ${keySource}`);
   process.exit(1);
 }
+if (profile === 'release' && keySource === 'test') {
+  console.error('  ✗ --key=test 只用于 debug 包。release 构建必须用 --key=prod（GA 的测试渠道也是 --channel=test --key=prod）。');
+  console.error('    原因：CLI 驱动的构建没法把"用测试密钥签 release"传进 gradle（-- 之后的参数是给 runner 的），');
+  console.error('    而且"用公开口令的密钥签出来的 release 包"本来也没有发布价值。');
+  process.exit(1);
+}
 if (profile === 'release' && keySource === 'prod' && !existsSync(join(root, '.keystore', 'keystore.properties'))) {
   console.error('  ✗ --key=prod 需要 .keystore/keystore.properties（生成/还原方式见 docs/PACKAGING.md）');
+  process.exit(1);
+}
+
+/** CLI 入口：用绝对路径调用，不依赖 PATH 或 cwd。 */
+const tauriCli = [
+  join(root, 'node_modules', '@tauri-apps', 'cli', 'tauri.js'),
+  join(root, 'apps', 'shell', 'node_modules', '@tauri-apps', 'cli', 'tauri.js'),
+].find((candidate) => existsSync(candidate));
+if (tauriCli === undefined) {
+  console.error('  ✗ 找不到 @tauri-apps/cli（先跑 pnpm install）');
   process.exit(1);
 }
 
@@ -87,8 +112,8 @@ const ndkBin = join(sdk, 'ndk', ndkVersion, 'toolchains', 'llvm', 'prebuilt', nd
 const javaHome = process.env.JAVA_HOME ?? (process.platform === 'win32' ? 'C:\\Program Files\\Android\\Android Studio\\jbr' : '');
 
 const ABIS = [
-  { name: 'arm64', target: 'aarch64-linux-android', jni: 'arm64-v8a', gradleTask: 'assembleArm64Debug', releaseTask: 'assembleArm64Release', skipTask: '-x rustBuildArm64Debug', releaseSkipTask: '-x rustBuildArm64Release', apk: join('app/build/outputs/apk/arm64/debug/app-arm64-debug.apk'), apkRelease: join('app/build/outputs/apk/arm64/release/app-arm64-release.apk'), cc: `aarch64-linux-android24-clang${ccSuffix}` },
-  { name: 'x86_64', target: 'x86_64-linux-android', jni: 'x86_64', gradleTask: 'assembleX86_64Debug', releaseTask: 'assembleX86_64Release', skipTask: '-x rustBuildX86_64Debug', releaseSkipTask: '-x rustBuildX86_64Release', apk: join('app/build/outputs/apk/x86_64/debug/app-x86_64-debug.apk'), apkRelease: join('app/build/outputs/apk/x86_64/release/app-x86_64-release.apk'), cc: `x86_64-linux-android24-clang${ccSuffix}` },
+  { name: 'arm64', cliTarget: 'aarch64', target: 'aarch64-linux-android', jni: 'arm64-v8a', gradleTask: 'assembleArm64Debug', releaseTask: 'assembleArm64Release', skipTask: '-x rustBuildArm64Debug', releaseSkipTask: '-x rustBuildArm64Release', apk: join('app/build/outputs/apk/arm64/debug/app-arm64-debug.apk'), apkRelease: join('app/build/outputs/apk/arm64/release/app-arm64-release.apk'), cc: `aarch64-linux-android24-clang${ccSuffix}` },
+  { name: 'x86_64', cliTarget: 'x86_64', target: 'x86_64-linux-android', jni: 'x86_64', gradleTask: 'assembleX86_64Debug', releaseTask: 'assembleX86_64Release', skipTask: '-x rustBuildX86_64Debug', releaseSkipTask: '-x rustBuildX86_64Release', apk: join('app/build/outputs/apk/x86_64/debug/app-x86_64-debug.apk'), apkRelease: join('app/build/outputs/apk/x86_64/release/app-x86_64-release.apk'), cc: `x86_64-linux-android24-clang${ccSuffix}` },
 ];
 
 for (const [label, path] of [['Android SDK', sdk], ['NDK 工具链', ndkBin], ['JDK', javaHome]]) {
@@ -141,6 +166,29 @@ if (wanted.length === 0) {
   process.exit(1);
 }
 
+/**
+ * 构建由谁驱动：
+ *  - **Linux / macOS（CI 就在那儿）**：`tauri android build` —— 只有 CLI 会生成 `tauri.settings.gradle`、
+ *    `app/tauri.build.gradle.kts`、`generated/*.kt` 这批文件，直接调 gradle 在干净机器上必挂
+ *    （第一次真 runner 运行依次暴露了这三个）。
+ *  - **Windows**：CLI 会往 jniLibs 建**符号链接**，而没有开发者模式时系统不允许
+ *    （实测 `Creation symbolic link is not allowed for this system`）→ 走"复制 .so + 直接调 gradle"，
+ *    并用 `scripts/android-tauri-settings.mjs` 代 CLI 生成那两个文件（本机验证过逐字节一致）。
+ */
+const useCli = process.platform !== 'win32';
+
+/** Android 15+ 要求 16KB 页对齐：不对齐的 .so 在新设备上直接装不上，所以在这里拦下来。 */
+const checkAlignment = (so, abi) => {
+  const readelf = spawnSync(join(ndkBin, process.platform === 'win32' ? 'llvm-readelf.exe' : 'llvm-readelf'), ['-l', so], { encoding: 'utf8', shell: true }).stdout ?? '';
+  const load = readelf.split('\n').find((line) => line.includes('LOAD'));
+  const align = load === undefined ? '?' : load.trim().split(/\s+/).at(-1);
+  if (align !== '0x4000') {
+    console.error(`  ${abi.name} 的 LOAD 对齐是 ${align}，不是 0x4000（16KB）——装到 Android 15+ 设备会失败`);
+    process.exit(1);
+  }
+  console.log(`  LOAD 对齐 ${align}（16KB）✓`);
+};
+
 // 原生覆盖（MainActivity.kt / SafPlugin.kt）必须先套进 gen/android，否则改了 Kotlin 也不会生效——
 // 这一步以前是手工跑的，忘了就会用旧的覆盖去构建，产物看起来"成功"但行为没变。
 run('套用原生覆盖（MainActivity.kt / SafPlugin.kt → gen/android）', 'node', ['apps/shell/android/apply-overrides.mjs'], root, {});
@@ -158,7 +206,8 @@ if (!skipFrontend) {
   run('前端产物（Tauri 把 assets 编译进 .so，必须先跑）', 'node', ['apps/shell/build-frontend.mjs'], root, {});
 }
 
-for (const abi of wanted) {
+// Windows 那条老路才自己做 cargo + 拷 .so（CLI 路径下由 CLI 自己编、自己放进 jniLibs）。
+if (!useCli) for (const abi of wanted) {
   run(`cargo ${abi.target}`, 'cargo', ['build', '--release', '--target', abi.target, '--features', 'custom-protocol'], join(root, 'apps/shell/src-tauri'), rustEnv);
   const so = join(root, 'apps/shell/src-tauri/target', abi.target, 'release/libstorylantern_shell_lib.so');
   const dest = join(root, 'apps/shell/src-tauri/gen/android/app/src/main/jniLibs', abi.jni, 'libstorylantern_shell_lib.so');
@@ -177,18 +226,25 @@ for (const abi of wanted) {
   console.log(`  LOAD 对齐 ${align}（16KB）✓`);
 }
 
-// 我们绕过 `tauri android build` 直接调 gradle（为了自己控签名与渠道），所以要把 CLI 生成的两个文件补齐：
-// 缺 tauri.settings.gradle 时 Gradle 在 **settings 求值阶段**就失败（干净机器/CI 上实测过）。
-// **必须放在 cargo 之后**：那个文件指向本机 cargo registry 里的 tauri crate，而 crate 是
-// `cargo build` 时才下载下来的 —— 放前面的话 CI 上会找不到（第一次真跑就是这么失败的）。
-run('补齐 Tauri 生成物（tauri.settings.gradle / tauri.properties）', 'node', ['scripts/android-tauri-settings.mjs'], root, {});
-
-for (const abi of wanted) {
-  const task = profile === 'release' ? abi.releaseTask : abi.gradleTask;
-  const skip = profile === 'release' ? abi.releaseSkipTask : abi.skipTask;
-  // 签名密钥：测试密钥靠 -PslTestSigning 选 dev 配置；生产密钥走 keystore.properties（Gradle 里已有守卫）。
-  const extra = keySource === 'test' && profile === 'release' ? ['-PslTestSigning=1'] : [];
-  run(`gradle ${task}`, gradlewName, [task, '--no-daemon', '--no-configuration-cache', '--console=plain', skip, ...extra], join(root, 'apps/shell/src-tauri/gen/android'), gradleEnv);
+if (useCli) {
+  for (const abi of wanted) {
+    // 交给 CLI：它生成自己那批文件（tauri.settings.gradle / tauri.build.gradle.kts / generated/*.kt），
+    // 再跑 cargo + gradle。补丁（渠道/签名）写在 gen/android 里，CLI 的 build 不会覆盖它们。
+    const cliArgs = [tauriCli, 'android', 'build', '--apk', '--target', abi.cliTarget];
+    if (profile === 'debug') cliArgs.push('--debug');
+    run(`tauri android build（${abi.name} / ${profile}）`, process.execPath, cliArgs, join(root, 'apps', 'shell'), { ...rustEnv, ...gradleEnv });
+    // 进包的是 CLI 自己编出来的那个 .so，对齐要查它（不是我们早先那份 release .so）。
+    checkAlignment(join(root, 'apps/shell/src-tauri/target', abi.target, profile === 'debug' ? 'debug' : 'release', 'libstorylantern_shell_lib.so'), abi);
+  }
+} else {
+  // Windows：CLI 会往 jniLibs 建符号链接，没开开发者模式时系统不允许（实测报
+  // "Creation symbolic link is not allowed for this system"）→ 由我们代 CLI 生成那两个文件，再直接调 gradle。
+  run('补齐 Tauri 生成物（Windows 上由我们代 CLI 生成）', 'node', ['scripts/android-tauri-settings.mjs'], root, {});
+  for (const abi of wanted) {
+    const task = profile === 'release' ? abi.releaseTask : abi.gradleTask;
+    const skip = profile === 'release' ? abi.releaseSkipTask : abi.skipTask;
+    run(`gradle ${task}`, gradlewName, [task, '--no-daemon', '--no-configuration-cache', '--console=plain', skip], join(root, 'apps/shell/src-tauri/gen/android'), gradleEnv);
+  }
 }
 
 /** 用 apksigner 验签：签名是"声称"还是"事实"，只看这一步。 */

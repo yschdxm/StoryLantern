@@ -83,6 +83,9 @@ jobs:
       - name: 造测试密钥（口令是仓库文档里那串公开值，不是秘密）
         run: node scripts/make-android-keystore.mjs --channel=test
 
+      - name: 套签名补丁（debug 用刚造的测试密钥签，与本地一致）
+        run: node scripts/android-signing-setup.mjs
+
       - name: 构建 dev 渠道 debug APK —— 不需要任何 secret
         # 不能加 --skip-frontend：干净 checkout 里没有 apps/app/dist，而 Tauri 要把前端产物编进 .so
         env:
@@ -96,7 +99,7 @@ jobs:
         with:
           name: storylantern-android-test
           path: |
-            .apk-out/storylantern-test-*.apk
+            .apk-out/storylantern-dev-*.apk
             .apk-out/build-info.json
             release/SHA256SUMS*
           if-no-files-found: error

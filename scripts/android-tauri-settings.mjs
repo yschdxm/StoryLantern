@@ -2,14 +2,19 @@
 /**
  * 补齐 `gen/android` 里那两个 **Tauri CLI 生成的**文件。
  *
- * 为什么需要：为了自己控制**签名与渠道**（以及可比对的构建），`scripts/build-android.mjs` 绕过
- * `tauri android build` **直接调 gradle**。但 `settings.gradle` 第 3 行就 `apply from: 'tauri.settings.gradle'`，
+ * ⚠️ **构建已经不再调用这个脚本**：`build-android.mjs` 现在让 `tauri android build` 自己驱动，
+ * CLI 会生成它那批文件（含 `generated/*.kt`，那是直接调 gradle 时踩空的真正原因）。
+ * 这个脚本保留下来，作为**诊断/兜底**：想知道"某个文件到底该长什么样、该指向哪条路径"时跑它，
+ * 或者将来真需要绕过 CLI 时用它把缺的文件补上。它写出的内容与 CLI 的**逐字节一致**（本机实测过）。
+ *
+ * 下面这段记录了这个发现的过程，别删：
+ * 为了自己控制**签名与渠道**（以及可比对的构建），`build-android.mjs` 曾经绕过 `tauri android build`
+ * **直接调 gradle**。但 `settings.gradle` 第 3 行就 `apply from: 'tauri.settings.gradle'`，
  * 那个文件是 CLI 生成的 —— 干净机器上没有它，Gradle 直接失败：
  *   `Could not read script '.../gen/android/tauri.settings.gradle' as it does not exist.`
  * 这正是**第一次真 runner 运行**抓到的（本机能跑，是因为我的 `gen/` 里恰好留着上次 CLI 构建的产物）。
- *
- * 文件内容指向**本机 cargo registry 里的 tauri crate**（绝对路径），所以每台机器必须自己算，
- * 不能把某台机器的路径提交进去（本机用的是 aliyun 镜像，CI 用的是 crates.io，路径完全不同）。
+ * 补上之后又依次暴露 `app/tauri.build.gradle.kts` 与 `generated/*.kt`（Kotlin 报 `Unresolved reference 'TauriActivity'`）
+ * —— 结论是：**别跟工具较劲，让 CLI 生成它自己的东西**。
  *
  * 用法：node scripts/android-tauri-settings.mjs
  */
