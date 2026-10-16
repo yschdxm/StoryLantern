@@ -72,15 +72,16 @@ if (!gradle.includes(wantId)) {
 // ---- 2) versionName（显示用）+ 3) versionCode（升级判断用：只有生产渠道固定）----
 const wantName = `${baseVersion}${target.versionSuffix}`;
 const nameLine = /versionName = tauriProperties\.getProperty\("tauri\.android\.versionName", "[^"]*"\)/;
-if (channel === 'prod') {
+// test 与 prod 都用**由版本号算出来的** versionCode（两者包名不同，各自单调即可）；
+// dev 是本地 debug 包，不参与升级判断，保持生成时的默认值。
+if (channel !== 'dev') {
   const code = versionCodeOf(baseVersion);
   if (code === undefined) fail(`tauri.conf.json 里的 version 不是 x.y.z 形式：${baseVersion}`);
   const codeLine = /versionCode = tauriProperties\.getProperty\("tauri\.android\.versionCode", "\d+"\)\.toInt\(\)/;
   if (!codeLine.test(gradle)) fail('生成文件里找不到 versionCode 行（Tauri 的结构变了）');
   gradle = gradle.replace(codeLine, `versionCode = ${code}`);
   gradle = gradle.replace(/versionCode = \d+/, `versionCode = ${code}`);
-  if (!gradle.includes(`versionCode = ${code}`)) changes.push(`versionCode → ${code}（由 ${baseVersion} 算出，生产版不许回退）`);
-  else changes.push(`versionCode = ${code}（生产版；由 ${baseVersion} 算出）`);
+  changes.push(`versionCode = ${code}（由 ${baseVersion} 算出）`);
 }
 if (nameLine.test(gradle)) {
   const next = gradle.replace(nameLine, `versionName = "${wantName}"`);
