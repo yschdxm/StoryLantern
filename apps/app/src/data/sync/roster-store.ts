@@ -1,8 +1,13 @@
 import {
   DeviceRosterList,
+  assessRosterTrust,
   parseRoster,
   serializeRoster,
+  stampRoster,
   type DeviceRecord,
+  type RosterStamp,
+  type RosterStampPort,
+  type RosterTrust,
 } from '../../../../../packages/sync-core/src/index.ts';
 import type { DeviceStore } from '../op-ports.ts';
 
@@ -15,6 +20,11 @@ import type { DeviceStore } from '../op-ports.ts';
  */
 
 export const ROSTER_KEY = 'sync.roster.v1';
+/**
+ * 本机配置的**管理密钥公钥**（十六进制）。配了它，就要求名单必须被这把密钥盖章 ——
+ * 这是文档里那句"管理密钥签发；没盖章不认"的落点。
+ */
+export const ROSTER_MANAGEMENT_KEY = 'sync.roster.management.v1';
 
 export async function loadRoster(device: DeviceStore): Promise<DeviceRosterList> {
   const raw = await device.get(ROSTER_KEY);
@@ -25,6 +35,78 @@ export async function loadRoster(device: DeviceStore): Promise<DeviceRosterList>
     // 名单坏了不阻塞同步：当作"还没有名单"，下次同步会重新发现设备
     return new DeviceRosterList();
   }
+}
+
+/**
+ * **检查过**地读名单：验管理密钥的章，并把信任结论如实交给调用方。
+ *
+ * 与 `loadRoster` 的区别就是"配了管理密钥时不许含糊"：
+ *  - 本机没配管理密钥 → 行为与旧路径一致（`trust: 'unstamped'`，仍返回名单）；
+ *  - 本机配了管理密钥 → 只有 `stamped-verified` 才算可信，其余三种（没盖章 / 章是别的密钥 /
+ *    签名验不过）**都不认**：调用方应当拒绝使用这份名单（而不是"当作空名单继续同步"——
+ *    那等于让攻击者用一份改过的名单换掉我们的名单）。
+ *
+ * 旧函数保留原样，所以现有调用点不会因为这个改动而改变行为；调用方按需切过来。
+ */
+export async function loadRosterChecked(
+  device: DeviceStore,
+  options: { port: RosterStampPort; expectedManagementKey?: string },
+): Promise<{ roster: DeviceRosterList; trust: RosterTrust; message: string; stamp?: RosterStamp }> {
+  const raw = await device.get(ROSTER_KEY);
+  if (raw === undefined || raw === '') {
+    return { roster: new DeviceRosterList(), trust: 'unstamped', message: '本地还没有名单' };
+  }
+  try {
+    const result = await assessRosterTrust({
+      text: raw,
+      port: options.port,
+      ...(options.expectedManagementKey === undefined ? {} : { expectedManagementKey: options.expectedManagementKey }),
+    });
+    return {
+      roster: result.roster,
+      trust: result.trust,
+      message: result.message,
+      ...(result.stamp === undefined ? {} : { stamp: result.stamp }),
+    };
+  } catch (error) {
+    // 文本都解析不了：与旧路径一致，当作"还没有名单"，但把原因带出去
+    return {
+      roster: new DeviceRosterList(),
+      trust: 'bad-signature',
+      message: `名单解析失败：${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
+/** 把本机的管理密钥公钥记下来（配了它之后，未盖章的名单就不认了）。 */
+export async function setManagementKey(device: DeviceStore, publicKeyHex: string): Promise<void> {
+  await device.set(ROSTER_MANAGEMENT_KEY, publicKeyHex);
+}
+
+/** 读本机配置的管理密钥公钥（没配返回 undefined）。 */
+export async function getManagementKey(device: DeviceStore): Promise<string | undefined> {
+  const value = await device.get(ROSTER_MANAGEMENT_KEY);
+  return value === undefined || value === '' ? undefined : value;
+}
+
+/**
+ * 用管理密钥**给名单盖章**并落盘（私钥由调用方提供，不落盘、不留存）。
+ * 盖完之后，任何配了同一把管理密钥公钥的设备都要求"必须有章"，改一个字节都验不过。
+ */
+export async function saveStampedRoster(
+  device: DeviceStore,
+  roster: DeviceRosterList,
+  options: { port: RosterStampPort; managementPrivateKey: string; managementPublicKey: string; at: number },
+): Promise<RosterStamp> {
+  const stamp = await stampRoster({
+    roster,
+    managementPrivateKey: options.managementPrivateKey,
+    managementPublicKey: options.managementPublicKey,
+    port: options.port,
+    at: options.at,
+  });
+  await device.set(ROSTER_KEY, serializeRoster(roster, { stamp }));
+  return stamp;
 }
 
 export async function saveRoster(device: DeviceStore, roster: DeviceRosterList): Promise<void> {
