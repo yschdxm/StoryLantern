@@ -6,6 +6,7 @@ import type { AppState, AppStore } from '../app/state.ts';
 import type { ChatClient } from '../data/chat-client.ts';
 import type { HostClient } from '../host-panel.ts';
 import type { WireTransport } from '../../../../packages/wire/src/index.ts';
+import type { TunerStore } from '../data/op-tuner-store.ts';
 
 /** 每个界面都能拿到的几样东西：状态/动作、路由、宿主诊断、聊天（模型）、op 日志（M1 之后的事实源）。 */
 export interface ScreenProps {
@@ -19,6 +20,10 @@ export interface ScreenProps {
   ops?: OpLogAdmin;
   /** 同步：只有 op-log 仓储 + 配置齐全时才有。 */
   sync?: SyncAdmin;
+  /**
+   * 调优助手（M5）：只看不改地列建议；应用/撤销都要用户点。没有它（浏览器最小实现）就不显示面板。
+   */
+  tuner?: TunerStore;
   /** 组装管线（来自组合出来的插件）。缺省时 prompt.ts 走兜底拼接，并在面板里说明。 */
   assemble?: AssembleFn;
 }

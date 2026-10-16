@@ -328,6 +328,7 @@ function Root(): ReturnType<typeof AppShell> {
             {...(transport === undefined ? {} : { transport })}
             {...(opAdmin === undefined ? {} : { ops: opAdmin })}
             {...(syncAdmin === undefined ? {} : { sync: syncAdmin })}
+            {...(repository.tuner === undefined ? {} : { tuner: repository.tuner })}
             plugins={boot.runtime?.tracker.list().map((outcome) => ({ id: outcome.id, status: outcome.status })) ?? []}
             locales={boot.locale.locales()}
             onLocaleChange={(next) => {
