@@ -20,7 +20,7 @@ import { createPasswordProofPort, createPortsFromContentKey } from './crypto.ts'
 import { rotateKeyring } from '../../../../../packages/sync-core/src/keyring-store.ts';
 import { publishRecoveryKey } from './recovery-publish.ts';
 import { acceptJoinRequests, publishJoinRequest } from './join-flow.ts';
-import { describeDevice, loadRoster, mergeRoster, saveRoster } from './roster-store.ts';
+import { describeDevice, loadTrustedRoster, mergeRoster, saveRoster, type RosterStampPort } from './roster-store.ts';
 /** 同步服务：把 op 段推到"哑存储"，再从那儿拉回来。 */
 
 export interface SyncStorePort {
@@ -70,6 +70,7 @@ export interface SyncServiceOptions {
   store: SyncStorePort;
   /** 设备本地 kv：设备名单放在这里（吊销必须能跨重启保持）。 */
   device: DeviceStore;
+  /** 名单盖章端口（配了管理密钥时用它验章；没配则不参与）。 */ stampPort?: RosterStampPort;
   /** GC 宽限期（毫秒）：回收不可恢复，默认 30 天，宁可多占空间。 */
   graceMs?: number;
   now?: () => number;
@@ -197,7 +198,7 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
     }
 
     // 本地名单（含吊销） + 这次发现的设备；本机永远在里面且不被吊销
-    const persisted = await loadRoster(options.device);
+    const persisted = await loadTrustedRoster(options.device, { port: options.stampPort });
     const { roster } = mergeRoster(persisted, discovered, { selfId: options.deviceId, now: now() });
     await saveRoster(options.device, roster);
     // 每台设备自己的"锁和钥匙"：公钥随设备清单发布，供对端验签
@@ -209,9 +210,7 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
       roster,
       blindKey: keys.blindKey,
       clock: new HlcClock({ now }),
-      // 阈值 = 自上次快照以来攒多少段才再发一份**快照**（整份，或相对上一份的增量）。实测
-      // （snapshot-cost.test.ts）：4→上传 11 次、8→5 次、16→1 次；400 条会话每份约 21 KB，故取 16。
-      // 代价：新设备多重放十几个**很小的**段（10k op 合并实测 63 ms），可忽略。
+      // 攒够多少段才再发一份快照：取值依据与实测数字见 snapshot-cost.test.ts 与 M4-STATUS 第五十九节。
       snapshotThreshold: 16,
     };
     if (restored !== undefined) engineOptions.state = restored;
@@ -352,7 +351,7 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
 
     async revoke(deviceId: string): Promise<boolean> {
       if (deviceId === options.deviceId) return false;
-      const roster = await loadRoster(options.device);
+      const roster = await loadTrustedRoster(options.device, { port: options.stampPort });
       const changed = roster.revoke(deviceId, now());
       if (changed) await saveRoster(options.device, roster);
       return changed;

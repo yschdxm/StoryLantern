@@ -11,6 +11,9 @@ import {
 } from '../../../../../packages/sync-core/src/index.ts';
 import type { DeviceStore } from '../op-ports.ts';
 
+/** 让调用方不用再多写一行 import（service.ts 贴着 400 行门禁）。 */
+export type { RosterStampPort };
+
 /**
  * 设备名单的本地持久化。
  *
@@ -81,6 +84,27 @@ export async function loadRosterChecked(
 /** 把本机的管理密钥公钥记下来（配了它之后，未盖章的名单就不认了）。 */
 export async function setManagementKey(device: DeviceStore, publicKeyHex: string): Promise<void> {
   await device.set(ROSTER_MANAGEMENT_KEY, publicKeyHex);
+}
+
+/**
+ * 同步路径该用的读法：**配了管理密钥就必须验过章，否则直接抛**。
+ *
+ * 为什么是"抛"而不是"当作空名单继续"：名单决定"谁的内容可信"、也决定 GC 能回收什么。
+ * 一份来路不明（或被人改过）的名单如果被当成"空名单"用，攻击者只要把名单换掉就能让回收判定跑偏；
+ * 抛出去让这条同步失败、并把原因显示给用户，才是"不认"的正确含义。
+ *
+ * 没配管理密钥（默认情况）时与旧行为**一字不差**。
+ */
+export async function loadTrustedRoster(
+  device: DeviceStore,
+  // `| undefined` 是显式写的：项目开了 exactOptionalPropertyTypes，调用方传 `options.stampPort`（可能 undefined）才编得过
+  options: { port?: RosterStampPort | undefined } = {},
+): Promise<DeviceRosterList> {
+  const expected = await getManagementKey(device);
+  if (expected === undefined || options.port === undefined) return loadRoster(device);
+  const checked = await loadRosterChecked(device, { port: options.port, expectedManagementKey: expected });
+  if (checked.trust !== 'stamped-verified') throw new Error(checked.message);
+  return checked.roster;
 }
 
 /** 读本机配置的管理密钥公钥（没配返回 undefined）。 */
