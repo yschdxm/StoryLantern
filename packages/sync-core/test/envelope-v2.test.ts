@@ -14,7 +14,7 @@ import {
 /**
  * 信封 v2（B′）：manifest 与 snapshot 共用的"压缩 + 可选加密 + 可选签名"。
  *
- * 换的理由（实测，见 scripts/measure-envelope.mjs 与 docs/M3-STATUS.md 二·补13）：v1 是
+ * 换的理由（实测，见 scripts/measure-envelope.mjs 与 DEVELOPMENT.md 二·补13）：v1 是
  * **先 seal 加密 → 密文 base64 塞进 JSON → 最后才 gzip 整个 JSON**，gzip 面对 base64 文本几乎压不动。
  * 6.6MB 的快照体：v1 输出 6,645,232 B、耗时 639ms；v2（先 gzip → 再 seal → 二进制拼帧）
  * 输出 660,989 B、51ms —— **10× 更小、12.5× 更快**。

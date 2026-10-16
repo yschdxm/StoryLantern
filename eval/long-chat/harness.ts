@@ -7,7 +7,7 @@ import type { ChatCall, ChatClient } from '../../apps/app/src/data/chat-client.t
  *
  * 为什么需要它：PLAN 的 M4 判据之一是"事实题正确率 ≥90% 且引用正确"。要量这个，就得先能
  * **把一次模型调用完整录下来、离线重放、并按答案键判分**；否则每次测量都依赖"当时那个模型"，
- * 数字不可比、也不可复现（见 docs/M4-STATUS.md 第六节）。
+ * 数字不可比、也不可复现（见 DEVELOPMENT.md 第六节）。
  *
  * 三条不越界的设计：
  * 1. **回放缺席即报错**（`createReplayClient` 默认 `onMiss: 'throw'`）——绝不在没有录制的情况下
@@ -288,7 +288,7 @@ export interface ScoreSummary {
  *
  * 这是个字符串判分器 —— 严苛、可能与措辞冲突，但确定性、可审计、不引入第二个模型。
  * "引用正确"这一项需要答案里带上源消息的标识；**今天的装配没有把消息 id 交给模型**，
- * 所以现在只能判"事实对不对"，判不了"引用对不对"（见 docs/M4-STATUS.md）。
+ * 所以现在只能判"事实对不对"，判不了"引用对不对"（见 DEVELOPMENT.md）。
  */
 export function scoreProbes(probes: readonly Probe[], answers: ReadonlyMap<string, string>): ScoreSummary {
   const outcomes = probes.map((probe) => {

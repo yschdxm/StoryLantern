@@ -37,7 +37,7 @@ let text;
 try {
   text = readFileSync(GRADLE, 'utf8');
 } catch {
-  fail(`找不到 ${path.relative(ROOT, GRADLE)}：先跑一次 Tauri 的 Android init/构建（见 docs/PACKAGING.md）`);
+  fail(`找不到 ${path.relative(ROOT, GRADLE)}：先跑一次 Tauri 的 Android init/构建（见 DEVELOPMENT.md）`);
 }
 
 // 生成的工程里 `java` 是 JavaPluginExtension 不是包名 → `java.util.Properties()` 编不过。
@@ -99,7 +99,7 @@ if (existingStart >= 0) {
 
 // ---- 2) 在 buildTypes 之前插入我们的块 ----
 const buildTypesIndex = findLine(0, (line) => line.trim() === 'buildTypes {');
-if (buildTypesIndex < 0) fail('找不到 buildTypes（Tauri 模板结构变了，请照 docs/PACKAGING.md 手工接）');
+if (buildTypesIndex < 0) fail('找不到 buildTypes（Tauri 模板结构变了，请照 DEVELOPMENT.md 手工接）');
 lines = [...lines.slice(0, buildTypesIndex), ...signingBlock, ...lines.slice(buildTypesIndex)];
 
 // ---- 3) debug buildType 用 dev 配置 ----
@@ -119,7 +119,7 @@ const releaseLines = [
   '                val asked = gradle.startParameter.taskNames.any { it.contains("release", ignoreCase = true) }',
   '                if (asked) {',
   '                    throw GradleException(',
-  '                        "发布构建需要 .keystore/keystore.properties（生成方式见 docs/PACKAGING.md）。" +',
+  '                        "发布构建需要 .keystore/keystore.properties（生成方式见 DEVELOPMENT.md）。" +',
   '                        "release 不再回退到测试密钥：它的口令写在仓库文档里，签出来的包没有安全性。"',
   '                    )',
   '                }',

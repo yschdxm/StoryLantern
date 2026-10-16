@@ -12,7 +12,7 @@ import type { LocalSyncState } from '../../../packages/sync-core/src/state.ts';
 /**
  * `service.ban()` 的**端到端**覆盖。
  *
- * 为什么专门加这一条：真机上点「永久禁用」后 `keyring.json` 仍是 epoch 1（详见 docs/M2-STATUS.md），
+ * 为什么专门加这一条：真机上点「永久禁用」后 `keyring.json` 仍是 epoch 1（详见 DEVELOPMENT.md），
  * 需要判定"是点击没中"还是"实现有 bug"。这个测试走的是设备上走的同一段代码
  * （`ban` → 写黑名单 → `rotateKeyring` → 落盘），所以它红就是实现的锅、绿就是点击的锅。
  *

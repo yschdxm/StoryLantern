@@ -68,7 +68,7 @@ jobs:
         shell: bash
         run: |
           if [ -z "$ANDROID_KEYSTORE_BASE64" ] || [ -z "$ANDROID_KEYSTORE_PROPERTIES" ]; then
-            echo "::error::缺少 ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PROPERTIES：正式发布必须用生产密钥签名（docs/PACKAGING.md）"
+            echo "::error::缺少 ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PROPERTIES：正式发布必须用生产密钥签名（DEVELOPMENT.md）"
             exit 1
           fi
           mkdir -p .keystore

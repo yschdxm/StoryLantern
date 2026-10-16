@@ -6,7 +6,7 @@ import { SegmentError, signaturePayload, type SegmentHeader, type SegmentTrailer
 /**
  * 段格式 v2 的编解码：**先压缩、再加密**，密文用二进制拼帧（不再套 base64）。
  *
- * 为什么换（都有实测，见 docs/M3-STATUS.md 与 scripts/measure-segment-codec.mjs）：
+ * 为什么换（都有实测，见 DEVELOPMENT.md 与 scripts/measure-segment-codec.mjs）：
  * v1 是"先 seal 加密再 gzip"，gzip 面对密文压不动（实测 1.00×），密文又被 base64 撑大 33%
  * → 现状是"零压缩 + 五套方案里最慢的那个"。v2 实测 9-24×、打包快约 4.7 倍、解包快约 18 倍。
  *

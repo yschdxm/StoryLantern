@@ -28,7 +28,7 @@ import path from 'node:path';
  * 本地文件夹的文件端口（Node 版）。
  *
  * 工具侧直接用 fs：这里的 `root` 由使用者给出，且只在开发机上跑。
- * 应用里那份走宿主的 `files.*`（见文件夹后端的实现与 docs/M1-SYNC.md）。
+ * 应用里那份走宿主的 `files.*`（见文件夹后端的实现与 DEVELOPMENT.md）。
  */
 function createNodeFiles(root: string): FilePort {
   const resolve = (relative: string): string => {

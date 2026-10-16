@@ -1,4 +1,4 @@
-﻿import { test } from 'node:test';
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { HlcClock } from '../src/hlc.ts';
 import { encodeOp, messageAppend } from '../src/op.ts';
@@ -10,7 +10,7 @@ import { packSegment, unpackSegment, peekSegment, SEGMENT_FORMAT_VERSION } from 
  *
  * 为什么换（都有实测）：v1 是"先加密再 gzip"，gzip 面对密文压不动（实测 1.00×），
  * 密文又被 base64 撑大 33% → 现状是"零压缩 + 五套方案里最慢"。v2 的实测压缩比 9-24×，
- * 打包快约 4.7 倍、解包快约 18 倍（见 scripts/measure-segment-codec.mjs 与 docs/M3-STATUS.md）。
+ * 打包快约 4.7 倍、解包快约 18 倍（见 scripts/measure-segment-codec.mjs 与 DEVELOPMENT.md）。
  *
  * 本文件钉住四件事：v2 往返一致、压缩比达标（PLAN §11 的 ≥3×）、**老段（v1）仍读得出来**、peek 照常。
  */

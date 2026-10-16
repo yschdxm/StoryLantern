@@ -6,7 +6,7 @@ name: ci
 #  - GA 测试包：release-test.yml（**release 形态，与生产只差包名和版本号**，用生产密钥签）
 #  - GA 生产包：release-prod.yml（打 v* tag）
 # 原因：release 路径才包含 R8/混淆/资源压缩/剥离符号/签名/校验和 —— 用 debug 形态"验打包流程"等于没验；
-# debug 形态只留在开发机上（迭代快）。分工与矩阵见 docs/PACKAGING.md。
+# debug 形态只留在开发机上（迭代快）。分工与矩阵见 DEVELOPMENT.md。
 
 on:
   push:

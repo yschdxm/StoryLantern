@@ -10,7 +10,7 @@ import { writeFileSync } from 'node:fs';
  *   MOCK_TTFT_MS=300 node scripts/mock-openai.mjs 15198     # 另开一个终端/后台跑
  *   node scripts/measure-ttft.mjs http://127.0.0.1:15198/v1 5
  *
- * 输出每次的首片毫秒数与中位数；数字直接抄进 docs/M3-STATUS.md。
+ * 输出每次的首片毫秒数与中位数；数字直接抄进 DEVELOPMENT.md。
  */
 
 const base = process.argv[2] ?? 'http://127.0.0.1:15198/v1';

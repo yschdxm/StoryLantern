@@ -47,7 +47,7 @@ export function encodeDavPath(path: string): string {
 }
 
 /**
- * 把 HTTP 状态变成**可行动**的话 —— 这些依据来自官方文档（见 docs/WEBDAV-PROVIDERS.md）：
+ * 把 HTTP 状态变成**可行动**的话 —— 这些依据来自官方文档（见 DEVELOPMENT.md）：
  *  - `429`：免费网盘普遍有请求频率上限（坚果云官方：免费版每 30 分钟 ≤600 次、付费 ≤1500 次），
  *    所以要告诉用户"稍后再试"，而不是丢一个光秃秃的状态码；
  *  - `507`：远端配额不足（Nextcloud 在 `OC-Total-Length` 不足时会更快中止）；

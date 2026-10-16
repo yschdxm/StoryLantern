@@ -4,7 +4,7 @@ import { createKeyring, openKeyring } from '../../../packages/sync-core/src/keyr
 import { createWebCryptoKeyWrap, curveOfPublicKey, detectKeyWrapSupport } from '../src/data/sync/envelope.ts';
 
 /**
- * 包钥匙：**只剩 P-256**（旧曲线 X25519 的实现已删除，依据见 docs/M4-STATUS.md 第六十三节）。
+ * 包钥匙：**只剩 P-256**（旧曲线 X25519 的实现已删除，依据见 DEVELOPMENT.md 第六十三节）。
  *
  * 背景（真机踩出来的）：最早用 X25519，但真机 WebView（Chrome）没有 WebCrypto X25519，
  * 于是真机根本加入不了共享目录 → 改成 **P-256**（全平台都有）。

@@ -72,7 +72,7 @@ jobs:
       - name: 缺少生产密钥就明确失败（不产出"看起来正常"的包）
         if: env.ANDROID_KEYSTORE_BASE64 == '' || env.ANDROID_KEYSTORE_PROPERTIES == ''
         run: |
-          echo "::error::缺少 ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PROPERTIES 两个 secret；测试渠道也要求生产密钥签名（见 docs/PACKAGING.md）"
+          echo "::error::缺少 ANDROID_KEYSTORE_BASE64 / ANDROID_KEYSTORE_PROPERTIES 两个 secret；测试渠道也要求生产密钥签名（见 DEVELOPMENT.md）"
           exit 1
 
       - name: 构建测试渠道 APK（生产密钥签）

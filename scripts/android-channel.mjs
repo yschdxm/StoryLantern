@@ -50,7 +50,7 @@ const channel = arg('channel', 'dev');
 const target = CHANNELS[channel];
 if (target === undefined) fail(`--channel 只能是 dev / test / prod，收到 ${channel}`);
 if (!existsSync(GRADLE)) {
-  fail(`找不到 ${path.relative(ROOT, GRADLE)}：先跑一次 Tauri 的 Android init/构建（见 docs/PACKAGING.md）`);
+  fail(`找不到 ${path.relative(ROOT, GRADLE)}：先跑一次 Tauri 的 Android init/构建（见 DEVELOPMENT.md）`);
 }
 
 const changes = [];
@@ -61,7 +61,7 @@ const baseVersion = existsSync(TAURI_CONF)
 // ---- 1) applicationId ----
 let gradle = readFileSync(GRADLE, 'utf8');
 const idLine = /applicationId = "[^"]*"/;
-if (!idLine.test(gradle)) fail('生成文件里找不到 applicationId（Tauri 的结构变了，请照 docs/PACKAGING.md 手工改）');
+if (!idLine.test(gradle)) fail('生成文件里找不到 applicationId（Tauri 的结构变了，请照 DEVELOPMENT.md 手工改）');
 const wantId = `applicationId = "${target.applicationId}"`;
 if (!gradle.includes(wantId)) {
   const before = idLine.exec(gradle)?.[0];

@@ -34,7 +34,7 @@ function fail(message) {
   process.exit(1);
 }
 
-if (!existsSync(GEN)) fail(`找不到 ${path.relative(ROOT, GEN)}：先跑一次 tauri android init（见 docs/PACKAGING.md）`);
+if (!existsSync(GEN)) fail(`找不到 ${path.relative(ROOT, GEN)}：先跑一次 tauri android init（见 DEVELOPMENT.md）`);
 
 /** 从 Cargo.lock 读 tauri 的版本（不解析整个 lock，只找那一段）。 */
 function tauriVersion() {

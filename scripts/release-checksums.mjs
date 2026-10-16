@@ -8,7 +8,7 @@
  * 用户拿到的是一份可验证的来源：哈希对不上就说明文件变了，签名对不上就说明清单被人动过。
  *
  * 这**不等于**代码签名证书的效果：SmartScreen / Gatekeeper 仍然会警告（因为那是操作系统
- * 按"发行者身份"给信任，而我们没有付费身份）。两者的区别写在 docs/SIGNING.md 里，不混为一谈。
+ * 按"发行者身份"给信任，而我们没有付费身份）。两者的区别写在 DEVELOPMENT.md 里，不混为一谈。
  *
  * 用法：
  *   node scripts/release-checksums.mjs                 # 扫 .apk-out/ 与桌面 target/release 的产物

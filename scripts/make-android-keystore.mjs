@@ -19,7 +19,7 @@
  *   node scripts/make-android-keystore.mjs --out "%TEMP%" --name sl-test.jks --props "%TEMP%\sl-test.properties" --dname "CN=Throwaway, O=Story Lantern, C=CN"
  *
  * 生成之后请**立刻离机备份**（加密压缩 + 至少两份），并把口令存进密码管理器 ——
- * 丢了它，Android 不允许用新密钥覆盖安装（见 docs/SIGNING.md 第三节）。
+ * 丢了它，Android 不允许用新密钥覆盖安装（见 DEVELOPMENT.md 第三节）。
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
@@ -121,7 +121,7 @@ console.log(`    properties: ${propsPath}`);
 console.log(`    别名 ${ALIAS} / RSA ${keysize} / 有效期 ${validityDays} 天 / PKCS12`);
 if (isTest) {
   console.log('    ⚠️ 这是**测试密钥**：口令是公开的（storylantern-dev），只用来签本机/CI 的测试包；');
-  console.log('       正式发布必须用发布密钥（不加 --channel=test），见 docs/PACKAGING.md 的密钥矩阵。');
+  console.log('       正式发布必须用发布密钥（不加 --channel=test），见 DEVELOPMENT.md 的密钥矩阵。');
 } else {
   console.log('    自己核对（不需要口令就能看证书指纹）：');
   console.log(`      keytool -list -v -keystore "${keystorePath}" -alias ${ALIAS}`);

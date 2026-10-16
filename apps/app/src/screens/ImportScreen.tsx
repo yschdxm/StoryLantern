@@ -112,7 +112,7 @@ export function ImportScreen({ store, router }: ScreenProps): ReactNode {
           sessions += 1;
           // 批量写入：整本历史只发生**一次**仓储写入。
           // 以前是逐条 appendMessage + 逐条 appendCandidates：真机上 1 万条就是 1 万次 IPC + 1 万次事务，
-          // 实测 ≥180 秒仍未完成（见 docs/M3-STATUS.md 的《导入瓶颈》两节）。
+          // 实测 ≥180 秒仍未完成（见 DEVELOPMENT.md 的《导入瓶颈》两节）。
           await store.actions.appendMany(
             session.id,
             plan.messages.map((message) => ({

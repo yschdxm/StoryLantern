@@ -23,7 +23,7 @@ import { spawnSync } from 'node:child_process';
  * 注：`--skip-frontend` 只能跳过本脚本自己那步前端构建；CLI 会按 tauri.conf.json 的 beforeBuildCommand
  * 再跑一次（约 20 秒），这是为了"让 CLI 自己管自己的生成流程"付出的代价，换来的是干净机器上不再踩空。
  *
- * **渠道**（见 docs/PACKAGING.md 的矩阵）：
+ * **渠道**（见 DEVELOPMENT.md 的矩阵）：
  *  - `--channel=test`（**默认**）：包名 `app.storylantern.test`，用**测试密钥**签（口令在仓库文档里），
  *    只做"打包后功能测试"，能与正式包同时装在手机上；
  *  - `--channel=prod`：包名 `app.storylantern`，release 用 `.keystore/keystore.properties` 指向的
@@ -44,14 +44,14 @@ const flag = (name, fallback) => {
 };
 const abiFilter = flag('abi', 'both');
 const skipFrontend = args.includes('--skip-frontend');
-/** 渠道：默认 `dev`（本地/CI 的测试包）。三个渠道的包名互不相同（见 docs/PACKAGING.md）。 */
+/** 渠道：默认 `dev`（本地/CI 的测试包）。三个渠道的包名互不相同（见 DEVELOPMENT.md）。 */
 const channel = flag('channel', 'dev');
 if (!['dev', 'test', 'prod'].includes(channel)) {
   console.error(`--channel 只能是 dev / test / prod，收到 ${channel}`);
   process.exit(1);
 }
 if (channel === 'prod' && process.env.CI === undefined) {
-  console.log('  ⚠️ 你在本机跑生产渠道：正式发布按计划由 GitHub Actions 的 release-prod.yml 产出（见 docs/PACKAGING.md）。');
+  console.log('  ⚠️ 你在本机跑生产渠道：正式发布按计划由 GitHub Actions 的 release-prod.yml 产出（见 DEVELOPMENT.md）。');
   console.log('     生产版版本号不允许回退；发之前先跑 node scripts/check-version-no-rollback.mjs 自查。');
 }
 
@@ -91,7 +91,7 @@ if (profile === 'release' && keySource === 'test') {
   process.exit(1);
 }
 if (profile === 'release' && keySource === 'prod' && !existsSync(join(root, '.keystore', 'keystore.properties'))) {
-  console.error('  ✗ --key=prod 需要 .keystore/keystore.properties（生成/还原方式见 docs/PACKAGING.md）');
+  console.error('  ✗ --key=prod 需要 .keystore/keystore.properties（生成/还原方式见 DEVELOPMENT.md）');
   process.exit(1);
 }
 
