@@ -206,9 +206,10 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
       ports,
       roster,
       blindKey: keys.blindKey,
-      clock: new HlcClock({ now }),      // 阈值 = 自上次快照以来攒多少段才再发一份**整份会话状态**。实测（snapshot-cost.test.ts）：
-      // 同一段工作量下 4→上传 11 次、8→5 次、16→1 次；400 条会话每份约 21 KB（1 万条即每份多半 MB），故取 16。
-      // 代价：新设备多重放十几个**很小的**段（段就是增量那份；10k op 合并实测 63 ms），可忽略。
+      clock: new HlcClock({ now }),
+      // 阈值 = 自上次快照以来攒多少段才再发一份**快照**（整份，或相对上一份的增量）。实测
+      // （snapshot-cost.test.ts）：4→上传 11 次、8→5 次、16→1 次；400 条会话每份约 21 KB，故取 16。
+      // 代价：新设备多重放十几个**很小的**段（10k op 合并实测 63 ms），可忽略。
       snapshotThreshold: 16,
     };
     if (restored !== undefined) engineOptions.state = restored;
