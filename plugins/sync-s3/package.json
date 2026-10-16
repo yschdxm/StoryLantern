@@ -1,0 +1,10 @@
+{
+  "name": "@storylantern/plugin-sync-s3",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "S3 兼容对象存储同步后端：MinIO / R2 / B2 / AWS S3（SigV4 自实现，零第三方依赖）",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}
