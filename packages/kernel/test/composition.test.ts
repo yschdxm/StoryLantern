@@ -124,8 +124,12 @@ test('写作管线：块图装配带预算裁剪，每个块都有可读理由�
   assert.equal(graph.omitted, 1);
   const lore = graph.nodes.find((node) => node.id === 'long-lore');
   assert.equal(lore?.included, false);
-  assert.match(lore?.reason ?? '', /预算不足裁掉/);
-  assert.match(graph.nodes.find((node) => node.id === 'history')?.reason ?? '', /纳入/);
+  // 理由的措辞来自 locale 服务，而默认语言**跟运行环境走**：CI 上拿到的是英文
+  // `'Dropped for budget (used 32/60, needs 450)'`，我本机是中文 `'预算不足裁掉…'`。
+  // 所以这里断言"理由里带了可核对的预算数字"+"理由非空"；**语言本身**由下面那条
+  // 中英双语的测试单独钉住 —— 测试不该依赖机器的语言环境。
+  assert.match(lore?.reason ?? '', /\/60/);
+  assert.ok((graph.nodes.find((node) => node.id === 'history')?.reason ?? '').length > 0, '每个块都要有可读理由');
   assert.ok(graph.usedTokens <= 60);
 });
 

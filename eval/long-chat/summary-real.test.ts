@@ -1,8 +1,7 @@
-﻿import { test } from 'node:test';
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { cosineSimilarity } from '../../packages/oplog/src/index.ts';
-import { recomputeSummaries } from '../../apps/app/src/data/summary-recompute.ts';
-import { SUMMARY_INSTRUCTION } from '../../apps/app/src/screens/use-summaries.ts';
+// 注意：**不要**在这里顶层 import app 侧的模块 —— 见下面测试体里的说明（测试 job 不装依赖）。
 import { buildLongConversation, FACTS } from './harness.ts';
 
 /**
@@ -75,6 +74,13 @@ const SETTINGS = {
 };
 
 maybe('真实摘要（产品那支 recomputeSummaries）：窗口里埋的事实有多少被留住', async () => {
+  // 这两个模块来自 app，而 `apps/app/src/screens/use-summaries.ts` 第一行就是
+  // `import { useState } from 'react'`。测试 job 按设计**不装依赖**（零依赖门禁），
+  // 顶层 import 会让"没密钥就该 skip"的文件在**加载阶段**就炸 —— CI 上第一次真跑实测到：
+  // `eval/long-chat/summary-real.test.ts ... 'test failed'`，而本机因为装了 node_modules 反而是 skip。
+  // 所以只在真的要跑（有密钥）时才动态加载。
+  const { recomputeSummaries } = await import('../../apps/app/src/data/summary-recompute.ts');
+  const { SUMMARY_INSTRUCTION } = await import('../../apps/app/src/screens/use-summaries.ts');
   const all = buildLongConversation();
   let totalTruth = 0;
   let strictHits = 0;
