@@ -33,6 +33,8 @@ export const zhSync: AppMessages = {
   'sync.pair.title': '配对（把配置贴到另一台设备）',
   'sync.pair.create.hint': '生成一段文本，含同步口令与远端配置；它等同于钥匙，只在自己的设备之间传',
   'sync.pair.generate': '生成本机配对链接',
+  'sync.pair.qr': '配对二维码',
+  'sync.pair.qr.hint': '对方用相机扫这张码即可；扫不动就复制下面的文本发过去（两条路等价）',
   'sync.pair.expires': '有效期到 {{time}}，过期请重新生成',
   'sync.pair.paste': '粘贴对方的配对链接',
   'sync.pair.paste.hint': '对方在「设置 → 同步」里点"生成本机配对链接"，把那段文本发给你',

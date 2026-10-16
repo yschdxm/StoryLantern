@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { Button, Field } from '../ui/components.tsx';
 import { useT } from '../i18n/context.tsx';
+import { encodeQr, qrPathData } from '../data/sync/qr.ts';
 
 /**
  * 配对面板：把"新设备要能开始同步"所需的一切，在一台设备的屏幕上生成、在另一台上贴进去。
@@ -25,6 +26,21 @@ export function PairingPanel(props: PairingPanelProps): ReactNode {
   const [paste, setPaste] = useState('');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
+  const [qrPath, setQrPath] = useState('');
+  const [qrSize, setQrSize] = useState(0);
+
+  /** 生成链接的同时画二维码；内容太长（版本 20 都放不下）就只给文本，并说明原因。 */
+  const drawQr = (value: string): void => {
+    try {
+      const code = encodeQr(value);
+      setQrPath(qrPathData(code));
+      setQrSize(code.size);
+    } catch (error) {
+      setQrPath('');
+      setQrSize(0);
+      setNote(error instanceof Error ? error.message : String(error));
+    }
+  };
 
   const generate = (): void => {
     setBusy(true);
@@ -34,6 +50,7 @@ export function PairingPanel(props: PairingPanelProps): ReactNode {
       .then((created) => {
         setLink(created.link);
         setExpiresAt(created.expiresAt);
+        drawQr(created.link);
       })
       .catch((error: unknown) => setNote(error instanceof Error ? error.message : String(error)))
       .finally(() => setBusy(false));
@@ -61,6 +78,22 @@ export function PairingPanel(props: PairingPanelProps): ReactNode {
       </Field>
       {link !== '' && (
         <>
+          {/* 二维码只是便利：真机能不能扫由相机 App 决定，所以文本链接始终一起给出 */}
+          {qrPath !== '' && (
+            <svg
+              className="pair-qr"
+              viewBox={`0 0 ${qrSize} ${qrSize}`}
+              width={qrSize * 6}
+              height={qrSize * 6}
+              role="img"
+              aria-label={t('sync.pair.qr')}
+              shapeRendering="crispEdges"
+            >
+              <rect width={qrSize} height={qrSize} fill="#fff" />
+              <path d={qrPath} fill="#000" />
+            </svg>
+          )}
+          <p className="muted">{t('sync.pair.qr.hint')}</p>
           {/* 只读、可全选：这段文本里含同步口令，只应在本机屏幕上出现 */}
           <textarea className="input" readOnly rows={3} value={link} aria-label={t('sync.pair.title')} />
           <p className="muted">

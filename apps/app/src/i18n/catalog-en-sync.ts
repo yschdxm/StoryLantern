@@ -33,6 +33,8 @@ export const enSync: AppMessages = {
   'sync.pair.title': 'Pairing (paste the config into another device)',
   'sync.pair.create.hint': 'Produces a piece of text carrying the sync passphrase and the remote config; it is a key, so only share it between your own devices',
   'sync.pair.generate': 'Create this device\u2019s pairing link',
+  'sync.pair.qr': 'Pairing QR code',
+  'sync.pair.qr.hint': 'The other device can scan this with its camera; if it will not scan, copy the text below instead (both work the same)',
   'sync.pair.expires': 'Valid until {{time}} — regenerate after that',
   'sync.pair.paste': 'Paste the other device\u2019s pairing link',
   'sync.pair.paste.hint': 'On the other device: Settings → Sync → "Create this device\u2019s pairing link", then send that text to yourself',
