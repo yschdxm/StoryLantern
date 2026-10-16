@@ -15,11 +15,26 @@
   --radius-sm: 9px;
   --appbar-h: 56px;
   --tabbar-h: 58px;
-  --safe-top: env(safe-area-inset-top, 0px);
+  /*
+   * 安全区：CSS 本来是对的（顶栏用 `padding: var(--safe-top) …`），但**真机上验到**
+   * `env(safe-area-inset-top)` 在这台设备的 WebView 里解析成 0 —— 于是顶栏被画到状态栏底下，
+   * 聊天页右上角的 ⋯ 菜单按钮落在系统状态栏的窗口里，手指点不到（我用三个坐标试过，全被系统截走）。
+   * 这里用 `max()` 兜一个下限：inset 生效时取 inset（不会叠加），没生效时至少留出状态栏的高度。
+   * 窄屏才兜（桌面窗口没有状态栏，不该白占 24px）。
+   */
+  --safe-top-min: 0px;
+  --safe-top: max(env(safe-area-inset-top, 0px), var(--safe-top-min));
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   /* 字号倍率：设置在「外观 → 字号」里改，正文用 rem 跟随 */
   --font-scale: 1;
   color-scheme: dark;
+}
+
+/* 窄屏（手机）给状态栏留出下限：见上面 --safe-top 的注释（桌面窗口没有状态栏，不该白占） */
+@media (max-width: 600px) {
+  :root {
+    --safe-top-min: 24px;
+  }
 }
 
 :root[data-theme='light'] {
