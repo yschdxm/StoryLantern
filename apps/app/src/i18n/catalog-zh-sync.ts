@@ -51,7 +51,7 @@ export const zhSync: AppMessages = {
   'settings.sync.folder': '本地文件夹（本机 / 已挂载的网盘目录）',
   'settings.sync.folder.path': '同步文件夹',
   'settings.sync.folder.safActive': '当前同步走系统选择器选的目录（SAF），这个路径框不生效。',
-  'settings.sync.folder.hint': '留空就用应用私有目录下的 sync/。桌面端可以填一个网盘同步目录（OneDrive / Dropbox / NAS 挂载点），两台设备指向同一个目录即可。',
+  'settings.sync.folder.hint': '留空就用应用私有目录下的 sync/。桌面端可以填一个网盘同步目录或**系统挂载的共享盘**（OneDrive / Dropbox / SMB / WebDAV 挂载后的盘符或目录；SMB 没有内置后端，走挂载这条路），两台设备指向同一个目录即可。',
   'settings.sync.folder.default': '（留空 = 应用私有目录）',
   'settings.sync.folder.root': '文件放在：{{path}}',
   'settings.sync.noFolder': '这个环境没有宿主文件读写（浏览器里没有），本地文件夹同步不可用',

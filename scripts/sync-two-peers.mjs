@@ -29,6 +29,19 @@ import { createWebDavBackend } from '../plugins/sync-webdav/src/index.ts';
  *  - **时钟必须推进**：墙钟不动时，消息的 HLC 与上一份快照的 createdAt 相等，增量会被判定成"没有新消息"而全空；
  *  - **不用 `backend.list` 核对体积**：这台 mock NAS 的 PROPFIND 列目录与我们的用法对不上（列不到文件），
  *    所以体积直接按**落盘文件**核对 —— 验的是"写出去的东西长什么样"，本来就该看盘。
+ *
+ * 用法：
+ *   node scripts/sync-two-peers.mjs                                    # 打本地 mock NAS（默认 15197）
+ *   SYNC_URL=http://127.0.0.1:15199/ SYNC_DISK=.webdav-matrix/normal node scripts/sync-two-peers.mjs
+ *
+ * 对**真实** NAS / 网盘（Nextcloud、坚果云、MinIO 的 WebDAV 端点等）：远端不在本机，本地没有盘可读，
+ * 于是加 `SYNC_NO_DISK=1` 跳过体积与落盘统计；其余断言（消息一致、断链回退、能力探测）照旧成立：
+ *
+ *   SYNC_URL=https://nas.example.com/storylantern/ WEBDAV_USER=... WEBDAV_PASSWORD=... SYNC_NO_DISK=1 \
+ *     node scripts/sync-two-peers.mjs
+ *
+ * 本环境里没有第三方 NAS 可连（也不该在测试里依赖别人的账号），所以真实 NAS 这一条一直是"配方可复跑、
+ * 但没有跑过"——这一点在文档里如实记着。
  */
 
 const BASE_TIME = 1_700_000_000_000;
@@ -62,6 +75,12 @@ export async function runTwoPeers(input) {
   const diskRoot = input.diskRoot ?? '.webdav-out';
   const label = input.label ?? '';
   const prefix = label === '' ? '' : `[${label}] `;
+  /**
+   * 远端不在本机（真实 NAS / 网盘）时，没有本地盘可读：体积与落盘统计跳过。
+   * 其余断言（消息一致、断链回退、能力探测）**照旧** —— 它们只依赖协议与后端。
+   */
+  const noDisk = input.noDisk ?? process.env.SYNC_NO_DISK === '1';
+  const files = (target) => (noDisk ? [] : diskFiles(diskRoot, target));
 
   const backend = createWebDavBackend({ baseUrl: url });
   const capabilities = await backend.probe();
@@ -122,22 +141,23 @@ export async function runTwoPeers(input) {
     emit(a, index);
     await a.engine.sync(a.materializer);
   }
-  const afterFull = diskFiles(diskRoot, 'snapshots/');
+  const afterFull = files('snapshots/');
   console.log(
-    `  ${prefix}发布方同步 3 次：远端快照 ${afterFull.length} 份，体积 ${afterFull.map((f) => f.bytes).join(' / ')} B`,
+    `  ${prefix}发布方同步 3 次：远端快照 ${afterFull.length} 份` +
+      (noDisk ? '（远端不在本机，体积跳过）' : `，体积 ${afterFull.map((f) => f.bytes).join(' / ')} B`),
   );
 
   for (const index of [3, 4]) {
     emit(a, index);
     await a.engine.sync(a.materializer);
   }
-  const afterDeltas = diskFiles(diskRoot, 'snapshots/');
+  const afterDeltas = files('snapshots/');
   const sizes = afterDeltas.map((file) => file.bytes).sort((left, right) => left - right);
   const smallest = sizes[0] ?? 0;
   const largest = sizes[sizes.length - 1] ?? 1;
   console.log(
-    `  ${prefix}再改 2 条：远端快照 ${afterDeltas.length} 份，体积（小→大）${sizes.join(' / ')} B；` +
-      `最小/最大 = ${(smallest / largest).toFixed(3)}`,
+    `  ${prefix}再改 2 条：远端快照 ${afterDeltas.length} 份` +
+      (noDisk ? '' : `，体积（小→大）${sizes.join(' / ')} B；最小/最大 = ${(smallest / largest).toFixed(3)}`),
   );
 
   const b = makePeer('peer-b');
@@ -172,7 +192,11 @@ export async function runTwoPeers(input) {
     `  ${prefix}能力探测：条件写=${capabilities.conditionalPut}、范围读=${capabilities.rangeRead}、` +
       `删除=${capabilities.delete}、分页=${capabilities.listPagination}`,
   );
-  console.log(`  ${prefix}最终落盘：快照 ${diskFiles(diskRoot, 'snapshots/').length} 份、段 ${diskFiles(diskRoot, 'logs/').length} 个`);
+  if (noDisk) {
+    console.log(`  ${prefix}落盘统计跳过（远端不在本机）`);
+  } else {
+    console.log(`  ${prefix}最终落盘：快照 ${files('snapshots/').length} 份、段 ${files('logs/').length} 个`);
+  }
 
   return {
     label,
@@ -192,8 +216,7 @@ if (invokedDirectly) {
   runTwoPeers({
     url: process.env.SYNC_URL ?? 'http://127.0.0.1:15197/',
     diskRoot: process.env.SYNC_DISK ?? '.webdav-out',
-  })
-    .then((result) => {
+  })    .then((result) => {
       if (!result.converged) throw new Error('第二个对端的消息与发布方不一致');
       if (!result.brokenChain.ok) throw new Error('断链回退没有按预期工作');
       console.log('  [两对端] 结论：真 HTTP 后端上，整份 + 增量链可写、可读、断链可回退。');

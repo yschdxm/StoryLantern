@@ -51,7 +51,7 @@ export const enSync: AppMessages = {
   'settings.sync.folder': 'Local folder (this machine / a mounted drive)',
   'settings.sync.folder.path': 'Sync folder',
   'settings.sync.folder.safActive': 'Sync uses the system-picked folder (SAF) right now, so this path is not in use.',
-  'settings.sync.folder.hint': 'Leave empty to use sync/ inside the app data directory. On desktop you can point it at a cloud-synced folder (OneDrive / Dropbox / a NAS mount); both devices use the same directory.',
+  'settings.sync.folder.hint': 'Leave empty to use sync/ inside the app data directory. On desktop you can point it at a cloud-synced folder or an OS-mounted share (OneDrive / Dropbox / an SMB or WebDAV mount; SMB has no built-in backend, so it goes through the mount); both devices use the same directory.',
   'settings.sync.folder.default': '(empty = app data directory)',
   'settings.sync.folder.root': 'Files live in: {{path}}',
   'settings.sync.noFolder': 'This environment has no host file access (not in a browser), so local-folder sync is unavailable',
