@@ -34,9 +34,9 @@ jobs:
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm run typecheck
 
-  # Android：只跑**测试渠道的 debug 包**（`app.storylantern.test`，测试密钥签）—— 不需要任何 secret，
-  # 这是"机器行为可验证"的那一半。用**生产密钥**签名（测试身份 / 生产身份）的包在
-  # release-test.yml 与 release-prod.yml 里，身份与密钥的分工见 docs/PACKAGING.md。
+  # Android：只跑**dev 渠道的 debug 包**（`app.storylantern.dev`，测试密钥签）—— 不需要任何 secret，
+  # 这是"机器行为可验证"的那一半。用**生产密钥**签名（test 身份 / prod 身份）的包在
+  # release-test.yml 与 release-prod.yml 里，三个渠道的分工见 docs/PACKAGING.md。
   #
   # 两件 CI 上必须自己造的东西（都被 gitignore，干净 checkout 里没有）：
   #  1. `apps/shell/src-tauri/gen/android` —— Tauri 生成物，先 `tauri android init --ci`；
@@ -81,11 +81,11 @@ jobs:
       - name: 造测试密钥（口令是仓库文档里那串公开值，不是秘密）
         run: node scripts/make-android-keystore.mjs --channel=test
 
-      - name: 构建测试渠道 debug APK —— 不需要任何 secret
+      - name: 构建 dev 渠道 debug APK —— 不需要任何 secret
         # 不能加 --skip-frontend：干净 checkout 里没有 apps/app/dist，而 Tauri 要把前端产物编进 .so
         env:
           NDK_VERSION: '27.3.13750724'
-        run: node scripts/build-android.mjs --channel=test --abi=arm64
+        run: node scripts/build-android.mjs --channel=dev --abi=arm64
 
       - name: 发布校验和（产物 + SHA256SUMS；有 GnuPG 时还会签名）
         run: node scripts/release-checksums.mjs

@@ -50,6 +50,10 @@ jobs:
           node -e "const fs=require('fs');const f='apps/shell/src-tauri/tauri.conf.json';const j=JSON.parse(fs.readFileSync(f,'utf8'));j.version=process.env.VERSION.replace(/^v/,'');fs.writeFileSync(f,JSON.stringify(j,null,2)+'\n');"
           node -e "console.log('version =', require('./apps/shell/src-tauri/tauri.conf.json').version)"
 
+      - name: 生产版本号不许回退（与仓库里已有 v* tag 比）
+        shell: bash
+        run: node scripts/check-version-no-rollback.mjs --version="$VERSION"
+
       - name: 门禁 + 类型 + 全部测试 + cargo
         run: |
           node scripts/check-boundaries.mjs

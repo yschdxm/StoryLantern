@@ -35,14 +35,15 @@ const flag = (name, fallback) => {
 };
 const abiFilter = flag('abi', 'both');
 const skipFrontend = args.includes('--skip-frontend');
-/** 渠道：默认 `test`（本地/CI 的测试包）。生产渠道的构建只该由 GA 触发，见 docs/PACKAGING.md。 */
-const channel = flag('channel', 'test');
-if (channel !== 'test' && channel !== 'prod') {
-  console.error(`--channel 只能是 test / prod，收到 ${channel}`);
+/** 渠道：默认 `dev`（本地/CI 的测试包）。三个渠道的包名互不相同（见 docs/PACKAGING.md）。 */
+const channel = flag('channel', 'dev');
+if (!['dev', 'test', 'prod'].includes(channel)) {
+  console.error(`--channel 只能是 dev / test / prod，收到 ${channel}`);
   process.exit(1);
 }
 if (channel === 'prod' && process.env.CI === undefined) {
   console.log('  ⚠️ 你在本机跑生产渠道：正式发布按计划由 GitHub Actions 的 release-prod.yml 产出（见 docs/PACKAGING.md）。');
+  console.log('     生产版版本号不允许回退；发之前先跑 node scripts/check-version-no-rollback.mjs 自查。');
 }
 
 /**
@@ -228,8 +229,8 @@ const apks = wanted.map((abi) => {
   };
 });
 
-/** 产物文件名带渠道标记：下载下来一眼能分清"测试包"与"正式包"。 */
-const apkName = (abi) => `storylantern-${channel === 'test' ? 'test-' : ''}${abi}-${profile}.apk`;
+/** 产物文件名带渠道标记：下载下来一眼能分清"开发/测试/正式"包。 */
+const apkName = (abi) => `storylantern-${channel === 'prod' ? '' : `${channel}-`}${abi}-${profile}.apk`;
 const outDir = join(root, '.apk-out');
 mkdirSync(outDir, { recursive: true });
 for (const apk of apks) {
@@ -240,7 +241,7 @@ const info = {
   abis: apks,
   profile,
   channel,
-  applicationId: channel === 'test' ? 'app.storylantern.test' : 'app.storylantern',
+  applicationId: { dev: 'app.storylantern.dev', test: 'app.storylantern.test', prod: 'app.storylantern' }[channel],
   // 应用里显示的"构建 {{stamp}}"来自前端构建注入的 __BUILD_STAMP__（见 apps/shell/build-frontend.mjs），
   // 这里只记下这次构建的时间与产物指纹，方便回溯"手机上装的是哪一次构建"。
   signed: profile === 'release' && apks.every((apk) => apk.signature.ok),
@@ -255,7 +256,7 @@ const info = {
 writeFileSync(join(outDir, 'build-info.json'), `${JSON.stringify(info, null, 2)}\n`, 'utf8');
 
 console.log('\n=== 完成 ===');
-console.log(`  渠道：${channel}（${channel === 'test' ? 'app.storylantern.test / 叙灯·测试' : 'app.storylantern / 叙灯'}）`);
+console.log(`  渠道：${channel}（${{ dev: 'app.storylantern.dev / 叙灯·开发', test: 'app.storylantern.test / 叙灯·测试', prod: 'app.storylantern / 叙灯' }[channel]}）`);
 for (const apk of apks) {
   console.log(`  ${apk.abi}: .apk-out/${apkName(apk.abi)}  ${apk.mb} MB  sha256:${apk.sha256}…`);
   if (apk.signature.ok) {
