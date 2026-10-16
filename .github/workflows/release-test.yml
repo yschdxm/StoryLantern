@@ -54,7 +54,7 @@ jobs:
         run: |
           node scripts/check-boundaries.mjs
           pnpm run typecheck
-          node --test --test-reporter=spec packages plugins apps fixtures eval
+          node --test --test-reporter=spec "packages/**/*.test.ts" "apps/**/*.test.ts" "plugins/**/*.test.ts" "fixtures/**/*.test.ts" "eval/**/*.test.ts"
           cargo check --manifest-path apps/shell/src-tauri/Cargo.toml
 
       - name: 生成 Android 工程（gen/ 被 gitignore，干净 checkout 里没有）

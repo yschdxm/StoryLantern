@@ -21,7 +21,9 @@ jobs:
       - name: 架构与体积门禁
         run: node scripts/check-boundaries.mjs
       - name: 单元与协议测试（与本地同一套范围：packages plugins apps fixtures eval）
-        run: node --test --test-reporter=spec packages plugins apps fixtures eval
+        # 必须用 **glob**：`node --test <目录>` 在 runner 上会把目录当模块去 require
+        # （实测报 Cannot find module '.../apps'），本地我用的就是 glob 形式。
+        run: node --test --test-reporter=spec "packages/**/*.test.ts" "apps/**/*.test.ts" "plugins/**/*.test.ts" "fixtures/**/*.test.ts" "eval/**/*.test.ts"
 
   typecheck:
     runs-on: ubuntu-latest

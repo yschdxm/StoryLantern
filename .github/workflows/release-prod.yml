@@ -58,7 +58,7 @@ jobs:
         run: |
           node scripts/check-boundaries.mjs
           pnpm run typecheck
-          node --test --test-reporter=spec packages plugins apps fixtures eval
+          node --test --test-reporter=spec "packages/**/*.test.ts" "apps/**/*.test.ts" "plugins/**/*.test.ts" "fixtures/**/*.test.ts" "eval/**/*.test.ts"
           cargo check --manifest-path apps/shell/src-tauri/Cargo.toml
 
       - working-directory: apps/shell
