@@ -89,6 +89,14 @@ export interface SyncAdmin {
    * 与同步目录无关（计划里写明"远端 op 日志不是 SQLite 备份"），所以走系统选择器而不是宿主私有目录。
    */
   exportBackup?(): Promise<{ ok: true; name: string } | { ok: false; error: string }>;
+  /**
+   * **恢复**备份：选一个目录 → 找里面最新的 `.slbak` → 把里面的 op 追加进事实源。
+   * 不覆盖本地数据（append-only + opId 幂等），所以"导入了 N 条、其中 M 条已存在"是照实报的。
+   */
+  importBackup?(): Promise<
+    | { ok: true; name: string; total: number; applied: number; duplicates: number }
+    | { ok: false; error: string }
+  >;
 }
 
 export interface SyncDevice {

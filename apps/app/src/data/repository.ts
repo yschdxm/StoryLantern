@@ -53,6 +53,13 @@ export interface Repository {
    * 只有 op-log 仓储（宿主实现）有它。
    */
   exportBackup?(ports: BackupPorts): Promise<Uint8Array>;
+  /**
+   * 恢复备份：把 `.slbak` 里的 op 追加进事实源（opId 幂等，重复导入不会翻倍）。
+   */
+  importBackup?(
+    bytes: Uint8Array,
+    ports: BackupPorts,
+  ): Promise<{ total: number; applied: number; duplicates: number }>;
 }
 
 export interface CharacterStore {

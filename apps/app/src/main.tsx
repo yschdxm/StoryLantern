@@ -18,7 +18,7 @@ import { syncAvailable } from './data/sync/service.ts';
 import { createHostFetch } from './data/sync/host-fetch.ts';
 import { createHostFolderBackend } from './data/sync/folder-backend.ts';
 import { createSafFolderBackend } from './data/saf-folder.ts';
-import { createBackupPorts } from './data/backup-ports.ts';
+import { createBackupAdmin } from './data/sync/backup-admin.ts';
 import { registerPromptBlocks } from './data/prompt-blocks.ts';
 import type { BlockRegistry } from '../../../plugins/context-blocks/src/index.ts';
 import { createHostClient, type HostClient } from './host-panel.ts';
@@ -263,24 +263,18 @@ function Root(): ReturnType<typeof AppShell> {
             setHasSyncSecret(true);
             return { ok: true as const };
           },
-          // 「导出全部为一个文件」：选目录（系统选择器）→ 把整份 op 日志写成一个自包含备份。
-          // 与同步目录无关：它不是同步数据，而是"网盘删了也不丢"的那份整体备份。
-          exportBackup: async () => {
-            if (bridge === undefined) {
-              return { ok: false as const, error: '这条导出目前需要手机上的系统选择器（桌面端还没接）' };
-            }
-            if (typeof opLogRepository.exportBackup !== 'function') {
-              return { ok: false as const, error: '这个仓储不支持导出备份' };
-            }
-            const picked = await pickSafFolder(bridge);
-            if ('error' in picked) return { ok: false as const, error: picked.error };
-            const bytes = await opLogRepository.exportBackup(createBackupPorts());
-            const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14);
-            const name = `storylantern-backup-${stamp}.slbak`;
-            const written = await createSafFolderBackend(bridge).put(name, bytes, { ifNoneMatch: true });
-            if (!written.ok && written.exists !== true) return { ok: false as const, error: '写入所选目录失败' };
-            return { ok: true as const, name };
-          },
+          // 整体备份的导出与恢复：编排在 data/sync/backup-admin.ts（走系统选择器，与同步目录无关）
+          ...(bridge === undefined
+            ? {}
+            : createBackupAdmin({
+                bridge,
+                ...(typeof opLogRepository.exportBackup === 'function'
+                  ? { exportBackup: opLogRepository.exportBackup.bind(opLogRepository) }
+                  : {}),
+                ...(typeof opLogRepository.importBackup === 'function'
+                  ? { importBackup: opLogRepository.importBackup.bind(opLogRepository) }
+                  : {}),
+              })),
         };
   useEffect(() => {
     void ports.device.get(SYNC_SECRET_KEY).then((value) => setHasSyncSecret((value ?? '') !== ''));

@@ -19,7 +19,7 @@ import { createLoreStore } from './op-lore-store.ts';
 import { createMessageStore } from './op-message-store.ts';
 import { createMemoryStore } from './op-memory-store.ts';
 import { createTunerStore, type TunerStore } from './op-tuner-store.ts';
-import { createBackupExporter } from './op-backup-store.ts';
+import { createBackupExporter, createBackupImporter } from './op-backup-store.ts';
 import { createSummaryStore } from './op-summary-store.ts';
 import { createFactStore } from './op-fact-store.ts';
 import { loadOps, migrateLegacyOnce } from './op-load.ts';
@@ -283,8 +283,8 @@ export function createOpLogRepository(options: OpLogRepositoryOptions): OpLogRep
     // 设备配置不进 op 日志：密钥不该离开本机，主题/语言属于设备偏好
     settings: options.settings,
 
-    /** 「导出全部为一个文件」：整份 op 日志 → 自包含备份（实现见 op-backup-store.ts）。 */
-    exportBackup: createBackupExporter({ loadAll, ...(deviceId === undefined ? {} : { deviceId }) }),
+    exportBackup: createBackupExporter({ loadAll, ...(deviceId === undefined ? {} : { deviceId }) }), // 导出全部为一个文件
+    importBackup: createBackupImporter({ appendAndApply, knownOpIds: async () => new Set((await loadAll()).map((op) => op.opId)) }),
 
     async rebuild() {
       await ready;
