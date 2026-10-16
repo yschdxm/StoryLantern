@@ -148,10 +148,6 @@ run('套用原生覆盖（MainActivity.kt / SafPlugin.kt → gen/android）', 'n
 // 渠道（包名 + 显示名）也是"生成工程上的改动"，同样每次构建前重放一次（脚本幂等）。
 run(`设定渠道（${{ dev: '本地测试 dev', test: 'GA 测试 test', prod: '生产 prod' }[channel]}：包名与显示名）`, 'node', ['scripts/android-channel.mjs', `--channel=${channel}`], root, {});
 
-// 我们绕过 `tauri android build` 直接调 gradle（为了自己控签名与渠道），所以要把 CLI 生成的两个文件补齐：
-// 缺 tauri.settings.gradle 时 Gradle 在 **settings 求值阶段**就失败（干净机器/CI 上实测过）。
-run('补齐 Tauri 生成物（tauri.settings.gradle / tauri.properties）', 'node', ['scripts/android-tauri-settings.mjs'], root, {});
-
 // 发布签名也是"生成工程上的改动"，同样要先套（gen/ 是 Tauri 生成的、本仓库把它 gitignore 了，
 // 所以补丁必须每次构建前重放一次；脚本是幂等的）。
 if (profile === 'release') {
@@ -180,6 +176,12 @@ for (const abi of wanted) {
   }
   console.log(`  LOAD 对齐 ${align}（16KB）✓`);
 }
+
+// 我们绕过 `tauri android build` 直接调 gradle（为了自己控签名与渠道），所以要把 CLI 生成的两个文件补齐：
+// 缺 tauri.settings.gradle 时 Gradle 在 **settings 求值阶段**就失败（干净机器/CI 上实测过）。
+// **必须放在 cargo 之后**：那个文件指向本机 cargo registry 里的 tauri crate，而 crate 是
+// `cargo build` 时才下载下来的 —— 放前面的话 CI 上会找不到（第一次真跑就是这么失败的）。
+run('补齐 Tauri 生成物（tauri.settings.gradle / tauri.properties）', 'node', ['scripts/android-tauri-settings.mjs'], root, {});
 
 for (const abi of wanted) {
   const task = profile === 'release' ? abi.releaseTask : abi.gradleTask;
