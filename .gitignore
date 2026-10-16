@@ -16,6 +16,8 @@ apps/shell/src-tauri/gen/
 .gradle-home/
 # 构建出来供安装的 APK（可随时重建）
 .apk-out/
+# 发布目录：校验和与产物（产物永不入库；SHA256SUMS 随发布说明走）
+release/
 # 签名密钥：绝不入库（见 .keystore/README.md）
 .keystore/
 
