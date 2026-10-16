@@ -296,7 +296,7 @@ function Root(): ReturnType<typeof AppShell> {
           <LorebookScreen store={store} router={router} host={host} chat={chat} lorebookId={route.lorebookId} />
         )}
         {route.name === 'facts' && (
-          <FactsScreen store={store} router={router} host={host} chat={chat} characterId={route.characterId} />
+          <FactsScreen store={store} router={router} host={host} chat={chat} characterId={route.characterId} {...(transport === undefined ? {} : { transport })} />
         )}
         {route.name === 'memories' && (
           <MemoriesScreen store={store} router={router} host={host} chat={chat} characterId={route.characterId} />
@@ -329,6 +329,7 @@ function Root(): ReturnType<typeof AppShell> {
             {...(boot.runtime === undefined ? {} : { assemble: boot.runtime.assemble })}
             sessionId={route.sessionId}
             onOpenSettings={() => router.navigate({ name: 'settings' })}
+            {...(transport === undefined ? {} : { transport })}
           />
         )}
         {route.name === 'character' && (
