@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
@@ -28,6 +28,13 @@ const flag = (name, fallback) => {
 };
 const abiFilter = flag('abi', 'both');
 const skipFrontend = args.includes('--skip-frontend');
+/**
+ * `--release` 产**签名** release APK：
+ *  - 先跑 `scripts/android-signing-setup.mjs` 把发布签名接进生成的 Gradle 工程；
+ *  - 没有 `.keystore/keystore.properties` 时 Gradle 会**明确失败**（不会静默用开发密钥签）；
+ *  - 出包后用 apksigner 验签，并把证书指纹写进 build-info.json —— 签名是"声称"还是"事实"，看这一步。
+ */
+const profile = args.includes('--release') ? 'release' : 'debug';
 
 const sdk = process.env.ANDROID_HOME ?? process.env.ANDROID_SDK_ROOT ?? join(process.env.LOCALAPPDATA ?? '', 'Android', 'Sdk');
 const ndkVersion = process.env.NDK_VERSION ?? 'android-ndk-r27d';
@@ -35,8 +42,8 @@ const ndkBin = join(sdk, 'ndk', ndkVersion, 'toolchains', 'llvm', 'prebuilt', 'w
 const javaHome = process.env.JAVA_HOME ?? 'C:\\Program Files\\Android\\Android Studio\\jbr';
 
 const ABIS = [
-  { name: 'arm64', target: 'aarch64-linux-android', jni: 'arm64-v8a', gradleTask: 'assembleArm64Debug', skipTask: '-x rustBuildArm64Debug', apk: join('app/build/outputs/apk/arm64/debug/app-arm64-debug.apk'), cc: 'aarch64-linux-android24-clang.cmd' },
-  { name: 'x86_64', target: 'x86_64-linux-android', jni: 'x86_64', gradleTask: 'assembleX86_64Debug', skipTask: '-x rustBuildX86_64Debug', apk: join('app/build/outputs/apk/x86_64/debug/app-x86_64-debug.apk'), cc: 'x86_64-linux-android24-clang.cmd' },
+  { name: 'arm64', target: 'aarch64-linux-android', jni: 'arm64-v8a', gradleTask: 'assembleArm64Debug', releaseTask: 'assembleArm64Release', skipTask: '-x rustBuildArm64Debug', releaseSkipTask: '-x rustBuildArm64Release', apk: join('app/build/outputs/apk/arm64/debug/app-arm64-debug.apk'), apkRelease: join('app/build/outputs/apk/arm64/release/app-arm64-release.apk'), cc: 'aarch64-linux-android24-clang.cmd' },
+  { name: 'x86_64', target: 'x86_64-linux-android', jni: 'x86_64', gradleTask: 'assembleX86_64Debug', releaseTask: 'assembleX86_64Release', skipTask: '-x rustBuildX86_64Debug', releaseSkipTask: '-x rustBuildX86_64Release', apk: join('app/build/outputs/apk/x86_64/debug/app-x86_64-debug.apk'), apkRelease: join('app/build/outputs/apk/x86_64/release/app-x86_64-release.apk'), cc: 'x86_64-linux-android24-clang.cmd' },
 ];
 
 for (const [label, path] of [['Android SDK', sdk], ['NDK 工具链', ndkBin], ['JDK', javaHome]]) {
@@ -93,6 +100,12 @@ if (wanted.length === 0) {
 // 这一步以前是手工跑的，忘了就会用旧的覆盖去构建，产物看起来"成功"但行为没变。
 run('套用原生覆盖（MainActivity.kt / SafPlugin.kt → gen/android）', 'node', ['apps/shell/android/apply-overrides.mjs'], root, {});
 
+// 发布签名也是"生成工程上的改动"，同样要先套（gen/ 是 Tauri 生成的、本仓库把它 gitignore 了，
+// 所以补丁必须每次构建前重放一次；脚本是幂等的）。
+if (profile === 'release') {
+  run('接入发布签名（读 .keystore/keystore.properties）', 'node', ['scripts/android-signing-setup.mjs'], root, {});
+}
+
 if (!skipFrontend) {
   run('前端产物（Tauri 把 assets 编译进 .so，必须先跑）', 'node', ['apps/shell/build-frontend.mjs'], root, {});
 }
@@ -117,36 +130,83 @@ for (const abi of wanted) {
 }
 
 for (const abi of wanted) {
-  run(`gradle ${abi.gradleTask}`, 'gradlew.bat', [abi.gradleTask, '--no-daemon', '--no-configuration-cache', '--console=plain', abi.skipTask], join(root, 'apps/shell/src-tauri/gen/android'), gradleEnv);
+  const task = profile === 'release' ? abi.releaseTask : abi.gradleTask;
+  const skip = profile === 'release' ? abi.releaseSkipTask : abi.skipTask;
+  run(`gradle ${task}`, 'gradlew.bat', [task, '--no-daemon', '--no-configuration-cache', '--console=plain', skip], join(root, 'apps/shell/src-tauri/gen/android'), gradleEnv);
 }
+
+/** 用 apksigner 验签：签名是"声称"还是"事实"，只看这一步。 */
+const verifySignature = (apkPath) => {
+  const buildTools = join(sdk, 'build-tools');
+  const versions = existsSync(buildTools) ? readdirSync(buildTools).sort() : [];
+  const latest = versions.at(-1);
+  if (latest === undefined) return { ok: false, reason: '找不到 build-tools，无法验签' };
+  const apksigner = join(buildTools, latest, process.platform === 'win32' ? 'apksigner.bat' : 'apksigner');
+  const result = spawnSync(apksigner, ['verify', '--print-certs', apkPath], { encoding: 'utf8', shell: true });
+  const output = `${result.stdout ?? ''}${result.stderr ?? ''}`;
+  const dn = /certificate DN: (.+)/.exec(output)?.[1]?.trim();
+  // 这个 apksigner 版本平时不打 "Verified using vN scheme…"，只在 -v 下打；
+  // 但它一定会打 "V1 Signer:" / "V2 Signer:" / "V3 Signer:" —— 按真实输出解析，别按记忆。
+  const verified = [
+    ...new Set([...output.matchAll(/^(V\d) Signer:/gm)].map((match) => (match[1] ?? '').toLowerCase())),
+  ];
+  return result.status === 0
+    ? { ok: true, dn: dn ?? '(未解析到 DN)', schemes: verified }
+    : { ok: false, reason: output.trim().split('\n')[0] ?? `apksigner 退出码 ${result.status}` };
+};
 
 const builtAt = new Date().toISOString();
 const apks = wanted.map((abi) => {
-  const path = join(root, 'apps/shell/src-tauri/gen/android', abi.apk);
+  const relative = profile === 'release' ? abi.apkRelease : abi.apk;
+  const path = join(root, 'apps/shell/src-tauri/gen/android', relative);
   if (!existsSync(path)) {
     console.error(`没找到产出的 APK：${path}`);
     process.exit(1);
   }
   const bytes = readFileSync(path);
-  return { abi: abi.name, path: abi.apk, mb: Number((bytes.length / 1024 / 1024).toFixed(2)), sha256: createHash('sha256').update(bytes).digest('hex').slice(0, 16) };
+  const signature = verifySignature(path);
+  if (profile === 'release' && !signature.ok) {
+    // 发布包必须是真签名：验不过就直接失败，不产出"看起来成功"的包
+    console.error(`  ✗ release APK 验签失败：${signature.reason}`);
+    process.exit(1);
+  }
+  return {
+    abi: abi.name,
+    path: relative,
+    mb: Number((bytes.length / 1024 / 1024).toFixed(2)),
+    sha256: createHash('sha256').update(bytes).digest('hex').slice(0, 16),
+    signature,
+  };
 });
 
 const outDir = join(root, '.apk-out');
 mkdirSync(outDir, { recursive: true });
 for (const apk of apks) {
-  writeFileSync(join(outDir, `storylantern-${apk.abi}-debug.apk`), readFileSync(join(root, 'apps/shell/src-tauri/gen/android', apk.path)));
+  writeFileSync(
+    join(outDir, `storylantern-${apk.abi}-${profile}.apk`),
+    readFileSync(join(root, 'apps/shell/src-tauri/gen/android', apk.path)),
+  );
 }
 const info = {
   builtAt,
   abis: apks,
-  profile: 'debug',
+  profile,
   // 应用里显示的"构建 {{stamp}}"来自前端构建注入的 __BUILD_STAMP__（见 apps/shell/build-frontend.mjs），
   // 这里只记下这次构建的时间与产物指纹，方便回溯"手机上装的是哪一次构建"。
-  signed: false,
-  note: '本仓库没有 CI、也没有发布签名密钥：只产出 debug APK，不伪造签名。',
+  signed: profile === 'release' && apks.every((apk) => apk.signature.ok),
+  // 签名不是"声称"：release 由 apksigner 验过（证书 DN 与方案记在上面），debug 用仓库里那把开发密钥。
+  note:
+    profile === 'release'
+      ? 'release：已用 .keystore/keystore.properties 指向的密钥签名，并经 apksigner verify 验证'
+      : 'debug：用 .keystore/storylantern-dev.jks 签名（口令写在仓库文档里，只用于本机测试）',
 };
 writeFileSync(join(outDir, 'build-info.json'), `${JSON.stringify(info, null, 2)}\n`, 'utf8');
 
 console.log('\n=== 完成 ===');
-for (const apk of apks) console.log(`  ${apk.abi}: .apk-out/storylantern-${apk.abi}-debug.apk  ${apk.mb} MB  sha256:${apk.sha256}…`);
-console.log(`  构建信息：.apk-out/build-info.json（${builtAt}；未签名，仓库无 CI/密钥）`);
+for (const apk of apks) {
+  console.log(`  ${apk.abi}: .apk-out/storylantern-${apk.abi}-${profile}.apk  ${apk.mb} MB  sha256:${apk.sha256}…`);
+  if (apk.signature.ok) {
+    console.log(`    签名 ✓ ${apk.signature.schemes.join('/') || '(方案未解析)'}  DN: ${apk.signature.dn}`);
+  }
+}
+console.log(`  构建信息：.apk-out/build-info.json（${builtAt}；${info.profile}${info.signed ? '，已验签' : ''}）`);
