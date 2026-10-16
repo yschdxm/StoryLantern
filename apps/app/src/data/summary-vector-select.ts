@@ -68,7 +68,15 @@ export interface ChatSummarySelectionInput {
  * 查询取**最后一条用户消息**，与词法路径同一条规则（两条路挑出不同的东西会很难解释）。
  */
 export async function selectSummariesForChat(input: ChatSummarySelectionInput): Promise<PromptSummary[] | undefined> {
-  if (input.transport === undefined || input.summaries.length === 0) return undefined;
+  // 早退也要回报：否则"这条路根本没走"和"走了但失败"在外面看起来一模一样 —— 这正是可观测性要解决的问题。
+  if (input.transport === undefined) {
+    input.onOutcome?.({ ok: false, count: 0, reason: '没有宿主通道（浏览器里跑不了向量）' });
+    return undefined;
+  }
+  if (input.summaries.length === 0) {
+    input.onOutcome?.({ ok: false, count: 0, reason: '这个会话还没有分层摘要，只能走词法' });
+    return undefined;
+  }
   let question = '';
   for (let index = input.messages.length - 1; index >= 0; index -= 1) {
     const item = input.messages[index];
@@ -77,7 +85,10 @@ export async function selectSummariesForChat(input: ChatSummarySelectionInput): 
       break;
     }
   }
-  if (question === '') return undefined;
+  if (question === '') {
+    input.onOutcome?.({ ok: false, count: 0, reason: '没有用户消息，没有可用的查询' });
+    return undefined;
+  }
   try {
     const picked = await selectSummariesByVector({
       embedder: createHostEmbeddingPort({
