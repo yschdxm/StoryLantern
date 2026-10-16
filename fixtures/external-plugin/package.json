@@ -1,0 +1,10 @@
+{
+  "name": "@example/plugin-external-greeter",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "M7 生态验证用的**仓外**插件示例：只用公开 plugin-api，不碰内核内部",
+  "exports": {
+    ".": "./index.ts"
+  }
+}

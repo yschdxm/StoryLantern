@@ -203,6 +203,14 @@ export {
   validateSessionSnapshot,
   type SessionSnapshot,
 } from './snapshot.ts';
+export {
+  BACKUP_MAGIC,
+  BACKUP_VERSION,
+  BackupError,
+  createBackup,
+  readBackup,
+  type BackupHeader,
+} from './backup.ts';
 export { freezeSnapshot } from './freeze.ts';
 export type {
   Compressor,
