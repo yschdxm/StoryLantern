@@ -24,6 +24,14 @@ export interface KeyWrapPort {
   /** 用对方公钥把内容密钥包起来（ECDH → HKDF → AES-GCM），返回 base64。 */
   wrapFor(recipientPublicKeyHex: string, contentKey: Uint8Array): Promise<string>;
   /**
+   * 本机能不能给这个公钥包钥匙（**可选**）。
+   *
+   * 为什么需要：曲线换代（X25519 → P-256）之后，名单里可能还留着**旧曲线**对端（公钥 32 字节），
+   * 而真机 WebView 没有 X25519 —— 建库时若给每个对端都包一遍，这里会硬失败（真机踩到过）。
+   * 实现方按"公钥长度/曲线 + 本机能力"回答；没实现就视为"都能包"（不能因为缺信息而少包）。
+   */
+  canWrapFor?(recipientPublicKeyHex: string): Promise<boolean>;
+  /**
    * 用自己的私钥解开自己的那一份。不是给自己包的会失败（AEAD 拒绝）。
    *
    * 为什么要同时给公钥：浏览器里**不能**从私钥导出公钥，而 HKDF 的 salt 绑了双方公钥，

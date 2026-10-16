@@ -38,6 +38,13 @@ export async function readKeyring(backend: SyncBackend): Promise<Keyring | undef
 /** 我在里面、但名单里这些对端还没进钥匙包（需要由能服务它们的设备完成换代）。 */
 export interface EnsureKeyringPending {
   pendingPeers?: string[];
+  /**
+   * 本机**包不了**的对端（曲线本机不支持，例如曲线换代后名单里还留着的旧 X25519）。
+   *
+   * 只在"确实没有钥匙包、由本机新建"这条路上出现：那时跳过它们不会让任何设备失去已有访问权。
+   * 换代（已有钥匙包）时**不**跳过 —— 那等于把曾经有钥匙的成员悄悄踢出去，属于安全不变量，只能拒绝。
+   */
+  unwrappablePeers?: string[];
 }
 
 export type EnsureKeyringResult =
@@ -132,9 +139,27 @@ export async function ensureKeyring(input: EnsureKeyringInput): Promise<EnsureKe
   }
 
   // 走到这里只可能是"确实还没有钥匙包"（有库的两种情况上面都已返回）→ 新建 epoch 1
-  const created = await createKeyring(keyWrap, recipients, 1);
+  //
+  // 新建时**跳过本机包不了的对端**（曲线本机不支持，例如换代后名单里残留的旧 X25519），并把它们报上去。
+  // 为什么这里能跳：这把内容钥匙本来就没包给过它们，跳过不会让任何设备失去已有访问权；
+  // 而换代（已有钥匙包）跳过一个**曾经有钥匙**的成员，等于悄悄把它踢出去 —— 那条不放松。
+  const wrappable: typeof recipients = [];
+  const unwrappablePeers: string[] = [];
+  for (const recipient of recipients) {
+    const canWrap =
+      recipient.deviceId === deviceId ? true : ((await keyWrap.canWrapFor?.(recipient.publicKey)) ?? true);
+    if (canWrap) wrappable.push(recipient);
+    else unwrappablePeers.push(recipient.deviceId);
+  }
+  const created = await createKeyring(keyWrap, wrappable, 1);
   await backend.put(KEYRING_FILE, new TextEncoder().encode(serializeKeyring(created.keyring)));
-  return { mine: true, epoch: created.keyring.epoch, keyring: created.keyring, contentKey: created.contentKey };
+  return {
+    mine: true,
+    epoch: created.keyring.epoch,
+    keyring: created.keyring,
+    contentKey: created.contentKey,
+    ...(unwrappablePeers.length === 0 ? {} : { unwrappablePeers }),
+  };
 }
 
 export interface RotateKeyringInput {

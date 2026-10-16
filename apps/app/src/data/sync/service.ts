@@ -88,9 +88,11 @@ export function summarize(result: SyncResult, enqueued: number, imported: number
     appliedOps: imported,
     enqueued,
     requests,
-    warnings: [...result.warnings],
+    warnings: [...result.warnings, ...(keyringNotice === undefined ? [] : [keyringNotice])],
   };
 }
+
+let keyringNotice: string | undefined;
 
 /**
  * 旧版本写下的同步进度要丢掉：那时段号是"设备全局"编号，而接收方按每会话
@@ -229,11 +231,7 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
     }
     // "一人一把锁"：把内容密钥按名单里每台设备的公钥各包一份，发布到共享目录。
     //
-    // 现在只**准备**钥匙（发布 + 打开），还没拿它替换段加密——那一步是格式变更，
-    // 要和"读旧数据回退"一起做（见 docs/M2-STATUS.md 的 ⑥ 后半）。
-    // 注意：这里**只准备钥匙**（发布 keyring 并打开自己那份），
-    // **不**把端口换成内容密钥——那一步会让已有旧段读不出来（段还是用口令派生的钥匙加的密）。
-    // 正确的切换要和"解密失败时用旧钥匙回退"一起做，见 docs/M2-STATUS.md 的 ⑥ 后半。
+    // 这里**只准备钥匙**（发布 keyring 并打开自己那份）。
     const keyring =
       agreement === undefined
         ? undefined
@@ -245,8 +243,10 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
             keyWrap: createWebCryptoKeyWrap(),
             roster,
           });
-    // **切换**：钥匙包给我过，就改用数据钥匙（不再用口令派生的那把）加密段/清单。
-    // **不做"读旧数据回退"**（已定）：换代时把同步进度作废、从本地 op 日志全量重发。
+    if ((keyring?.unwrappablePeers?.length ?? 0) > 0) {
+      keyringNotice = `名单里这些设备用的曲线本机不支持，没给它们包上钥匙：${(keyring?.unwrappablePeers ?? []).join('、')}；需要一台支持该曲线的设备重新接纳。`;
+    }
+    // 钥匙包给我过就改用数据钥匙加密段/清单；不做"读旧数据回退"（已定）：换代时进度作废、从本地 op 日志全量重发。
     let state = restored;
     if (keyring?.mine === true) {
       engineOptions.ports = await createPortsFromContentKey(keyring.contentKey, keys.blindKey);

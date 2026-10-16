@@ -199,6 +199,16 @@ export function createWebCryptoKeyWrap(): KeyWrapPort {
       return btoa(binary);
     },
 
+    /**
+     * 本机能不能给这个公钥包钥匙：按公钥长度认出曲线，再问本机认不认识那条曲线。
+     *
+     * 真机（WebView 没有 X25519）给旧 X25519 对端回答 false —— 建库时据此**跳过并列出来**，
+     * 而不是一路抛到用户眼前（那条路以前是硬失败，报错还把责任推给设备）。
+     */
+    async canWrapFor(recipientPublicKeyHex: string): Promise<boolean> {
+      return canUseCurve(curveOfPublicKey(recipientPublicKeyHex));
+    },
+
     async unwrapWith(myPrivateKey, myPublicKeyHex, wrapped) {
       const binary = atob(wrapped);
       const combined = new Uint8Array(binary.length);
