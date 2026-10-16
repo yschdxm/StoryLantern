@@ -18,19 +18,44 @@ import { createSyncService, syncAvailable, type SyncService, type SyncStorePort,
  */
 
 export interface SyncConfig {
-  kind: 'off' | 'webdav' | 'folder';
+  kind: 'off' | 'webdav' | 'folder' | 's3';
   url: string;
   username: string;
   password: string;
   /** 本地文件夹同步的根目录；留空 = 宿主默认（应用私有目录下的 sync/）。 */
   folder: string;
   secret: string;
+  /** S3 兼容后端（MinIO/R2/B2/AWS）：端点、桶、区域、Access Key 都是非机密标识。 */
+  s3Endpoint: string;
+  s3Bucket: string;
+  s3Region: string;
+  s3AccessKeyId: string;
+  /** S3 的 secretAccessKey：与同步口令一样**只写**、存设备本地 kv（宿主对 secret 类设置键只回掩码）。 */
+  s3SecretAccessKey: string;
 }
 
-/** 插件注册的后端工厂形状（`ctx.set('sync.backend.webdav', …)`）。 */
+/**
+ * 后端工厂的入参：各后端只取自己需要的字段。
+ *
+ * 为什么不做成每个 kind 一个形状的联合：注册表里的工厂是运行时拿到的（`ctx.get('sync.backend.s3')`），
+ * 类型只能在这里统一描述；缺字段由各自后端在创建时明确报错，而不是在这里假装已经校验过。
+ */
+export interface SyncBackendCreateOptions {
+  baseUrl?: string;
+  username?: string;
+  password?: string;
+  endpoint?: string;
+  bucket?: string;
+  region?: string;
+  accessKeyId?: string;
+  secretAccessKey?: string;
+  fetch?: typeof fetch;
+}
+
+/** 插件注册的后端工厂形状（`ctx.set('sync.backend.webdav', …)` / `ctx.set('sync.backend.s3', …)`）。 */
 export interface SyncBackendFactory {
   kind: string;
-  create(options: { baseUrl: string; username?: string; password?: string; fetch?: typeof fetch }): SyncBackend;
+  create(options: SyncBackendCreateOptions): SyncBackend;
 }
 
 /** 本地文件夹后端：由宿主提供文件读写，因此这里注入而不是从插件注册表拿。 */
@@ -42,6 +67,8 @@ export interface FolderBackendProvider {
 
 /** 设备本地 kv 里用到的键。 */
 export const SYNC_SECRET_KEY = 'sync.secret.v1';
+/** S3 的 secretAccessKey：与同步口令一样只写、只存设备本地 kv。 */
+export const SYNC_S3_SECRET_KEY = 'sync.s3.secret.v1';
 export const SYNC_STATE_KEY = 'sync.state.v1';
 /** 每个远端各存一份进度：换了远端（WebDAV ↔ 文件夹、或换个地址）不能接着用旧的段清单。 */
 export const SYNC_STATE_PREFIX = 'sync.state.v2:';
@@ -56,13 +83,15 @@ export const SYNC_MANIFEST_SEQ_KEY = 'sync.manifestSeq.v1';
  * 真机上实测过：对端每次同步都报"缺少第 N 号段"。
  */
 export function remoteIdOf(config: SyncConfig, resolvedRoot?: string): string {
-  return config.kind === 'folder' ? `folder:${(resolvedRoot ?? config.folder).trim()}` : `webdav:${config.url.trim()}`;
+  if (config.kind === 'folder') return `folder:${(resolvedRoot ?? config.folder).trim()}`;
+  if (config.kind === 's3') return `s3:${config.s3Endpoint.trim()}/${config.s3Bucket.trim()}`;
+  return `webdav:${config.url.trim()}`;
 }
 
 /** 设置 + 设备本地 kv → 一次同步需要的配置（口令在 kv 里，见上）。 */
 export async function readSyncConfig(settings: SettingsMap, device: DeviceStore): Promise<SyncConfig> {
   const raw = settings[SETTING_KEYS.syncKind];
-  const kind = raw === 'webdav' || raw === 'folder' ? raw : 'off';
+  const kind = raw === 'webdav' || raw === 'folder' || raw === 's3' ? raw : 'off';
   return {
     kind,
     url: settings[SETTING_KEYS.syncUrl] ?? '',
@@ -70,6 +99,11 @@ export async function readSyncConfig(settings: SettingsMap, device: DeviceStore)
     password: settings[SETTING_KEYS.syncPassword] ?? '',
     folder: settings[SETTING_KEYS.syncFolder] ?? '',
     secret: (await device.get(SYNC_SECRET_KEY)) ?? '',
+    s3Endpoint: settings[SETTING_KEYS.syncS3Endpoint] ?? '',
+    s3Bucket: settings[SETTING_KEYS.syncS3Bucket] ?? '',
+    s3Region: settings[SETTING_KEYS.syncS3Region] ?? '',
+    s3AccessKeyId: settings[SETTING_KEYS.syncS3AccessKeyId] ?? '',
+    s3SecretAccessKey: (await device.get(SYNC_S3_SECRET_KEY)) ?? '',
   };
 }
 
@@ -128,6 +162,14 @@ export function describeSyncProblem(config: SyncConfig, available: boolean): str
   if (config.kind === 'off') return undefined;
   if (!available) return '这个环境没有 WebCrypto，无法加密同步数据';
   if (config.kind === 'webdav' && config.url.trim() === '') return '还没有填远端地址';
+  if (config.kind === 's3') {
+    // 缺哪一项就说哪一项：S3 要填的比 WebDAV 多，含糊的"配置不完整"会让人来回试。
+    if (config.s3Endpoint.trim() === '') return '还没有填 S3 端点（例如 http://127.0.0.1:9000）';
+    if (config.s3Bucket.trim() === '') return '还没有填 S3 桶名';
+    if (config.s3Region.trim() === '') return '还没有填 S3 区域（MinIO 随便填一个，例如 us-east-1）';
+    if (config.s3AccessKeyId.trim() === '') return '还没有填 S3 Access Key';
+    if (config.s3SecretAccessKey.trim() === '') return '还没有填 S3 Secret Key';
+  }
   if (config.secret.trim() === '') return '还没有填同步口令（两台设备要一致）';
   return undefined;
 }
@@ -180,6 +222,18 @@ export async function buildSyncService(input: RunSyncInput): Promise<BuiltSyncSe
     if (input.folderBackend === undefined) throw new Error('本地文件夹同步需要宿主支持（Tauri 壳里才有）');
     root = await input.folderBackend.setRoot(input.config.folder);
     backend = input.folderBackend.backend;
+  } else if (input.config.kind === 's3') {
+    if (input.backendFactory === undefined) {
+      throw new Error('S3 同步后端未启用（检查 bundle patch 里是否关掉了 sync-s3 这一行）');
+    }
+    backend = input.backendFactory.create({
+      endpoint: input.config.s3Endpoint.trim(),
+      bucket: input.config.s3Bucket.trim(),
+      region: input.config.s3Region.trim(),
+      accessKeyId: input.config.s3AccessKeyId.trim(),
+      secretAccessKey: input.config.s3SecretAccessKey,
+      ...(input.hostFetch === undefined ? {} : { fetch: input.hostFetch }),
+    });
   } else {
     if (input.backendFactory === undefined) throw new Error('同步后端未启用（检查 bundle patch 里是否关掉了这一行）');
     backend = input.backendFactory.create({

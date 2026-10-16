@@ -207,6 +207,11 @@ export const SETTING_KEYS = {
   syncFolder: 'sync.folder',
   /** 'on' = 文件夹同步走系统选择器选中的目录（Android SAF）。 */
   syncFolderSaf: 'sync.folder.saf',
+  // S3 兼容后端（MinIO / R2 / B2 / AWS）：这些都是**非机密**标识，secretAccessKey 不进设置（宿主会对 secret 类键回掩码）
+  syncS3Endpoint: 'sync.s3.endpoint',
+  syncS3Bucket: 'sync.s3.bucket',
+  syncS3Region: 'sync.s3.region',
+  syncS3AccessKeyId: 'sync.s3.accessKeyId',
   /** GC 宽限期（天）：留空 = 默认 30 天。做成可调是为了让人能在真机上真的验证一次回收。 */
   syncGcGraceDays: 'sync.gc.graceDays',
   syncLastAt: 'sync.last_at',

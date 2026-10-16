@@ -42,6 +42,10 @@
     - id: sync-webdav
       name: '@storylantern/plugin-sync-webdav'
 
+    # S3 兼容后端（MinIO / R2 / B2 / AWS）：同样只依赖全局 fetch；SigV4 在插件里自实现。
+    - id: sync-s3
+      name: '@storylantern/plugin-sync-s3'
+
     # 文件夹后端默认关闭：单机用户不需要，启用方式是在自己的 patch 里
     # 覆盖这一行为 disabled: false。
     - id: sync-folder

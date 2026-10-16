@@ -358,7 +358,7 @@ export function createS3Backend(options: S3Options): S3Backend {
   return backend;
 }
 
-/** 作为插件注册：`ctx.set('sync.backend.s3', ...)`。 */
-export function registerS3Backend(ctx: { set(key: string, value: unknown): void }): void {
+/** 作为插件注册：`ctx.set('sync.backend.s3', ...)`（与 WebDAV 插件同一个入口名，内核按 `apply` 调用）。 */
+export function apply(ctx: { set(key: string, value: unknown): unknown }): void {
   ctx.set('sync.backend.s3', { kind: 's3', create: createS3Backend });
 }

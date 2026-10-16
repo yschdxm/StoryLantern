@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createS3Backend, registerS3Backend } from '../src/index.ts';
+import { apply, createS3Backend } from '../src/index.ts';
 
 /**
  * S3 后端的**语义**测试：用注入的 fetch 造一个假 S3，验四个动作与能力探测。
@@ -165,7 +165,7 @@ function withEncoding(fake: FakeS3) {
 
 test('插件注册：把后端工厂挂到 sync.backend.s3（与 WebDAV 同一套约定）', () => {
   const registered = new Map<string, unknown>();
-  registerS3Backend({ set: (key, value) => registered.set(key, value) });
+  apply({ set: (key, value) => registered.set(key, value) });
   const entry = registered.get('sync.backend.s3') as { kind: string; create: unknown };
   assert.equal(entry.kind, 's3');
   assert.equal(typeof entry.create, 'function');

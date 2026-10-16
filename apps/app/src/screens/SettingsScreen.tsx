@@ -8,6 +8,8 @@ import { formatTime } from '../data/repository.ts';
 import { HostPanel } from '../HostPanel.tsx';
 import { ModelProfilesPanel } from './ModelProfilesPanel.tsx';
 import { SyncDevices } from './SyncDevices.tsx';
+import { S3Fields, S3_SETTING_KEYS } from './S3Fields.tsx';
+import { WebDavFields } from './WebDavFields.tsx';
 import { Button, Field, TextInput } from '../ui/components.tsx';
 export interface SettingsScreenProps extends ScreenProps {
   plugins: Array<{ id: string; status: string }>;
@@ -59,6 +61,8 @@ export function SettingsScreen({ store, router, host, chat, ops, sync, plugins, 
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<{ ok: boolean; text: string } | undefined>(undefined);
   const [secretDraft, setSecretDraft] = useState('');
+  /** S3 的 Secret Key：与同步口令一样只写、只存设备本地（不进设置，避免被掩码覆盖）。 */
+  const [s3SecretDraft, setS3SecretDraft] = useState('');
   /** 宿主解析出来的同步文件夹根目录（"文件到底放哪了"要看得见）。 */
   const [folderRoot, setFolderRoot] = useState('');
   const syncKind = state.settings[SETTING_KEYS.syncKind] ?? 'off';
@@ -222,35 +226,20 @@ export function SettingsScreen({ store, router, host, chat, ops, sync, plugins, 
             <option value="off">{t('settings.sync.off')}</option>
             <option value="webdav">{t('settings.sync.webdav')}</option>
             <option value="folder">{t('settings.sync.folder')}</option>
+            <option value="s3">{t('settings.sync.s3')}</option>
           </select>
         </Field>
         {(value(SETTING_KEYS.syncKind) || 'off') === 'webdav' && (
-          <>
-            <Field label={t('settings.sync.url')} hint={t('settings.sync.url.hint')}>
-              <TextInput
-                type="url"
-                value={value(SETTING_KEYS.syncUrl)}
-                placeholder="https://nas.local:5006/storylantern/"
-                onChange={(next) => update(SETTING_KEYS.syncUrl, next)}
-                onBlur={() => commit(SETTING_KEYS.syncUrl)}
-              />
-            </Field>
-            <Field label={t('settings.sync.username')}>
-              <TextInput
-                value={value(SETTING_KEYS.syncUsername)}
-                onChange={(next) => update(SETTING_KEYS.syncUsername, next)}
-                onBlur={() => commit(SETTING_KEYS.syncUsername)}
-              />
-            </Field>
-            <Field label={t('settings.sync.password')}>
-              <TextInput
-                type="password"
-                value={value(SETTING_KEYS.syncPassword)}
-                onChange={(next) => update(SETTING_KEYS.syncPassword, next)}
-                onBlur={() => commit(SETTING_KEYS.syncPassword)}
-              />
-            </Field>
-          </>
+          <WebDavFields value={value} update={update} commit={commit} />
+        )}
+        {(value(SETTING_KEYS.syncKind) || 'off') === 's3' && (
+          <S3Fields
+            value={value}
+            update={update}
+            commit={commit}
+            secretDraft={s3SecretDraft}
+            onSecretDraft={setS3SecretDraft}
+          />
         )}
         {(value(SETTING_KEYS.syncKind) || 'off') === 'folder' && (
           <>
@@ -310,11 +299,12 @@ export function SettingsScreen({ store, router, host, chat, ops, sync, plugins, 
                   void (async () => {
                     // 先把还在输入框里的非机密值**落库**（await），再同步：
                     // 否则"填完地址立刻点同步"会读到旧设置——真机上踩过。
-                    for (const key of [SETTING_KEYS.syncUrl, SETTING_KEYS.syncUsername, SETTING_KEYS.syncPassword, SETTING_KEYS.syncFolder]) {
+                    for (const key of [SETTING_KEYS.syncUrl, SETTING_KEYS.syncUsername, SETTING_KEYS.syncPassword, SETTING_KEYS.syncFolder, ...S3_SETTING_KEYS]) {
                       await store.actions.setSetting(key, value(key));
                     }
                     const draft = secretDraft.trim();
-                    return sync.run(draft === '' ? undefined : draft);
+                    const s3Draft = s3SecretDraft.trim();
+                    return sync.run(draft === '' ? undefined : draft, s3Draft === '' ? undefined : s3Draft);
                   })()
                     .then((summary) => {
                       setSecretDraft('');

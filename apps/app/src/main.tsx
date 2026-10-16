@@ -12,7 +12,7 @@ import type { Repository } from './data/repository.ts';
 import type { OpLogRepository } from './data/op-repository.ts';
 import type { OpLogAdmin, SyncAdmin } from './screens/screen-props.ts';
 import { pickSafFolder } from './data/saf.ts';
-import { buildSyncService, describeSyncProblem, readSyncConfig, runSync, SYNC_SECRET_KEY, type FolderBackendProvider, type RunSyncInput, type SyncBackendFactory, type SyncConfig } from './data/sync/app-sync.ts';
+import { buildSyncService, describeSyncProblem, readSyncConfig, runSync, SYNC_SECRET_KEY, SYNC_S3_SECRET_KEY, type FolderBackendProvider, type RunSyncInput, type SyncBackendFactory, type SyncConfig } from './data/sync/app-sync.ts';
 import { syncAvailable } from './data/sync/service.ts';
 import { createHostFetch } from './data/sync/host-fetch.ts';
 import { createHostFolderBackend } from './data/sync/folder-backend.ts';
@@ -125,8 +125,9 @@ function Root(): ReturnType<typeof AppShell> {
 
   const t = useMemo(() => translatorOf(boot.locale), [boot.locale]);
 
-  // 同步：WebDAV 后端来自组合出来的插件注册表（关掉那行就拿不到）；本地文件夹后端由宿主提供文件读写
+  // 同步：WebDAV / S3 后端来自组合出来的插件注册表（关掉那行就拿不到）；本地文件夹后端由宿主提供文件读写
   const backendFactory = boot.runtime?.ctx.get<SyncBackendFactory>('sync.backend.webdav');
+  const s3BackendFactory = boot.runtime?.ctx.get<SyncBackendFactory>('sync.backend.s3');
   /**
    * 文件夹同步的两条路：
    *  - 默认走宿主的 `files.*`（应用私有目录，Rust 能做）；
@@ -184,7 +185,7 @@ function Root(): ReturnType<typeof AppShell> {
     settings: ports.settings,
     device: ports.device,
     config,
-    backendFactory,
+    backendFactory: config.kind === 's3' ? s3BackendFactory : backendFactory,
     ...(folderProvider === undefined ? {} : { folderBackend: folderProvider }),
     // 同步请求由宿主发出：WebView 里对 NAS 的跨源请求会被 CORS 拦
     ...(transport === undefined ? {} : { hostFetch: createHostFetch(transport) }),
@@ -204,10 +205,11 @@ function Root(): ReturnType<typeof AppShell> {
             const result = await new WireClient(transport).call<{ path: string }>('files', 'root');
             return result.path;
           },
-          run: async (secret?: string) => {
+          run: async (secret?: string, s3Secret?: string) => {
             // 口令是**只写**的：存在设备本地 kv 里（宿主对 secret 类设置键只回掩码，
-            // 放设置里会出现"写回掩码覆盖真口令"的事故——真机踩过）
+            // 放设置里会出现"写回掩码覆盖真口令"的事故——真机踩过）。S3 的 Secret Key 同理。
             if (secret !== undefined && secret !== '') await ports.device.set(SYNC_SECRET_KEY, secret);
+            if (s3Secret !== undefined && s3Secret !== '') await ports.device.set(SYNC_S3_SECRET_KEY, s3Secret);
             const config = await readSyncConfig(store.getState().settings, ports.device);
             const summary = await runSync(syncInput(config));
             // 拉到的 op 已经进了本地日志与物化状态；界面的列表要刷新一次才看得到

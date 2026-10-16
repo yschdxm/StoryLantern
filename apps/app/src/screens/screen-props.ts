@@ -43,8 +43,11 @@ export interface SyncAdmin {
    * 界面必须写清这一点。没有宿主（浏览器）时返回 undefined。
    */
   safPick?: (() => Promise<{ uri: string; name: string } | { error: string }>) | undefined;
-  /** 跑一次同步；`secret` 非空时先存进设备本地 kv。 */
-  run(secret?: string): Promise<{ uploaded: number; downloaded: number; appliedOps: number; warnings: string[]; root?: string }>;
+  /** 跑一次同步；`secret` / `s3Secret` 非空时先存进设备本地 kv（两个都是只写的密钥）。 */
+  run(
+    secret?: string,
+    s3Secret?: string,
+  ): Promise<{ uploaded: number; downloaded: number; appliedOps: number; warnings: string[]; root?: string }>;
   /**
    * 设备名单（配对即登记；吊销是显式动作）。
    *
