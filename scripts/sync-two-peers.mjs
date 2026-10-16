@@ -76,13 +76,16 @@ export async function runTwoPeers(input) {
   const label = input.label ?? '';
   const prefix = label === '' ? '' : `[${label}] `;
   /**
-   * 远端不在本机（真实 NAS / 网盘）时，没有本地盘可读：体积与落盘统计跳过。
-   * 其余断言（消息一致、断链回退、能力探测）**照旧** —— 它们只依赖协议与后端。
+   * 远端不在本机（真实 NAS / 网盘）时，没有本地盘可读：体积与落盘统计要通过**后端自己**去问
+   * （`input.remoteFiles`）；两者都没有就跳过统计。其余断言（消息一致、断链回退、能力探测）
+   * **照旧** —— 它们只依赖协议与后端。
    */
   const noDisk = input.noDisk ?? process.env.SYNC_NO_DISK === '1';
-  const files = (target) => (noDisk ? [] : diskFiles(diskRoot, target));
+  const files = async (target) =>
+    input.remoteFiles !== undefined ? await input.remoteFiles(target) : noDisk ? [] : diskFiles(diskRoot, target);
+  const hasSizes = input.remoteFiles !== undefined || !noDisk;
 
-  const backend = createWebDavBackend({ baseUrl: url });
+  const backend = input.backend ?? createWebDavBackend({ baseUrl: url });
   const capabilities = await backend.probe();
 
   const blindKey = new Uint8Array(32).fill(7);
@@ -141,23 +144,23 @@ export async function runTwoPeers(input) {
     emit(a, index);
     await a.engine.sync(a.materializer);
   }
-  const afterFull = files('snapshots/');
+  const afterFull = await files('snapshots/');
   console.log(
     `  ${prefix}发布方同步 3 次：远端快照 ${afterFull.length} 份` +
-      (noDisk ? '（远端不在本机，体积跳过）' : `，体积 ${afterFull.map((f) => f.bytes).join(' / ')} B`),
+      (hasSizes ? `，体积 ${afterFull.map((f) => f.size ?? f.bytes ?? 0).join(' / ')} B` : '（远端不在本机，体积跳过）'),
   );
 
   for (const index of [3, 4]) {
     emit(a, index);
     await a.engine.sync(a.materializer);
   }
-  const afterDeltas = files('snapshots/');
-  const sizes = afterDeltas.map((file) => file.bytes).sort((left, right) => left - right);
+  const afterDeltas = await files('snapshots/');
+  const sizes = afterDeltas.map((file) => file.size ?? file.bytes ?? 0).sort((left, right) => left - right);
   const smallest = sizes[0] ?? 0;
   const largest = sizes[sizes.length - 1] ?? 1;
   console.log(
     `  ${prefix}再改 2 条：远端快照 ${afterDeltas.length} 份` +
-      (noDisk ? '' : `，体积（小→大）${sizes.join(' / ')} B；最小/最大 = ${(smallest / largest).toFixed(3)}`),
+      (hasSizes ? `，体积（小→大）${sizes.join(' / ')} B；最小/最大 = ${(smallest / largest).toFixed(3)}` : ''),
   );
 
   const b = makePeer('peer-b');
@@ -192,10 +195,12 @@ export async function runTwoPeers(input) {
     `  ${prefix}能力探测：条件写=${capabilities.conditionalPut}、范围读=${capabilities.rangeRead}、` +
       `删除=${capabilities.delete}、分页=${capabilities.listPagination}`,
   );
-  if (noDisk) {
+  if (noDisk && !hasSizes) {
     console.log(`  ${prefix}落盘统计跳过（远端不在本机）`);
   } else {
-    console.log(`  ${prefix}最终落盘：快照 ${files('snapshots/').length} 份、段 ${files('logs/').length} 个`);
+    const snapshots = await files('snapshots/');
+    const segments = await files('logs/');
+    console.log(`  ${prefix}最终落盘：快照 ${snapshots.length} 份、段 ${segments.length} 个`);
   }
 
   return {
