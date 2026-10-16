@@ -70,6 +70,15 @@ export interface SyncAdmin {
    * 所以由用户显式确认后才执行。
    */
   collect(dryRun: boolean): Promise<{ candidates: string[]; moved: string[]; reasons: string[] }>;
+  /**
+   * 生成"配对链接"：一段含同步口令的文本，贴到另一台设备上即可完成配置。
+   *
+   * 为什么用粘贴而不是扫码：口令是端到端加密的根，不能走远端，只能屏幕到屏幕；
+   * 扫码还要相机权限 + 二维码解码器（第三方依赖或几百行自实现）。见 `data/sync/join-link.ts`。
+   */
+  createJoinLink(): Promise<{ link: string; expiresAt: number }>;
+  /** 应用对方给的配对链接：非机密写设置、机密（口令 / S3 密钥）只写设备本地。 */
+  applyJoinLink(link: string): Promise<{ ok: true } | { ok: false; error: string }>;
 }
 
 export interface SyncDevice {

@@ -13,6 +13,7 @@ import type { OpLogRepository } from './data/op-repository.ts';
 import type { OpLogAdmin, SyncAdmin } from './screens/screen-props.ts';
 import { pickSafFolder } from './data/saf.ts';
 import { buildSyncService, describeSyncProblem, readSyncConfig, runSync, SYNC_SECRET_KEY, SYNC_S3_SECRET_KEY, type FolderBackendProvider, type RunSyncInput, type SyncBackendFactory, type SyncConfig } from './data/sync/app-sync.ts';
+import { createJoinLink, decodeJoinLink, joinLinkWrites } from './data/sync/join-link.ts';
 import { syncAvailable } from './data/sync/service.ts';
 import { createHostFetch } from './data/sync/host-fetch.ts';
 import { createHostFolderBackend } from './data/sync/folder-backend.ts';
@@ -246,6 +247,20 @@ function Root(): ReturnType<typeof AppShell> {
           collect: async (dryRun: boolean) => {
             const built = await buildSyncService(syncInput(await readSyncConfig(store.getState().settings, ports.device)));
             return built.service.collect(dryRun);
+          },
+          // 配对：生成要带外传的链接 / 应用对方给的链接。机密只写设备本地（与同步口令同一套规矩）。
+          createJoinLink: async () => createJoinLink({ config: await readSyncConfig(store.getState().settings, ports.device) }),
+          applyJoinLink: async (link: string) => {
+            const parsed = decodeJoinLink(link);
+            if (!parsed.ok) return { ok: false as const, error: parsed.error };
+            const writes = joinLinkWrites(parsed.payload);
+            for (const [key, value] of Object.entries(writes.settings)) await store.actions.setSetting(key, value);
+            await ports.device.set(SYNC_SECRET_KEY, writes.secrets.secret);
+            if (writes.secrets.s3SecretAccessKey !== undefined) {
+              await ports.device.set(SYNC_S3_SECRET_KEY, writes.secrets.s3SecretAccessKey);
+            }
+            setHasSyncSecret(true);
+            return { ok: true as const };
           },
         };
   useEffect(() => {

@@ -10,6 +10,7 @@ import { ModelProfilesPanel } from './ModelProfilesPanel.tsx';
 import { SyncDevices } from './SyncDevices.tsx';
 import { S3Fields, S3_SETTING_KEYS } from './S3Fields.tsx';
 import { WebDavFields } from './WebDavFields.tsx';
+import { PairingPanel } from './PairingPanel.tsx';
 import { Button, Field, TextInput } from '../ui/components.tsx';
 export interface SettingsScreenProps extends ScreenProps {
   plugins: Array<{ id: string; status: string }>;
@@ -282,6 +283,12 @@ export function SettingsScreen({ store, router, host, chat, ops, sync, plugins, 
                   value: value(SETTING_KEYS.syncFolderSaf) === 'on',
                   onChange: (next) => saveNow(SETTING_KEYS.syncFolderSaf, next ? 'on' : 'off'),
                 }}
+              />
+            )}
+            {sync !== undefined && (
+              <PairingPanel
+                createJoinLink={() => sync.createJoinLink()}
+                applyJoinLink={(link) => sync.applyJoinLink(link)}
               />
             )}
             <div className="row">
