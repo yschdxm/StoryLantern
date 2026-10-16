@@ -46,6 +46,22 @@ export function encodeDavPath(path: string): string {
     .join('/');
 }
 
+/**
+ * 把 HTTP 状态变成**可行动**的话 —— 这些依据来自官方文档（见 docs/WEBDAV-PROVIDERS.md）：
+ *  - `429`：免费网盘普遍有请求频率上限（坚果云官方：免费版每 30 分钟 ≤600 次、付费 ≤1500 次），
+ *    所以要告诉用户"稍后再试"，而不是丢一个光秃秃的状态码；
+ *  - `507`：远端配额不足（Nextcloud 在 `OC-Total-Length` 不足时会更快中止）；
+ *  - `401/403`：Nextcloud 开了 OIDC/2FA 时**必须用应用密码**（官方文档明确要求）。
+ */
+export function describeHttp(status: number, what: string): string {
+  if (status === 429) return `${what} 被远端限流（HTTP 429）：免费网盘通常有每半小时的请求数上限，稍后再试即可`;
+  if (status === 507) return `${what} 失败：远端配额不足（HTTP 507），先清理远端空间`;
+  if (status === 401 || status === 403) {
+    return `${what} 被拒绝（HTTP ${status}）：检查账号密码；Nextcloud 这类开了双重验证/OIDC 的服务要用**应用密码**`;
+  }
+  return `${what} 失败：HTTP ${status}`;
+}
+
 export function decodeDavPath(path: string): string {
   return path
     .split('/')
@@ -137,6 +153,22 @@ export function createWebDavBackend(options: WebDavOptions): WebDavBackend {
     }
   };
 
+  /**
+   * 逐级建父集合（RFC 4918 要求；普通服务端不会自动建）。
+   * `405` 表示该集合已经存在（MKCOL 的标准回应），`301/302` 是某些服务端的重定向习惯，都当成功。
+   */
+  const ensureParents = async (path: string): Promise<void> => {
+    const segments = path.split('/').slice(0, -1);
+    let accumulated = '';
+    for (const segment of segments) {
+      accumulated = accumulated === '' ? segment : `${accumulated}/${segment}`;
+      const response = await request('MKCOL', accumulated);
+      if (response.status === 401 || response.status === 403 || response.status === 429) {
+        throw new Error(describeHttp(response.status, `MKCOL ${accumulated}`));
+      }
+    }
+  };
+
   const backend: WebDavBackend = {
     id: `webdav:${base}`,
     baseUrl: base,
@@ -161,14 +193,14 @@ export function createWebDavBackend(options: WebDavOptions): WebDavBackend {
       // 404 表示这个前缀还不存在（例如首次同步）：当作空目录处理，而不是错误。
       if (response.status === 404) return { entries: [] };
       if (!response.ok && response.status !== 207) {
-        throw new Error(`PROPFIND ${prefix} 失败：HTTP ${response.status}`);
+        throw new Error(describeHttp(response.status, `PROPFIND ${prefix}`));
       }
       return { entries: parseMultistatus(await response.text(), basePath) };
     },
 
     async get(path: string): Promise<Uint8Array> {
       const response = await request('GET', path);
-      if (!response.ok) throw new Error(`GET ${path} 失败：HTTP ${response.status}`);
+      if (!response.ok) throw new Error(describeHttp(response.status, `GET ${path}`));
       return new Uint8Array(await response.arrayBuffer());
     },
 
@@ -176,9 +208,24 @@ export function createWebDavBackend(options: WebDavOptions): WebDavBackend {
       const extra: Record<string, string> = { 'content-type': 'application/octet-stream' };
       if (putOptions?.ifNoneMatch === true) extra['if-none-match'] = '*';
 
-      const response = await request('PUT', path, { headers: extra, body: bytes as unknown as BodyInit });
+      const send = (): Promise<Response> => request('PUT', path, { headers: extra, body: bytes as unknown as BodyInit });
+      let response = await send();
+
+      // 409 = 父集合不存在。**普通 WebDAV 不会替你建父目录**：Nextcloud 直到 32 才有
+      // `X-NC-WebDAV-Auto-Mkcol`，而 RFC 4918 本来就要求逐级 MKCOL。
+      // （我们在实测的 nginx 上没暴露这个问题，只因为它开了 `create_full_put_path`——
+      //  这正说明"只在一个服务端上验过"不等于"对得上协议"。）
+      if (response.status === 409) {
+        await ensureParents(path);
+        response = await send();
+        if (response.status === 409) {
+          throw new Error(`PUT ${path} 失败：父目录建不起来（HTTP 409）`);
+        }
+      }
+
       if (response.status === 412) return { ok: false, exists: true };
       if (response.status === 204 || response.status === 201 || response.ok) return { ok: true };
+      if (response.status >= 500 || response.status === 429) throw new Error(describeHttp(response.status, `PUT ${path}`));
       return { ok: false };
     },
 

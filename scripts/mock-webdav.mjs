@@ -34,6 +34,12 @@ const flags = new Set(process.argv.slice(4));
 const noConditional = flags.has('--no-conditional') || process.env.WEBDAV_NO_CONDITIONAL === '1';
 const noRange = flags.has('--no-range') || process.env.WEBDAV_NO_RANGE === '1';
 const noDelete = flags.has('--no-delete') || process.env.WEBDAV_NO_DELETE === '1';
+/**
+ * `--strict-parents`：PUT 到不存在的父集合时回 **409 Conflict**，像普通 WebDAV 那样
+ * （RFC 4918 要求客户端逐级 MKCOL；Nextcloud 32+ 才有 X-NC-WebDAV-Auto-Mkcol）。
+ * 用来验证我们的"409 → MKCOL → 重试"这条路真的有效。
+ */
+const strictParents = flags.has('--strict-parents') || process.env.WEBDAV_STRICT_PARENTS === '1';
 
 const xmlEscape = (text) => text.replace(/[<>&'"]/g, (ch) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;' })[ch]);
 
@@ -183,6 +189,15 @@ const server = http.createServer((request, response) => {
       if (exists && !noConditional && request.headers['if-none-match'] !== undefined) {
         response.writeHead(412).end('precondition failed');
         log(412);
+        return;
+      }
+      // 真实 WebDAV **不会替你建父目录**（RFC 4918 要求逐级 MKCOL；Nextcloud 直到 32 才有
+      // X-NC-WebDAV-Auto-Mkcol）。nginx 开了 create_full_put_path，所以之前没暴露这个差异。
+      // 加这个开关，用来验证客户端确实会 409 → MKCOL → 重试。
+      const parentExists = await stat(path.dirname(full)).then((info) => info.isDirectory()).catch(() => false);
+      if (strictParents && !parentExists) {
+        response.writeHead(409).end('conflict: parent collection does not exist');
+        log(409);
         return;
       }
       await mkdir(path.dirname(full), { recursive: true });

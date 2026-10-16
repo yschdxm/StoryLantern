@@ -283,3 +283,76 @@ test('重复写同一路径：服务端服从条件写时返回 exists 而不是
     await dav.close();
   }
 });
+
+// ------------------------------------------------- 官方文档驱动的互操作（不需要任何账号）
+
+/**
+ * 普通 WebDAV **不会自动建父目录**（RFC 4918 要逐级 MKCOL；Nextcloud 32+ 才有
+ * `X-NC-WebDAV-Auto-Mkcol`）。我们实测的 nginx 恰好开了 `create_full_put_path`，所以掩盖了这个差异。
+ * 这里注入一个"严格"的 fetch：父集合不存在就 409，直到 MKCOL 过才允许写。
+ */
+function strictParentsFetch(basePath: string): { fetch: typeof fetch; mkcols: string[]; puts: string[] } {
+  const collections = new Set<string>(['']);
+  const mkcols: string[] = [];
+  const puts: string[] = [];
+  const impl = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
+    // 必须剥掉 baseUrl 里的那一段（/remote.php/dav/files/alice/sl），否则"集合是否已建"永远对不上
+    const path = decodeURIComponent(url.pathname).slice(basePath.length).replace(/^\/+|\/+$/g, '');
+    const method = (init?.method ?? 'GET').toUpperCase();
+
+    if (method === 'MKCOL') {
+      mkcols.push(path);
+      const parent = path.split('/').slice(0, -1).join('/');
+      if (parent !== '' && !collections.has(parent)) return new Response('conflict', { status: 409 });
+      collections.add(path);
+      return new Response(null, { status: 201 });
+    }
+    if (method === 'PUT') {
+      puts.push(path);
+      const parent = path.split('/').slice(0, -1).join('/');
+      if (!collections.has(parent)) return new Response('conflict: parent missing', { status: 409 });
+      return new Response(null, { status: 201 });
+    }
+    return new Response('not found', { status: 404 });
+  };
+  return { fetch: impl as unknown as typeof fetch, mkcols, puts };
+}
+
+test('父目录不存在（409）时：逐级 MKCOL 再重试一次，最终写入成功', async () => {
+  const harness = strictParentsFetch('/remote.php/dav/files/alice/sl');
+  const backend = createWebDavBackend({ baseUrl: 'https://cloud.example.com/remote.php/dav/files/alice/sl/', fetch: harness.fetch });
+
+  const result = await backend.put('logs/dev-a/SESSION/00000001-abcdef.jsonl.gz', new Uint8Array([9, 9]));
+  assert.deepEqual(result, { ok: true }, '409 之后应当建好父目录并重试成功');
+  assert.deepEqual(harness.mkcols, ['logs', 'logs/dev-a', 'logs/dev-a/SESSION'], '必须逐级建');
+  assert.equal(harness.puts.length, 2, '第一次 409、重试一次');
+});
+
+test('限流（429）要说人话：提示"稍后再试"，而不是裸状态码', async () => {
+  const limited = (async () => new Response('too many requests', { status: 429 })) as unknown as typeof fetch;
+  const backend = createWebDavBackend({ baseUrl: 'https://dav.jianguoyun.com/dav/', fetch: limited });
+
+  await assert.rejects(() => backend.list('devices/'), (error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    assert.match(message, /429/);
+    assert.match(message, /限流/);
+    assert.match(message, /稍后再试/);
+    return true;
+  });
+});
+
+test('配额不足（507）与认证被拒（401）也各自说清该做什么', async () => {
+  const quota = (async () => new Response('insufficient storage', { status: 507 })) as unknown as typeof fetch;
+  await assert.rejects(
+    () => createWebDavBackend({ baseUrl: 'https://cloud.example.com/dav/', fetch: quota }).get('a.gz'),
+    /配额不足/,
+  );
+
+  const denied = (async () => new Response('unauthorized', { status: 401 })) as unknown as typeof fetch;
+  await assert.rejects(
+    () => createWebDavBackend({ baseUrl: 'https://cloud.example.com/dav/', fetch: denied }).list('devices/'),
+    /应用密码/,
+    'Nextcloud 开了双重验证时必须用应用密码 —— 报错要把这句说出来',
+  );
+});
