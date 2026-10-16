@@ -147,3 +147,34 @@ test('增量快照：第二份是相对第一份的增量，基准**必须留着
   assert.equal(afterCap.length, 1, '整份取代整条链：该会话下只剩这一份，实际 ' + afterCap.length + ' 份');
   console.log('  增量快照：链上 2 份 → 到 12 段上限后整份收口，只剩 1 份');
 });
+
+test('断链回退：基准被删掉后，新设备仍能靠段把状态补齐（并留下告警）', async () => {
+  const world = createWorld({ snapshotThreshold: 1 });
+  const a = world.peer(A);
+  emit(a, messageAppend(a, { sessionId: 'S1', messageId: 'M0', author: 'user', content: '一' }));
+  await world.sync(A);
+  emit(a, messageAppend(a, { sessionId: 'S1', messageId: 'M1', author: 'user', content: '二' }));
+  await world.sync(A);
+
+  const blind = Object.keys(a.engine.state.hosted)[0] as string;
+  const ref = a.engine.state.hosted[blind]?.snapshot;
+  assert.equal(ref?.chainLength, 1, '此时远端应当是"整份 + 一份增量"');
+  // 把**基准**删掉 —— 增量就成了没人能还原的孤儿（GC 误删、对端清理过头都会这样）
+  const before = [...world.backend.files.keys()].filter((path) => path.startsWith('snapshots/'));
+  assert.equal(before.length, 2);
+  for (const path of before) {
+    if (path === 'snapshots/' + blind + '/' + ref?.hash + '.json.gz') continue;
+    world.backend.files.delete(path);
+  }
+
+  const b = world.peer(B);
+  const result = await world.sync(B);
+  assert.deepEqual(messageIds(b), ['M0', 'M1'], '断链也必须靠段把状态补齐（快照只是优化）');
+  assert.equal(result.hydratedSessions, 0, '快照没被采用（不能拿残缺的链还原出半个状态）');
+  assert.equal(
+    result.warnings.some((warning) => warning.includes('快照不可用')),
+    true,
+    '必须留下"快照不可用（退回逐段重放）"的告警，而不是静默降级',
+  );
+  console.log('  断链回退：基准被删后 hydratedSessions=0、消息仍为 ' + JSON.stringify(messageIds(b)));
+});
