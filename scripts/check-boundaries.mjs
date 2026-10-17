@@ -21,17 +21,44 @@ const ROOT = path.resolve(import.meta.dirname, '..');
 const MAX_LINES = 400;
 const SCAN_DIRS = ['packages', 'plugins', 'scripts', 'apps'];
 
-/** 允许的内部依赖：包名 -> 允许依赖的包名集合（'*' 表示除自身外任意 packages/*）。 */
+/**
+ * 允许的内部依赖：包名 -> 允许依赖的包名集合（'*' 表示除自身外任意 packages/*）。
+ *
+ * **这张表按真实依赖图写成**（不是按计划里"理想的样子"）。原表里有 `domain`/`sqlstore`/`ui-kit`
+ * 三个**并不存在的包**，而实际存在的 `lore`/`importer`/`tuner`/`wire` 却没登记 —— 没登记的包
+ * 会被直接放行，所以这条边界一直形同虚设（见下方必须显式登记的检查）。
+ */
 const ALLOWED_DEPS = {
   'plugin-api': [],
-  i18n: ['plugin-api'],
-  kernel: ['plugin-api'],
   oplog: [],
   lore: [],
-  'sync-core': ['kernel', 'oplog'],
-  domain: ['kernel', 'plugin-api'],
-  sqlstore: ['kernel', 'plugin-api', 'domain', 'oplog'],
-  'ui-kit': ['kernel', 'plugin-api', 'i18n'],
+  i18n: ['plugin-api'],
+  kernel: ['plugin-api'],
+  importer: ['sync-core'],
+  'sync-core': ['oplog'],
+  tuner: ['oplog'],
+  wire: ['plugin-api', 'sync-core'],
+};
+
+/**
+ * 仓内**一等插件**允许依赖的内部包（必须逐条登记；没登记就是违规）。
+ *
+ * 计划里写的是"plugin-api 是插件作者唯一依赖"——那是对**仓外第三方插件**的要求
+ * （`fixtures/external-plugin` 只依赖 plugin-api，有测试钉着）。仓内一等插件
+ * 现在确实用到了 `i18n`/`sync-core`/`oplog`/`tuner`，与其假装没有，不如把真实白名单摆出来：
+ * 新增一条跨包依赖时，**必须**在这里登记，评审时才看得见。
+ */
+const PLUGIN_ALLOWED = {
+  'context-blocks': ['plugin-api'],
+  locale: ['plugin-api', 'i18n'],
+  'log-sink': ['plugin-api'],
+  'settings-store': ['plugin-api'],
+  'sync-folder': ['sync-core'],
+  'sync-memory': ['sync-core'],
+  'sync-s3': ['sync-core'],
+  'sync-webdav': ['sync-core'],
+  'tuner-agent': ['plugin-api', 'oplog', 'tuner'],
+  'writing-pipeline': ['plugin-api', 'i18n'],
 };
 
 const FORBID_ANY = new Set(['oplog', 'sync-core', 'lore']);
@@ -141,8 +168,15 @@ function checkImports(relPath, text) {
       }
       // 测试允许把各包接起来（它不发货），生产代码仍受方向表约束。
       if (isTestFile(relPath)) continue;
-      const allowed = ALLOWED_DEPS[from.name];
-      if (allowed && !allowed.includes(to.name) && !allowed.includes('*')) {
+      // 包与插件各有自己的白名单；**没登记就是违规**（以前这里 `if (allowed && …)` 会让未登记项直接放行）。
+      const table = from.kind === 'plugins' ? PLUGIN_ALLOWED : ALLOWED_DEPS;
+      const allowed = table[from.name];
+      if (allowed === undefined) {
+        violations.push(
+          `${relPath}: ${from.kind}/${from.name} 没有登记依赖白名单（在 check-boundaries.mjs 的 ` +
+            `${from.kind === 'plugins' ? 'PLUGIN_ALLOWED' : 'ALLOWED_DEPS'} 里补上，评审时才看得见）`,
+        );
+      } else if (!allowed.includes(to.name) && !allowed.includes('*')) {
         violations.push(`${relPath}: 非法依赖方向 ${from.name} -> ${to.name}`);
       }
     }

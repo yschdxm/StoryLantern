@@ -37,8 +37,15 @@ const info = statSync(DIST, { throwIfNoEntry: false });if (info === null || !inf
 }
 
 const problems = [];
-const assets = walk(DIST).filter((file) => /\.(js|css|html)$/.test(file));
+const allFiles = walk(DIST);
+const assets = allFiles.filter((file) => /\.(js|css|html)$/.test(file));
 let totalBytes = 0;
+
+// dist 就是 Tauri 的 frontendDist：`.map` 会被一起打进安装包（实测多出约 2.6 MB，且等于把源码发出去）。
+// 原先只扫 .js/.css/.html，所以这个洞一直没被看见 —— 现在单独拦一条。
+for (const file of allFiles) {
+  if (/\.map$/.test(file)) problems.push(`${path.relative(ROOT, file).split(path.sep).join('/')}: 产物里不许有 sourcemap（会打进安装包并把源码发出去）`);
+}
 
 for (const file of assets) {
   const rel = path.relative(ROOT, file).split(path.sep).join('/');

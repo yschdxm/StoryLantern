@@ -7,8 +7,10 @@
  * 诚实声明：
  *  - 这里只测**已在 Node 侧实现**的部分；浏览器相关的预算（冷启动、滚动帧率）没有实现，
  *    在表里标 SKIP 而不是假装通过；
- *  - 世界书扫描（M2）与真 tokenizer（M2）尚未实现，用"块图装配"和"显式标注"代替，
- *    绝不用一个更容易的近似去冒充原本的预算；
+ *  - 世界书扫描已有真实现（`packages/lore/src/scan.ts`），所以它**单独量一行真预算**；
+ *    真 tokenizer 仍未实现，标 SKIP 并说明，不用粗估器冒充；
+ *  - int8 检索按用户决定**不再追预算**（实测就在 30ms 线上抖动），标 INFO：照测、照打印，
+ *    但不让抖动把 CI 变红 —— 它现在的用途是回归信号；
  *  - 单轮次、单机测量，只看量级与是否越线，不做统计显著性声明。
  */
 import { performance } from 'node:perf_hooks';
@@ -17,6 +19,7 @@ import { Materializer } from '../../packages/oplog/src/materialize.ts';
 import { messageAppend, settingSet } from '../../packages/oplog/src/op.ts';
 import { packSegment } from '../../packages/oplog/src/segment.ts';
 import { createAesGcmCipher, createDeviceSigner, generateDeviceKeyPair, nodeDigest, nodeGzip } from '../../packages/oplog/src/node-adapters.ts';
+import { scanLore } from '../../packages/lore/src/scan.ts';
 import { assembleBlocks } from '../../plugins/writing-pipeline/src/index.ts';
 
 const rows = [];
@@ -34,6 +37,14 @@ function recordFloor(name, measured, floor, note = '', unit = 'op/s') {
 
 function skip(name, budget, note) {
   rows.push({ name, measuredMs: Number.NaN, budgetMs: budget, status: 'SKIP', note, unit: 'ms' });
+}
+
+/**
+ * 仅观测（INFO）：照测、照打印，但**不参与**通过/失败判定。
+ * 用于"按决定不再追、只当回归信号"的指标（例如 int8 检索：实测就在预算线上抖动）。
+ */
+function info(name, measuredMs, budgetMs, note = '') {
+  rows.push({ name, measuredMs, budgetMs, status: 'INFO', note, unit: 'ms' });
 }
 
 function ms(fn) {
@@ -76,7 +87,41 @@ function makeOps(count, deviceId) {
   }
   const context = { sessionTitle: '基准', characterName: '星野', userName: '旅人', transcript: ['一', '二'] };
   const elapsed = ms(() => assembleBlocks(blocks, context, 32_000));
-  record('块图装配（2000 块，≈30k token 预算）', elapsed, 50, 'M2 起由真世界书扫描取代');
+  record('块图装配（2000 块，≈30k token 预算）', elapsed, 50, '块图装配本身的成本；世界书扫描另有一行（见下）');
+}
+
+// ---------------------------------------------------------------- 1b. 真·世界书扫描（5000 条）
+{
+  // PLAN 里"5000 条世界书扫描 <30ms"这条预算的**真实实现**测量。
+  // 以前这一行是拿"块图装配"顶替的（注释还写着"M2 起由真世界书扫描取代"，但一直没取代）——
+  // 现在量的是 packages/lore/src/scan.ts 本身。
+  const words = ['星野', '夜巡', '符文', '酒馆', '约定', '低语', '走廊', '风雨'];
+  const entries = [];
+  for (let index = 0; index < 5000; index += 1) {
+    entries.push({
+      id: `entry-${index}`,
+      keys: [`${words[index % words.length]}${index % 97}`],
+      content: `设定 ${index}：` + '内容'.repeat(6),
+      enabled: true,
+      order: index % 100,
+      constant: false,
+      depth: 0,
+      caseSensitive: false,
+      recursive: index % 3 === 0,
+    });
+  }
+  const books = [{ id: 'book-1', name: '基准世界书', enabled: true, entries }];
+  const messages = [
+    { role: 'user', content: '星野3 在走廊里低语' },
+    { role: 'assistant', content: '夜巡1 提到酒馆的约定' },
+    { role: 'user', content: '风雨里有人念起符文2' },
+    { role: 'assistant', content: '那就走吧' },
+  ];
+  const options = { books, messages, scanDepth: 4, maxRecursion: 3, budgetChars: 4000 };
+  const probe = scanLore(options);
+  if (probe.matched.length === 0) throw new Error('世界书扫描没有命中任何条目（基准数据有问题）');
+  const elapsed = ms(() => scanLore(options));
+  record('世界书扫描（5000 条 · 最近 4 条消息）', elapsed, 30, `真实现 packages/lore/src/scan.ts；命中 ${probe.matched.length} 条 / 用掉 ${probe.charsUsed} 字 / ${probe.rounds} 轮`);
 }
 
 // ---------------------------------------------------------------- 2. op 物化吞吐
@@ -168,7 +213,8 @@ function makeOps(count, deviceId) {
   console.log(`  （int8 检索：冷跑 ${cold.toFixed(2)} ms / 热跑 best-of-3 ${warm.toFixed(2)} ms）`);
   // 按用户 2026-10-16 的决定：**不再追这条预算**（它属于"想让数字更准"，不是正确性）。
   // 仍然测量，是把它当**回归信号** —— 真实现就在 packages/oplog/src/vector-int8.ts，退化会被看见。
-  record('int8 暴力检索（5 万 × 768 维，热）', warm, 30, '产品实现 vector-int8.ts（内层 ×4 展开）；实测在 29.4–30.1ms 之间抖动（就在预算线上）；按用户决定不再追这条，只留作回归信号；冷跑 ' + cold.toFixed(1) + 'ms');
+  // 所以用 INFO（不参与通过/失败判定）：实测就在 30ms 线上抖动，用 PASS/FAIL 只会让 CI 随机变红。
+  info('int8 暴力检索（5 万 × 768 维，热）—— 仅观测', warm, 30, '产品实现 vector-int8.ts（内层 ×4 展开）；实测 29.4–30.1ms 抖动（预算线上）；按用户决定不再追；冷跑 ' + cold.toFixed(1) + 'ms');
 }
 
 // ---------------------------------------------------------------- 7. 设置类 LWW 写入
@@ -199,8 +245,12 @@ for (const row of rows) {
 
 const failed = rows.filter((row) => row.status === 'FAIL');
 const skipped = rows.filter((row) => row.status === 'SKIP');
+const observed = rows.filter((row) => row.status === 'INFO');
 console.log('');
-console.log(`通过 ${rows.filter((r) => r.status === 'PASS').length} / 失败 ${failed.length} / 未实现 ${skipped.length}`);
+console.log(
+  `通过 ${rows.filter((r) => r.status === 'PASS').length} / 失败 ${failed.length} / 未实现 ${skipped.length}` +
+    (observed.length > 0 ? ` / 仅观测 ${observed.length}（不参与判定）` : ''),
+);
 if (failed.length > 0) {
   console.error('✗ 有预算未达标：' + failed.map((row) => row.name).join('、'));
   process.exit(1);

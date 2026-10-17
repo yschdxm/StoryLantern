@@ -30,7 +30,10 @@ export default defineConfig({
     emptyOutDir: true,
     // 移动端 WebView 目标：es2022 足够新，又不必为老 WebView 做 polyfill
     target: 'es2022',
-    sourcemap: true,
+    // **不产 sourcemap**：dist 就是 Tauri 的 frontendDist，`.map` 会一起打进安装包
+    // （实测多出约 2.6 MB，而且等于把源码随包发出去）。开发服务器本来就有自己的 sourcemap，
+    // 调试不受影响；`scripts/check-bundle.mjs` 现在会拦住"产物里出现 .map"。
+    sourcemap: false,
   },
   server: {
     port: PORT,
