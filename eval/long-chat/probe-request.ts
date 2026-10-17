@@ -1,6 +1,6 @@
 import { HlcClock, nodeDigest, runSummaries, toHex, utf8, type SummarizeRequest } from '../../packages/oplog/src/index.ts';
-import { buildChatRequest } from '../../apps/app/src/data/prompt.ts';
-import type { PromptSummary } from '../../apps/app/src/data/prompt-blocks.ts';
+import { buildChatRequest } from './legacy-prompt.ts';
+import type { PromptSummary } from './legacy-prompt-blocks.ts';
 import { FACTS, type Probe } from './harness.ts';
 
 /**

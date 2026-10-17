@@ -108,6 +108,22 @@ export {
   type AssetStore,
 } from './asset.ts';
 export {
+  ASSET_INDEX_PREFIX,
+  assetIndexAad,
+  assetIndexFileName,
+  assetIndexPath,
+  assetIndexSignaturePayload,
+  decodeAssetIndex,
+  encodeAssetIndex,
+  isSafeAssetIndexDeviceId,
+  parseAssetIndexPath,
+  validateAssetIndex,
+  type AssetIndex,
+  type AssetIndexEntry,
+  type DecodedAssetIndex,
+  type EncodedAssetIndex,
+} from './asset-index.ts';
+export {
   clone,
   DEFAULT_GRACE_MS,
   emptyState,

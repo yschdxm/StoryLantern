@@ -51,13 +51,20 @@ pnpm --filter @storylantern/app exec vite preview --port 15199 --strictPort
 - 无障碍基线已全局提供：`:focus-visible`、`prefers-reduced-motion` 归零、`.sr-only`。
 - 视觉设定：四类卡共用 `screens/visuals-edit/VisualsSection.tsx` + `data/visuals-form.ts`；
   **caption 是给模型的入口，图可后补**（`VisualAsset.path` 可选；有图必须 `asset://<sha256>`）。
-  图片上传/资产同步**尚未接线**，界面只能手填 asset 引用——不要在文档里说已支持上传。
+  图片上传已接线：`data/asset-client.ts`（Tauri 走宿主 `assets` 服务、内容寻址持久；**纯浏览器是内存实现，刷新即丢**，
+  界面必须提示）。资产跨设备同步在 `data/sync/assets-sync.ts` + `packages/sync-core/src/asset-index.ts`（懒加载、sha 校验）。
 - 规则/行为编辑：`screens/rules-edit/RulesSection.tsx` + `data/rules-form.ts`（角色卡 `rules`、物品 `behaviors`），
   条件语法检查只校验语法，语义按运行时变量求值。
 - 世界包编辑：`screens/world-edit/PackEditSheet.tsx` + `pack-form.ts`（Sheet 内联，不新增路由）。
 - 智能开场：`data/auto-opening.ts`（装配走 buildChatRequestV2，15s 超时；失败降级 `self` 并如实提示）。
-- 已知限制：图片上传/资产同步未接线；新屏幕的 e2e 只覆盖路由可达与无异常；L3 无独立 URL（设置分区）；
-  详见 ADR-0011 与 `docs/SETTINGS-IA.md §8`。
+- 死代码已清理：旧提示词实现（`data/prompt.ts`/`prompt-blocks.ts`）、旧 `LoreScreen`/`LorebookScreen` 及其路由已删；
+  `estimateTokens` 在 `data/tokens.ts`（`eval/long-chat` 为保留录制回放冻结了一份 legacy 实现，产品代码零旧实现）。
+- 主流程 e2e：角色页新建→填名字/简介→保存→列表出现；新建会话→默认勾选成员→用户开场→进入聊天并出现输入框
+  （`e2e/mobile.spec.ts`，用 `data-testid`，中英文都不挂）。
+- 已知限制：纯浏览器资产是内存实现（刷新即丢，界面已提示）；资产索引目前无签名（格式已支持，接签名端口即可）；
+  规则条件的"语义"只在运行时求值；L3 无独立 URL（设置分区）；详见 ADR-0011 与 `docs/SETTINGS-IA.md §8`。
+- 行数已贴上限，加东西先拆：`main.tsx`/`ChatScreen`/`SessionCreateScreen` 399，`repository.ts`/`sync/service.ts` 400，
+  `op-repository.ts` 399，`app-sync.ts` 388。
 - **hash 路由必须对实体 id 编解码**（`router.ts` 的 `encodePart`/`decodePart`）：id 不保证是 ASCII，漏了会出现"找不到这张卡片"。
 
 ## 3. 代码边界

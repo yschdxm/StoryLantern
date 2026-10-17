@@ -22,7 +22,7 @@ import type { ChatCall, ChatClient } from '../../apps/app/src/data/chat-client.t
 // ---------------------------------------------------------------- 长对话数据
 
 export const TOTAL = 500;
-/** 历史上限的默认值（apps/app/src/data/prompt.ts 的 DEFAULT_HISTORY_LIMIT）。 */
+/** 历史上限的默认值（与 `apps/app/src/data/prompt-v2.ts` 的 DEFAULT_HISTORY_LIMIT_V2 一致）。 */
 export const DEFAULT_LIMIT = 40;
 
 /**

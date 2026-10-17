@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildChatRequest } from '../../apps/app/src/data/prompt.ts';
+import { buildChatRequest } from './legacy-prompt.ts';
 import type { ChatClient } from '../../apps/app/src/data/chat-client.ts';
 import { buildLongConversation, PROBES, scoreCitations, scoreProbes, type Probe } from './harness.ts';
 

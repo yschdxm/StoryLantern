@@ -2,9 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildChatRequestV2,
-  estimateTokensV2,
   type BuildChatRequestV2Options,
 } from '../src/data/prompt-v2.ts';
+import { estimateTokens } from '../src/data/tokens.ts';
 import { registerPromptBlocksV2 } from '../src/data/prompt-blocks-v2.ts';
 import { assembleBlocks } from '../../../plugins/writing-pipeline/src/index.ts';
 import { Registry } from '../../../packages/plugin-api/src/index.ts';
@@ -238,7 +238,7 @@ test('预算裁剪：60 token 时 lore/summary 先被裁，character 保留', ()
     budgetTokens: 60,
   }));
   assert.equal(request.trace.pipeline, true);
-  assert.ok(estimateTokensV2(`你要扮演「林霜」。\n【身份】职业：；背景：北境出身，十二岁入伍。`) < 60);
+  assert.ok(estimateTokens(`你要扮演「林霜」。\n【身份】职业：；背景：北境出身，十二岁入伍。`) < 60);
   const blockOf = (id: string) => request.trace.blocks.find((block) => block.id === id);
   assert.equal(blockOf('app.character')?.included, true, 'character 优先级高，应保留');
   assert.equal(blockOf('app.summary.matched')?.included, false, 'summary 优先级低，先被裁');

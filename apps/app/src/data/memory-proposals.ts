@@ -1,4 +1,4 @@
-import type { ChatPromptMessage } from './prompt.ts';
+import type { ChatPromptMessage } from './tokens.ts';
 import type { Memory, MessageRole } from './types.ts';
 
 /**

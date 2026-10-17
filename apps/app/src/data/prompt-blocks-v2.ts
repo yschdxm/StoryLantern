@@ -1,5 +1,5 @@
 /**
- * 新版上下文块（与旧 `prompt-blocks.ts` 并存，不引用旧实现的运行时函数）。
+ * 新版上下文块（旧 `prompt-blocks.ts` 已删除）。
  *
  * 块的 id / placement / priority 就是"模型看到什么"的可解释性合同：
  * 系统侧 custom(100) → setup(99) → rules(98) → character(95) → state(90) → scene(88) → items(86) → examples(84)；
@@ -25,8 +25,15 @@ import type {
 import type { ScoredEntry } from '../../../../packages/lore/src/index.ts';
 import type { RetrievedMemory } from './memory-retrieval.ts';
 import { appendVisualCaptions } from './prompt-visuals.ts';
-import type { PromptSummary } from './prompt-blocks.ts';
 import type { Memory, MessageRole } from './types.ts';
+
+/** 分层摘要块需要的最小形状（由调用方从应用层的 Summary 映射过来）。 */
+export interface PromptSummary {
+  id: string;
+  text: string;
+  level: string;
+  covers: readonly string[];
+}
 
 /** 装配时用到的卡片索引（按 id 排序建，保证与输入数组顺序无关）。 */
 export interface PromptWorldV2 {

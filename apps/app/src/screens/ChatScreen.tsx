@@ -5,7 +5,7 @@ import { useAppState, useAsync } from './screen-props.ts';
 import { useT } from '../i18n/context.tsx';
 import { formatTime, isModelConfigured } from '../data/repository.ts';
 import { buildChatRequestV2 } from '../data/prompt-v2.ts';
-import { estimateTokens } from '../data/prompt.ts';
+import { estimateTokens } from '../data/tokens.ts';
 import { buildChatOptionsV2 } from './chat-request.ts';
 import { loadWorkspace, type WorkspaceSnapshot } from '../app/workspace.ts';
 import { computeUsage } from '../../../../packages/oplog/src/index.ts';
@@ -322,6 +322,7 @@ export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings, t
       <div className="composer">
         <textarea
           className="composer__input"
+          data-testid="chat-input"
           value={draft}
           rows={1}
           placeholder={configured && chat.available ? t('chat.placeholder') : t('chat.placeholder.unconfigured')}
@@ -338,7 +339,7 @@ export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings, t
             {t('chat.stop')}
           </Button>
         ) : (
-          <Button disabled={!configured || !chat.available || draft.trim() === ''} onClick={send}>
+          <Button disabled={!configured || !chat.available || draft.trim() === ''} onClick={send} testId="chat-send">
             {t('chat.send')}
           </Button>
         )}

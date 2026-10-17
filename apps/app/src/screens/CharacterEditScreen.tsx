@@ -231,7 +231,7 @@ export function CharacterEditScreen({ store, characterId, onDone }: CharacterEdi
       </div>
 
       <div className="actionbar">
-        <Button block disabled={saving || draft.name.trim() === ''} onClick={() => void save()}>
+        <Button block disabled={saving || draft.name.trim() === ''} onClick={() => void save()} testId="character-save">
           {saving ? t('character.editor.saveBusy') : t('character.editor.save')}
         </Button>
       </div>

@@ -26,7 +26,7 @@ export interface BlockContext {
    *
    * 为什么留一个宽松的口子：块注册表是通用机制（内置块与第三方块没有地位差异），
    * 而"角色卡字段、世界书命中、自定义提示"这些是**应用域**的概念，不该塞进内核或这个插件的类型里。
-   * 应用侧的块用一个带类型的读取器收口（见 `apps/app/src/data/prompt-blocks.ts`）。
+   * 应用侧的块用一个带类型的读取器收口（见 `apps/app/src/data/prompt-blocks-v2.ts`）。
    */
   data?: Record<string, unknown>;
 }

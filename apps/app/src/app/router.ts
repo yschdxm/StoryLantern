@@ -21,14 +21,12 @@ export type Route =
   | { name: 'sessions' }
   | { name: 'sessionNew' }
   | { name: 'characters' }
-  | { name: 'lore' }
   | { name: 'world'; kind?: WorldKind }
   | { name: 'worldCard'; kind: WorldKind; cardId: string | 'new' }
   | { name: 'settings'; section?: SettingsSection }
   | { name: 'import' }
   | { name: 'chat'; sessionId: string }
   | { name: 'character'; characterId: string | 'new' }
-  | { name: 'lorebook'; lorebookId: string }
   | { name: 'memories'; characterId: string }
   | { name: 'facts'; characterId: string };
 
@@ -77,8 +75,6 @@ export function parseRoute(hash: string): Route {
       return { name: 'characters' };
     case 'session':
       return tail === 'new' ? { name: 'sessionNew' } : ROOT_ROUTE;
-    case 'lore':
-      return { name: 'lore' };
     case 'world':
       return isWorldKind(tail) ? { name: 'world', kind: tail } : { name: 'world' };
     case 'worldcard': {
@@ -86,8 +82,6 @@ export function parseRoute(hash: string): Route {
       if (!isWorldKind(kind) || cardId === undefined || cardId === '') return { name: 'world' };
       return { name: 'worldCard', kind, cardId };
     }
-    case 'lorebook':
-      return tail === undefined || tail === '' ? { name: 'lore' } : { name: 'lorebook', lorebookId: tail };
     case 'memories':
       return tail === undefined || tail === '' ? { name: 'characters' } : { name: 'memories', characterId: tail };
     case 'settings':
@@ -120,14 +114,10 @@ export function routeToHash(route: Route): string {
       return '#/session/new';
     case 'characters':
       return '#/characters';
-    case 'lore':
-      return '#/lore';
     case 'world':
       return route.kind === undefined ? '#/world' : `#/world/${route.kind}`;
     case 'worldCard':
       return `#/worldcard/${route.kind}/${encodePart(route.cardId)}`;
-    case 'lorebook':
-      return `#/lorebook/${encodePart(route.lorebookId)}`;
     case 'memories':
       return `#/memories/${encodePart(route.characterId)}`;
     case 'facts':
@@ -143,7 +133,7 @@ export function routeToHash(route: Route): string {
   }
 }
 
-/** 底部标签：这四个是"根页面"；聊天、角色编辑、世界书详情是二级页面（带返回）。 */
+/** 底部标签：这四个是"根页面"；聊天、角色编辑、世界卡编辑是二级页面（带返回）。 */
 export const TABS: Array<{ route: Route; label: string; icon: string }> = [
   { route: { name: 'sessions' }, label: 'tab.sessions', icon: 'chat' },
   { route: { name: 'characters' }, label: 'tab.characters', icon: 'user' },
@@ -161,7 +151,6 @@ export function isRootRoute(route: Route): boolean {
 export function activeTabName(route: Route): Route['name'] {
   if (route.name === 'chat' || route.name === 'sessionNew') return 'sessions';
   if (route.name === 'character' || route.name === 'import' || route.name === 'memories') return 'characters';
-  if (route.name === 'lorebook' || route.name === 'lore') return 'lore';
   if (route.name === 'worldCard') return 'world';
   return route.name;
 }
@@ -185,8 +174,6 @@ export function parentOf(route: Route): Route | undefined {
     case 'import':
     case 'memories':
       return { name: 'characters' };
-    case 'lorebook':
-      return { name: 'lore' };
     case 'worldCard':
       return { name: 'world', kind: route.kind };
     case 'settings':

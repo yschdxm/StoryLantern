@@ -15,13 +15,14 @@ export function Button({
   disabled = false,
   block = false,
   type = 'button',
+  testId,
 }: {
-  children: ReactNode;
-  onClick?: () => void;
+  children: ReactNode; onClick?: () => void;
   variant?: 'primary' | 'ghost' | 'danger' | 'accent-ghost';
-  disabled?: boolean;
-  block?: boolean;
+  disabled?: boolean; block?: boolean;
   type?: 'button' | 'submit';
+  /** 端到端测试用的稳定选择器（只加属性，不改行为）。 */
+  testId?: string;
 }): ReactNode {
   return (
     <button
@@ -29,6 +30,7 @@ export function Button({
       className={`btn btn--${variant}${block ? ' btn--block' : ''}`}
       disabled={disabled}
       onClick={onClick}
+      {...(testId === undefined ? {} : { 'data-testid': testId })}
     >
       {children}
     </button>
@@ -236,17 +238,9 @@ export function ListRow({
 }
 
 /** 底部动作面板：重命名/删除这类二级操作放这里，主列表保持干净。 */
-export function Sheet({
-  open,
-  title,
-  onClose,
-  children,
-}: {
-  open: boolean;
-  /** 允许显式 undefined：调用方常写 `title={maybe?.title}`。 */
-  title?: string | undefined;
-  onClose: () => void;
-  children: ReactNode;
+export function Sheet({ open, title, onClose, children }: {
+  open: boolean; /** 允许显式 undefined：调用方常写 `title={maybe?.title}`。 */
+  title?: string | undefined; onClose: () => void; children: ReactNode;
 }): ReactNode {
   const t = useT();
   // 打开时锁住背景滚动：手机上一滑动背后列表就跟着动，是很典型的"不像原生"的观感
@@ -295,19 +289,10 @@ export function SheetItem({ icon, label, onClick, danger = false, disabled = fal
 }
 
 export function ConfirmDialog({
-  open,
-  title,
-  message,
-  confirmLabel,
-  onConfirm,
-  onCancel,
+  open, title, message, confirmLabel, onConfirm, onCancel,
 }: {
-  open: boolean;
-  title: string;
-  message: string;
-  confirmLabel?: string;
-  onConfirm: () => void;
-  onCancel: () => void;
+  open: boolean; title: string; message: string;
+  confirmLabel?: string; onConfirm: () => void; onCancel: () => void;
 }): ReactNode {
   const t = useT();
   if (!open) return null;
@@ -350,16 +335,18 @@ export function TextInput({
   autoFocus = false,
   disabled = false,
   onBlur,
+  testId,
 }: {
   value: string;
   onChange: (value: string) => void;
-  placeholder?: string;
-  type?: 'text' | 'password' | 'url' | 'number';
+  placeholder?: string; type?: 'text' | 'password' | 'url' | 'number';
   autoFocus?: boolean;
   /** 失焦时提交（设置页靠它做到"改完立即生效"，不必再放保存按钮）。 */
   onBlur?: () => void;
   /** 灰掉且不可编辑：用于"这条设置当前不生效"（例如同步改走 SAF 目录时的宿主路径框）。 */
   disabled?: boolean;
+  /** 端到端测试用的稳定选择器。 */
+  testId?: string;
 }): ReactNode {
   return (
     <input
@@ -371,6 +358,7 @@ export function TextInput({
       disabled={disabled}
       onChange={(event) => onChange(event.target.value)}
       {...(onBlur === undefined ? {} : { onBlur })}
+      {...(testId === undefined ? {} : { 'data-testid': testId })}
     />
   );
 }
@@ -380,11 +368,12 @@ export function TextArea({
   onChange,
   placeholder,
   rows = 4,
+  testId,
 }: {
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-  rows?: number;
+  value: string; onChange: (value: string) => void;
+  placeholder?: string; rows?: number;
+  /** 端到端测试用的稳定选择器。 */
+  testId?: string;
 }): ReactNode {
   return (
     <textarea
@@ -393,6 +382,7 @@ export function TextArea({
       value={value}
       placeholder={placeholder}
       onChange={(event) => onChange(event.target.value)}
+      {...(testId === undefined ? {} : { 'data-testid': testId })}
     />
   );
 }

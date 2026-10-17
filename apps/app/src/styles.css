@@ -1689,3 +1689,55 @@ button.chip { min-height: 36px; }
 .rule-check {
   margin-bottom: var(--space-3);
 }
+
+/* ------------------------------------------------------------------ 视觉设定：缩略图与上传 */
+.visual-thumb {
+  display: block;
+  flex: 0 0 auto;
+  width: 56px;
+  height: 56px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  object-fit: cover;
+}
+
+.visual-thumb--loading {
+  background: var(--surface-2);
+}
+
+.visual-thumb--missing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: var(--space-1);
+  color: var(--warn);
+  font-size: var(--text-xs);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+/* 文件选择用 label 包住隐藏 input：点击区域是既有 .btn，不新增按钮样式 */
+.visual-upload {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.visual-upload__pick {
+  display: inline-flex;
+  cursor: pointer;
+}
+
+.visual-upload__pick:focus-within .btn {
+  outline: var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.visual-upload__pick .btn[aria-disabled='true'] {
+  opacity: 0.55;
+  pointer-events: none;
+}

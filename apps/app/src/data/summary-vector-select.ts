@@ -1,6 +1,6 @@
 import { cosineSimilarity, type EmbeddingPort, type RerankPort } from '../../../../packages/oplog/src/index.ts';
 import { createHostRerankPort } from './rerank-host.ts';
-import type { PromptSummary } from './prompt-blocks.ts';
+import type { PromptSummary } from './prompt-blocks-v2.ts';
 import { DEFAULT_EMBEDDING_MODEL, createHostEmbeddingPort } from './embedding-host.ts';
 import type { WireTransport } from '../../../../packages/wire/src/index.ts';
 
@@ -8,7 +8,7 @@ import type { WireTransport } from '../../../../packages/wire/src/index.ts';
  * 用**向量**挑要注入的分层摘要（M4）。
  *
  * 为什么要有这个纯函数：聊天路径的块渲染是**同步**的，而 embedding 必然异步 ——
- * 所以检索必须在 `buildChatRequest` **之前**算好（见 ChatScreen 的 runReply），
+ * 所以检索必须在 `buildChatRequestV2` **之前**算好（见 ChatScreen 的 runReply），
  * 再把结果作为 `preselectedSummaries` 交给块。这里只做"算"，不做 IO 决策。
  *
  * 失败一律**抛给调用方**：调用方退回块内的词法检索（原有的回退规则），不让一次对话因为向量挂了而失败。

@@ -386,7 +386,7 @@ export function SessionCreateScreen({
       </div>
       <div className="actionbar">
         {createdSessionId === undefined ? (
-          <Button block disabled={!canSubmit} onClick={() => void submit()}>
+          <Button block disabled={!canSubmit} onClick={() => void submit()} testId="session-start">
             {submitting ? (generating ? t('session.create.opening.generating') : t('session.create.submitBusy')) : t('session.create.submit')}
           </Button>
         ) : (

@@ -1,5 +1,5 @@
 /**
- * 新版提示词装配（与旧 `prompt.ts` 并存；Lead 之后切调用方，再删旧实现）。
+ * 新版提示词装配（旧 `prompt.ts` 已删除；调用方是 `chat-request.ts` / `auto-opening.ts`）。
  *
  * 同一套原则、新的卡片模型：系统侧按"块"组织——走 `assemble`（优先级 + 预算 + 理由），
  * 没有就按固定顺序拼接、不裁剪；历史不进块（要保留 role 结构），但进上下文前过滤/限条数/记账；
@@ -23,11 +23,9 @@ import type { ScoredEntry } from '../../../../packages/lore/src/index.ts';
 import { retrieve } from '../../../../packages/oplog/src/index.ts';
 import type { AssembleFn, PromptGraph } from '../../../../plugins/writing-pipeline/src/index.ts';
 import { formatMemoryBlock, selectMemories, type RetrievedMemory } from './memory-retrieval.ts';
-import { renderAllSections, type PromptBlockDataV2, type PromptWorldV2 } from './prompt-blocks-v2.ts';
+import { renderAllSections, type PromptBlockDataV2, type PromptSummary, type PromptWorldV2 } from './prompt-blocks-v2.ts';
 import { loreTextOf } from './prompt-lore.ts';
-import type { ChatPromptMessage, PromptHistoryItem } from './prompt.ts';
-import type { PromptSummary } from './prompt-blocks.ts';
-import { SETTING_KEYS, type Memory, type MessageRole } from './types.ts';
+import { estimateTokens, type ChatPromptMessage, type PromptHistoryItem } from './tokens.ts';import { SETTING_KEYS, type Memory, type MessageRole } from './types.ts';
 
 // 典籍检索的实现搬到了 prompt-lore.ts；这些名字仍从这里导出，避免调用方/测试跟着改
 export { loreBooksOf, passesProbability, stableHash } from './prompt-lore.ts';
@@ -68,12 +66,6 @@ export interface BuildChatRequestV2Options {
 export const DEFAULT_HISTORY_LIMIT_V2 = 40;
 const HISTORY_LIMIT_MAX = 500;
 export const SUMMARY_INJECT_LIMIT_V2 = 3;
-
-/** 与旧实现同一套估算（中文 1 token/字，其它 1 token/4 字符，向上取整），保证两处数字不漂移。 */
-export function estimateTokensV2(text: string): number {
-  const cjk = (text.match(/[\u3400-\u9fff\uf900-\ufaff]/g) ?? []).length;
-  return Math.ceil(cjk + (text.length - cjk) / 4);
-}
 
 function historyLimitOf(settings: Record<string, string>): number {
   const raw = Number(settings[SETTING_KEYS.historyLimit]);
@@ -264,7 +256,7 @@ function assembleFallback(data: PromptBlockDataV2): AssembledV2 {
       id: section.id,
       kind: kindOf(section.id) ?? 'custom',
       chars: section.text.length,
-      estimatedTokens: estimateTokensV2(section.text),
+      estimatedTokens: estimateTokens(section.text),
       included: true,
       reason: '',
     }),
@@ -306,7 +298,7 @@ export function buildChatRequestV2(options: BuildChatRequestV2Options): ChatRequ
 
   // 引用说明只改"交给模型的那份"；两条装配路径都在这里统一追加（与旧实现一致）
   if (options.cite === true && messages.length > 0) {
-    const citationTokens = estimateTokensV2(CITATION_INSTRUCTION);
+    const citationTokens = estimateTokens(CITATION_INSTRUCTION);
     systemPrompt = systemPrompt === '' ? CITATION_INSTRUCTION : `${systemPrompt}\n${CITATION_INSTRUCTION}`;
     usedTokens += citationTokens;
     blocks = [

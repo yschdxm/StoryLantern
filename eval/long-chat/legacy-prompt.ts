@@ -1,9 +1,11 @@
-import { CITATION_INSTRUCTION, formatNumbered } from './citations.ts';
-import { scanLore, type ScoredEntry } from '../../../../packages/lore/src/index.ts';
-import type { AssembleFn, PromptGraph } from '../../../../plugins/writing-pipeline/src/index.ts';
-import { characterBlockText, memoryBlockText, summaryBlockTextOf, type PromptBlockData, type PromptSummary } from './prompt-blocks.ts';
-import { formatMemoryBlock, selectMemories, type RetrievedMemory } from './memory-retrieval.ts';
-import { SETTING_KEYS, type Lorebook, type Memory, type MessageRole } from './types.ts';
+/* 冻结副本（仅评估回放用）：旧提示词实现的最后一份；录制/回放按它逐字比对，产品代码已删除。 */
+
+import { CITATION_INSTRUCTION, formatNumbered } from '../../apps/app/src/data/citations.ts';
+import { scanLore, type ScoredEntry } from '../../packages/lore/src/index.ts';
+import type { AssembleFn, PromptGraph } from '../../plugins/writing-pipeline/src/index.ts';
+import { characterBlockText, memoryBlockText, summaryBlockTextOf, type PromptBlockData, type PromptSummary } from './legacy-prompt-blocks.ts';
+import { formatMemoryBlock, selectMemories, type RetrievedMemory } from '../../apps/app/src/data/memory-retrieval.ts';
+import { SETTING_KEYS, type Lorebook, type Memory, type MessageRole } from '../../apps/app/src/data/types.ts';
 
 /**
  * ⚠️ **已被 `prompt-v2.ts` 取代（ADR-0011，2026-10-17）。**

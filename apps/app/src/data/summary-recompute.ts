@@ -1,7 +1,7 @@
 import { candidatesFor, targetLabel } from './model-routing.ts';
 import { organizeSummaries } from './summary-organize.ts';
 import { describeError } from './error-text.ts';
-import { estimateTokens } from './prompt.ts';
+import { estimateTokens } from './tokens.ts';
 import type { SummarizeRequest } from '../../../../packages/oplog/src/index.ts';
 import type { SettingsMap } from './types.ts';
 

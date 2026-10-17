@@ -98,7 +98,7 @@ function Root(): ReturnType<typeof AppShell> {
         try {
           registerPromptBlocksV2(runtime.ctx.require<BlockRegistry>('context.blocks'));
         } catch {
-          // 没有 context.blocks（那一行被关掉了）：prompt.ts 会走兜底拼接，并在面板里说明
+          // 没有 context.blocks（那一行被关掉了）：prompt-v2 会走兜底拼接，并在面板里说明
         }
         setBoot({ runtime, locale: runtime.locale });
       })

@@ -16,7 +16,6 @@ import {
   SheetItem,
   useWindowedList,
 } from '../ui/components.tsx';
-import { openingGreetings } from '../data/greeting.ts';
 
 /**
  * 会话列表（首页）。
@@ -28,24 +27,13 @@ export function SessionsScreen({ store, router }: ScreenProps): ReactNode {
   const t = useT();
   const state = useAppState(store);
   const [menuFor, setMenuFor] = useState<string | undefined>(undefined);
-  const [pickCharacter, setPickCharacter] = useState(false);
-  /** 正在选开场白的角色 id；undefined = 没开这个面板。 */
-  const [greetingFor, setGreetingFor] = useState<string | undefined>(undefined);
   const [renaming, setRenaming] = useState<{ id: string; title: string } | undefined>(undefined);
   const [confirmDelete, setConfirmDelete] = useState<string | undefined>(undefined);
 
   const { visible, hidden, sentinel } = useWindowedList(state.sessions, { pageSize: 30 });
 
   const menu = state.sessions.find((session) => session.id === menuFor);
-  const greetingCharacter = state.characters.find((character) => character.id === greetingFor);
   const deleting = state.sessions.find((session) => session.id === confirmDelete);
-
-  /** 建会话并进聊天页；greetingIndex 交给仓储（0=第一条、-1=不插入）。 */
-  const startChat = (characterId: string, greetingIndex: number): void => {
-    void store.actions.createSession(characterId, undefined, greetingIndex).then((session) => {
-      router.navigate({ name: 'chat', sessionId: session.id });
-    });
-  };
 
   const startNew = (): void => {
     if (state.characters.length === 0) {
@@ -96,50 +84,6 @@ export function SessionsScreen({ store, router }: ScreenProps): ReactNode {
         <Icon name="plus" size={26} />
       </button>
       )}
-
-      <Sheet open={pickCharacter} title={t('sessions.pick.title')} onClose={() => setPickCharacter(false)}>
-        {state.characters.map((character) => (
-          <SheetItem
-            key={character.id}
-            icon="user"
-            label={character.name}
-            onClick={() => {
-              setPickCharacter(false);
-              // 有备选开场白就先问用哪一条；只有一条就沿用旧行为（直接用它）
-              if (character.alternateGreetings.length > 0) setGreetingFor(character.id);
-              else startChat(character.id, 0);
-            }}
-          />
-        ))}
-      </Sheet>
-
-      <Sheet
-        open={greetingFor !== undefined}
-        title={t('sessions.greeting.title')}
-        onClose={() => setGreetingFor(undefined)}
-      >
-        {openingGreetings(greetingCharacter ?? { alternateGreetings: [] }).map((text, index) => (
-          <SheetItem
-            key={'greeting-' + index}
-            icon="chat"
-            label={t('sessions.greeting.item', { n: index + 1, text: previewOf(text) })}
-            onClick={() => {
-              const id = greetingFor;
-              setGreetingFor(undefined);
-              if (id !== undefined) startChat(id, index);
-            }}
-          />
-        ))}
-        <SheetItem
-          icon="stop"
-          label={t('sessions.greeting.none')}
-          onClick={() => {
-            const id = greetingFor;
-            setGreetingFor(undefined);
-            if (id !== undefined) startChat(id, -1);
-          }}
-        />
-      </Sheet>
 
       <Sheet open={menu !== undefined} title={menu?.title} onClose={() => setMenuFor(undefined)}>
         <SheetItem

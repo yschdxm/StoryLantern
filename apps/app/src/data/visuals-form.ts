@@ -134,3 +134,33 @@ export function withPrimary(drafts: readonly VisualDraft[], id: string, primary:
     isPrimary: primary ? draft.id === id : false,
   }));
 }
+
+// ---------------------------------------------------------------- 图片上传（纯校验）
+
+/** 单张图片上限：8 MB（宿主资产库按内容寻址，太大不适合塞进卡包）。 */
+export const MAX_VISUAL_IMAGE_BYTES = 8 * 1024 * 1024;
+export const MAX_VISUAL_IMAGE_MB = MAX_VISUAL_IMAGE_BYTES / (1024 * 1024);
+
+/** 允许的图片类型；SVG 等可执行内容不放行。 */
+export const VISUAL_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'] as const;
+
+export type ImagePickError = 'empty' | 'too-large' | 'bad-type';
+
+export type PickedImageCheck = { ok: true } | { ok: false; code: ImagePickError };
+
+/**
+ * 文件选择后的纯校验：大小/类型。
+ * 返回 code 而不是文案（文案在 i18n；这样 Node 里能直接穷举）。
+ */
+export function validatePickedImage(input: { size: number; type: string }): PickedImageCheck {
+  if (!Number.isFinite(input.size) || input.size <= 0) return { ok: false, code: 'empty' };
+  if (input.size > MAX_VISUAL_IMAGE_BYTES) return { ok: false, code: 'too-large' };
+  const type = input.type.trim().toLowerCase();
+  if (!(VISUAL_IMAGE_TYPES as readonly string[]).includes(type)) return { ok: false, code: 'bad-type' };
+  return { ok: true };
+}
+
+/** 校验错误 → i18n key（四段式文案在 catalog 里）。 */
+export function imageErrorKey(code: ImagePickError | 'put-failed'): string {
+  return `visuals.upload.${code}`;
+}

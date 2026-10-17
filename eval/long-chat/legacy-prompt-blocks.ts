@@ -1,8 +1,10 @@
-import { scanLore, type ScanBook, type ScoredEntry } from '../../../../packages/lore/src/index.ts';
-import { formatMemoryBlock, selectMemories, type RetrievedMemory } from './memory-retrieval.ts';
-import { retrieve } from '../../../../packages/oplog/src/index.ts';
-import type { BlockContext, BlockDefinition, BlockRegistry } from '../../../../plugins/context-blocks/src/index.ts';
-import type { Memory, MessageRole } from './types.ts';
+/* 冻结副本（仅评估回放用）：旧提示词实现的最后一份；录制/回放按它逐字比对，产品代码已删除。 */
+
+import { scanLore, type ScanBook, type ScoredEntry } from '../../packages/lore/src/index.ts';
+import { formatMemoryBlock, selectMemories, type RetrievedMemory } from '../../apps/app/src/data/memory-retrieval.ts';
+import { retrieve } from '../../packages/oplog/src/index.ts';
+import type { BlockContext, BlockDefinition, BlockRegistry } from '../../plugins/context-blocks/src/index.ts';
+import type { Memory, MessageRole } from '../../apps/app/src/data/types.ts';
 
 /**
  * ⚠️ **已被 `prompt-blocks-v2.ts` 取代（ADR-0011，2026-10-17）。**

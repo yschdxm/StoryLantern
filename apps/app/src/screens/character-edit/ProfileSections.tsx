@@ -45,7 +45,7 @@ export function BasicSection({
     <section className="settings-group">
       <h2 className="settings-group__title">{t('character.editor.basic')}</h2>
       <Field label={`${t('character.name')}*`} hint={t('character.name.hint')}>
-        <TextInput value={draft.name} onChange={(value) => set('name', value)} placeholder={t('character.name.placeholder')} />
+        <TextInput value={draft.name} onChange={(value) => set('name', value)} placeholder={t('character.name.placeholder')} testId="character-name" />
       </Field>
       <Field label={`${t('character.editor.description')}*`} hint={t('character.editor.description.hint')}>
         <TextArea
@@ -53,6 +53,7 @@ export function BasicSection({
           onChange={(value) => set('description', value)}
           rows={2}
           placeholder={t('character.editor.description.placeholder')}
+          testId="character-description"
         />
       </Field>
       <Field label={t('character.editor.tags')} hint={t('character.editor.tags.hint')}>

@@ -1,13 +1,13 @@
 import { WireClient, WireError, type WireTransport } from '../../../../packages/wire/src/index.ts';
 import { describeError } from './error-text.ts';
 import { DataError } from './repository.ts';
-import type { ChatPromptMessage } from './prompt.ts';
+import type { ChatPromptMessage } from './tokens.ts';
 
 /**
  * 聊天（模型调用）客户端。
  *
  * **只在宿主可用**：请求由 Rust 发出，密钥存在宿主设置里、从不经过前端；
- * 上下文由前端组装（见 `prompt.ts`），宿主只负责把分片转回来。
+ * 上下文由前端组装（见 `prompt-v2.ts`），宿主只负责把分片转回来。
  */
 
 export interface ChatDelta {

@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { HlcClock, runSummaries, toHex, utf8, nodeDigest, type SummarizeRequest } from '../../packages/oplog/src/index.ts';
-import { buildChatRequest } from '../../apps/app/src/data/prompt.ts';
-import { SUMMARY_INJECT_LIMIT, type PromptSummary } from '../../apps/app/src/data/prompt-blocks.ts';
+import { buildChatRequest } from './legacy-prompt.ts';
+import { SUMMARY_INJECT_LIMIT, type PromptSummary } from './legacy-prompt-blocks.ts';
 import { buildLongConversation, DEFAULT_LIMIT, FACTS, TOTAL } from './harness.ts';
 
 /**

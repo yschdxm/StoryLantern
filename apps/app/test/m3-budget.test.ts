@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createDevice, createMemoryBackend } from './sync-harness.ts';
 import { instrumentBackend } from '../../../packages/sync-core/src/backend.ts';
-import { estimateTokens } from '../src/data/prompt.ts';
+import { estimateTokens } from '../src/data/tokens.ts';
 import { APPEND_CHUNK } from '../src/data/op-message-store.ts';
 import { HlcClock } from '../../../packages/oplog/src/hlc.ts';
 import { decodeOps, encodeOp, messageAppend } from '../../../packages/oplog/src/op.ts';
@@ -92,7 +92,7 @@ test(
 });
 ﻿
 test('性能预算：10 万 token 计数 <300ms（用仓库里真实的 estimateTokens）', () => {
-  // 中文约 1 token/字（见 apps/app/src/data/prompt.ts 的 estimateTokens），这段 14 字 × 1 万 ≈ 14 万 token
+  // 中文约 1 token/字（见 apps/app/src/data/tokens.ts 的 estimateTokens），这段 14 字 × 1 万 ≈ 14 万 token
   const text = '风从北面来，带着雪线的味道。'.repeat(10_000);
   const started = performance.now();
   const tokens = estimateTokens(text);

@@ -1,11 +1,14 @@
 import type { BackendCapabilities, SyncBackend } from '../../../../../packages/sync-core/src/backend.ts';
 import { emptyState, type LocalSyncState } from '../../../../../packages/sync-core/src/state.ts';
+import type { CryptoPorts } from '../../../../../packages/oplog/src/index.ts';
+import { describeError } from '../error-text.ts';
 import type { DeviceStore } from '../op-ports.ts';
 import type { OpLogRepository } from '../op-repository.ts';
 import type { SettingsStore } from '../repository.ts';
 import type { SettingsMap } from '../types.ts';
 import { SETTING_KEYS } from '../types.ts';
 import { createSyncService, syncAvailable, type SyncService, type SyncStorePort, type SyncSummary } from './service.ts';
+import { syncAssets } from './assets-sync.ts';
 
 /**
  * 把同步接到应用上：**非机密配置**从设置读，**同步口令与进度**放设备本地 kv。
@@ -191,16 +194,53 @@ export interface RunSyncInput {
 export interface RunSyncOutcome extends SyncSummary {
   /** 本地文件夹同步时，宿主解析出来的根目录（给界面显示）。 */
   root?: string;
+  /** 资产（图片）同步计数：op 与图片是两件事，分开报。 */
+  uploadedAssets?: number;
+  downloadedAssets?: number;
+}
+
+/** `buildSyncService` 额外入口：回填本次实际加密端口（资产同步必须复用同一套）。 */
+export interface SyncBuildInput extends RunSyncInput {
+  portsRef?: { ports?: CryptoPorts };
+}
+
+/** 结果加上本地文件夹根目录（角标提示用）。 */
+function finish(built: BuiltSyncService, outcome: RunSyncOutcome): RunSyncOutcome {
+  return built.root === undefined ? outcome : { ...outcome, root: built.root };
 }
 
 export async function runSync(input: RunSyncInput): Promise<RunSyncOutcome> {
-  const built = await buildSyncService(input);
+  const portsRef: { ports?: CryptoPorts } = {};
+  const built = await buildSyncService({ ...input, portsRef });
   const summary = await built.service.sync();
   // 能力降级要**说出来**：只读挂载不删旧快照（空间会涨）、不认条件写的网盘只能靠内容寻址兜底 ——
   // 不说的话，用户只会看到"同步完成"却发现存储一直涨。
   const notes = capabilityNotes(built.capabilities);
-  const merged = notes.length === 0 ? summary : { ...summary, warnings: [...summary.warnings, ...notes] };
-  return built.root === undefined ? merged : { ...merged, root: built.root };
+  const merged: RunSyncOutcome = notes.length === 0 ? summary : { ...summary, warnings: [...summary.warnings, ...notes] };
+
+  // 资产（图片）同步：op 落盘之后单独跑；任何失败只进 warnings，不影响 op 同步结果。
+  // 端口必须是本次 op 同步实际使用的那一套（keyring 换代后，口令派生的端口解不开对端的新资产）。
+  if (summary.waiting === true) return finish(built, merged);
+  if (portsRef.ports === undefined) {
+    merged.warnings.push('资产同步已跳过：本次没有拿到可用的加密端口');
+    return finish(built, merged);
+  }
+  try {
+    const assets = await syncAssets({
+      backend: built.backend,
+      ports: portsRef.ports,
+      device: input.device,
+      deviceId: built.deviceId,
+      materializer: input.repository.currentMaterializer(),
+      ...(input.now === undefined ? {} : { now: input.now }),
+    });
+    merged.uploadedAssets = assets.uploaded;
+    merged.downloadedAssets = assets.downloaded;
+    merged.warnings.push(...assets.warnings);
+  } catch (cause) {
+    merged.warnings.push(`资产同步失败：${describeError(cause)}`);
+  }
+  return finish(built, merged);
 }
 
 /** 探测结果缓存的键：按远端分桶（换远端不能沿用）。 */
@@ -260,6 +300,8 @@ export interface BuiltSyncService {
   service: SyncService;
   /** 本次用的后端：名单盖章要读远端已发布的恢复公钥（`recovery.json`），所以得把它交出去。 */
   backend: SyncBackend;
+  /** 本机设备 id（与 op 里的一致）：资产索引按设备命名空间分。 */
+  deviceId: string;
   /** 本地文件夹同步时，宿主解析出来的根目录（给界面显示）。 */
   root?: string;
   /** 探测到的后端能力（缺能力时要在界面说明；探测不到就是 undefined）。 */
@@ -272,7 +314,7 @@ export interface BuiltSyncService {
  * 抽出来的理由：设备名单、吊销、回收都要用**和同步同一个**服务实例——
  * 如果它们各自造一套，回收判定依据的 `ack/peerAck` 就会与实际同步状态不一致。
  */
-export async function buildSyncService(input: RunSyncInput): Promise<BuiltSyncService> {
+export async function buildSyncService(input: SyncBuildInput): Promise<BuiltSyncService> {
   const problem = describeSyncProblem(input.config, syncAvailable());
   if (problem !== undefined) throw new Error(problem);
 
@@ -314,22 +356,25 @@ export async function buildSyncService(input: RunSyncInput): Promise<BuiltSyncSe
   // 为什么要缓存：探测本身要写一个探针对象再删掉，每次开面板都探会白花请求（计划的预算也盯着这个）。
   // 为什么要探测：真实世界的哑存储差异很大 —— 只读挂载删不了、网盘目录不认条件写；不探测就只能假设。
   const capabilities = await refreshCapabilities(input, backend);
+  const deviceId = await deviceIdOf(input.settings);
 
   const service = await createSyncService({
     repository: input.repository,
     backend,
-    deviceId: await deviceIdOf(input.settings),
+    deviceId,
     secret: input.config.secret,
     store: deviceSyncStore(input.device, remoteIdOf(input.config, root)),
     // 设备名单也放在设备本地：吊销必须跨重启保持
     device: input.device,
     ...(input.now === undefined ? {} : { now: input.now }),
     ...(graceMs === undefined ? {} : { graceMs }),
+    ...(input.portsRef === undefined ? {} : { portsRef: input.portsRef }),
   });
 
   return {
     service,
     backend,
+    deviceId,
     ...(root === undefined ? {} : { root }),
     ...(capabilities === undefined ? {} : { capabilities }),
   };

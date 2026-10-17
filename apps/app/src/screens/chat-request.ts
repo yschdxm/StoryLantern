@@ -9,7 +9,7 @@ import type { AssembleFn } from '../../../../plugins/writing-pipeline/src/index.
 import type { AppState } from '../app/state.ts';
 import type { WorkspaceSnapshot } from '../app/workspace.ts';
 import { emptyRuntime, setupOfLegacySession } from '../data/card-fallback.ts';
-import type { PromptSummary } from '../data/prompt-blocks.ts';
+import type { PromptSummary } from '../data/prompt-blocks-v2.ts';
 import type { BuildChatRequestV2Options } from '../data/prompt-v2.ts';
 
 export interface ChatOptionsInput {

@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 /**
  * 移动视口 + 触摸的端到端验收。
@@ -185,4 +185,51 @@ test('没有宿主 IPC 时界面诚实降级（不报错、不假装已连接）
   expect(errors, `页面不应抛未捕获异常：${errors.join(' | ')}`).toHaveLength(0);
   const bodyText = await page.locator('body').innerText();
   expect(bodyText.length).toBeGreaterThan(0);
+});
+
+// ---------------------------------------------------------------- 主流程（真实写 localStorage op 日志）
+
+/**
+ * 建一个角色（名字唯一，避免与别的用例互相影响）。
+ * 全部用 testid/结构选择器：en locale 下也照样能跑。
+ */
+async function createCharacter(page: Page, name: string): Promise<void> {
+  await page.goto('/#/characters');
+  await page.locator('.empty__action .btn').tap();
+  await expect(page).toHaveURL(/#\/character\/new$/);
+  await page.getByTestId('character-name').fill(name);
+  // 名字与一句话简介是保存的硬性要求（其它字段只给 warning）
+  await page.getByTestId('character-description').fill('端到端测试角色：一句话简介。');
+  await page.getByTestId('character-save').tap();
+  await expect(page).toHaveURL(/#\/characters$/);
+  await expect(page.getByText(name, { exact: true })).toBeVisible();
+}
+
+test('主流程①：角色页新建角色 → 填名字与简介 → 保存后列表出现该名字', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  const name = `E2E-角色-${Date.now()}`;
+  await createCharacter(page, name);
+  expect(errors, `角色创建主流程不应抛未捕获异常：${errors.join(' | ')}`).toHaveLength(0);
+});
+
+test('主流程②：新建会话 → 默认勾选成员 → 用户开场 → 进入聊天页', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await createCharacter(page, `E2E-会话-${Date.now()}`);
+
+  await page.goto('/#/session/new');
+  // 成员默认勾选第一个（成员来自刚创建的卡片）。
+  // 浏览器里没有模型配置：auto 单选必须禁用，但"用户开场"不受影响。
+  const member = page.locator('.settings-group').first().locator('input[type="checkbox"]').first();
+  await expect(member).toBeChecked();
+  await expect(page.locator('input[name="opening-mode"]').nth(2)).toBeDisabled();
+  await page.locator('input[name="opening-mode"]').nth(1).check();
+
+  await page.getByTestId('session-start').tap();
+  await expect(page).toHaveURL(/#\/chat\/.+/);
+  // self 开场不产生任何消息（也不调用模型），聊天输入框必须可用可见
+  await expect(page.getByTestId('chat-input')).toBeVisible();
+  await expect(page.locator('.msg')).toHaveCount(0);
+  expect(errors, `会话创建主流程不应抛未捕获异常：${errors.join(' | ')}`).toHaveLength(0);
 });

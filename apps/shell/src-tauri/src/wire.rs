@@ -19,7 +19,7 @@ use tauri::{AppHandle, Emitter, Manager, Webview};
 
 use crate::store::{Character, CharacterInput, Message, Session, Store};
 
-#[derive(Serialize)]
+#[derive(Serialize, Debug)]
 pub struct WireErrorPayload {
     pub code: String,
     pub message: String,

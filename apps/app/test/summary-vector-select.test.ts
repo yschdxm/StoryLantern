@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { EmbeddingPort } from '../../../packages/oplog/src/index.ts';
 import { selectSummariesByVector } from '../src/data/summary-vector-select.ts';
-import type { PromptSummary } from '../src/data/prompt-blocks.ts';
+import type { PromptSummary } from '../src/data/prompt-blocks-v2.ts';
 
 /**
  * 向量挑摘要的测试（离线，用一个**确定性**的假向量源 —— 不用真实 API，也不假装那是语义检索）。

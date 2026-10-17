@@ -1,9 +1,9 @@
-﻿import { test } from 'node:test';
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { WireInvokeRequest, WireManifest, WireTransport } from '../../../packages/wire/src/index.ts';
 import { retrieve } from '../../../packages/oplog/src/index.ts';
 import { selectSummariesForChat } from '../src/data/summary-vector-select.ts';
-import type { PromptSummary } from '../src/data/prompt-blocks.ts';
+import type { PromptSummary } from '../src/data/prompt-blocks-v2.ts';
 
 /**
  * **真实来源**证据：聊天路径“按向量挑摘要”打的是真 moark。

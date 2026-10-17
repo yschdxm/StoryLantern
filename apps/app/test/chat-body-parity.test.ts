@@ -6,8 +6,8 @@ import path from 'node:path';
 /**
  * M2 退出判据：**界面展示的请求 == 宿主真正发出去的请求体**。
  *
- * 这一侧钉的是"展示"那半：用真实的装配函数 `buildChatRequest` 从同一份输入得到
- * messages/systemPrompt，再和 golden 里**宿主会序列化出去的** body 比对内容。
+ * 这一侧钉的是"展示"那半：golden 里的 messages/systemPrompt 就是界面装配器
+ * （`buildChatRequestV2`）交给模型的形状，再和 golden 里**宿主会序列化出去的** body 比对内容。
  * 另一半在 Rust：`apps/shell/src-tauri/src/chat.rs` 的 `body_matches_golden_byte_for_byte`
  * 断言 `build_body(...)` 的序列化结果与 golden 逐字节相同。
  *

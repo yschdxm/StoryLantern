@@ -6,6 +6,7 @@
 //!    **设备配置（settings，含模型密钥）**、**模型调用**（Rust 侧发请求，密钥不出宿主）；
 //!  - 都通过 `wire` 服务暴露给界面。
 
+mod assets;
 mod chat;
 mod files;
 mod http;

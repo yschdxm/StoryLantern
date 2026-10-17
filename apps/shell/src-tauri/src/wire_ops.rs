@@ -157,10 +157,18 @@ static FILES_METHODS: &[StateMethodDef] = &[
     StateMethodDef { name: "delete", description: "删文件", call: crate::files::files_delete },
 ];
 
+static ASSETS_METHODS: &[StateMethodDef] = &[
+    StateMethodDef { name: "put", description: "写入内容寻址资产（base64），返回明文 sha256", call: crate::assets::asset_put },
+    StateMethodDef { name: "get", description: "按 sha256 读资产（base64）", call: crate::assets::asset_get },
+    StateMethodDef { name: "list", description: "列出本机全部资产 sha256", call: crate::assets::asset_list },
+    StateMethodDef { name: "delete", description: "删除资产", call: crate::assets::asset_delete },
+];
+
 pub static STATE_SERVICES: &[StateServiceDef] = &[
     StateServiceDef { name: "oplog", description: "op 追加日志（唯一事实源；宿主不理解语义）", methods: OPLOG_METHODS },
     StateServiceDef { name: "kv", description: "投影缓存（键值；语义在 TS 侧）", methods: KV_METHODS },
     StateServiceDef { name: "legacy", description: "M1 之前的直写表（只用于迁移）", methods: LEGACY_METHODS },
     StateServiceDef { name: "http", description: "通用 HTTP 转发（给同步后端用）", methods: HTTP_METHODS },
     StateServiceDef { name: "files", description: "受限文件读写（给「同步到本地文件夹」用）", methods: FILES_METHODS },
+    StateServiceDef { name: "assets", description: "内容寻址资产库（图片；按明文 sha256 命名）", methods: ASSETS_METHODS },
 ];

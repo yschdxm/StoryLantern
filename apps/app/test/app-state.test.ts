@@ -65,12 +65,15 @@ test('路由：底栏正好四个根标签（标签名是 i18n key，不是硬�
 });
 
 test('路由：每个路由的 hash 都能解析回自己（新增路由漏写 parseRoute 会立刻失败）', () => {
-  // 真机上踩过：`#/lore` 没进 parseRoute，于是点"世界书"标签时 URL 变了、界面却回到根路由，
+  // 真机上踩过：新增路由没进 parseRoute，于是点标签时 URL 变了、界面却回到根路由，
   // 而且因为 hash 已经等于目标值，之后再点同一个标签会被"原地不动"判据直接跳过。
   const routes: Route[] = [
     { name: 'sessions' },
+    { name: 'sessionNew' },
     { name: 'characters' },
-    { name: 'lore' },
+    { name: 'world' },
+    { name: 'world', kind: 'scene' },
+    { name: 'worldCard', kind: 'lore', cardId: '01GHI' },
     { name: 'settings' },
     { name: 'settings', section: 'model' },
     { name: 'settings', section: 'sync' },
@@ -78,7 +81,7 @@ test('路由：每个路由的 hash 都能解析回自己（新增路由漏写 p
     { name: 'chat', sessionId: '01ABC' },
     { name: 'character', characterId: '01DEF' },
     { name: 'character', characterId: 'new' },
-    { name: 'lorebook', lorebookId: '01GHI' },
+    { name: 'memories', characterId: '01MNO' },
   ];
   for (const route of routes) {
     const hash = routeToHash(route);

@@ -4,8 +4,7 @@ import { SyncEngine, type SyncEngineOptions, type SyncResult } from '../../../..
 import { parseManifestPath, DEVICES_PREFIX } from '../../../../../packages/sync-core/src/paths.ts';
 import { DeviceRosterList } from '../../../../../packages/sync-core/src/roster.ts';
 import { instrumentBackend, type SyncBackend } from '../../../../../packages/sync-core/src/backend.ts';
-import type { LocalSyncState } from '../../../../../packages/sync-core/src/state.ts';
-import { emptyState } from '../../../../../packages/sync-core/src/state.ts';
+import { emptyState, type LocalSyncState } from '../../../../../packages/sync-core/src/state.ts';
 import type { Op } from '../../../../../packages/oplog/src/op.ts';
 import type { SyncDevice } from '../../screens/screen-props.ts';
 import type { DeviceStore } from '../op-ports.ts';
@@ -20,6 +19,7 @@ import { createPasswordProofPort, createPortsFromContentKey } from './crypto.ts'
 import { rotateKeyring } from '../../../../../packages/sync-core/src/keyring-store.ts';
 import { publishRecoveryKey } from './recovery-publish.ts';
 import { acceptJoinRequests, publishJoinRequest } from './join-flow.ts';
+import { SYNC_ASSET_INDEX_SEQ_KEY, SYNC_ASSET_MAP_KEY } from './assets-sync.ts';
 import { describeDevice, loadTrustedRoster, mergeRoster, saveRoster, type RosterStampPort } from './roster-store.ts';
 /** 同步服务：把 op 段推到"哑存储"，再从那儿拉回来。 */
 
@@ -72,8 +72,7 @@ export interface SyncServiceOptions {
   device: DeviceStore;
   /** 名单盖章端口（配了管理密钥时用它验章；没配则不参与）。 */ stampPort?: RosterStampPort;
   /** GC 宽限期（毫秒）：回收不可恢复，默认 30 天，宁可多占空间。 */
-  graceMs?: number;
-  now?: () => number;
+  graceMs?: number; now?: () => number; portsRef?: { ports?: CryptoPorts };
 }
 
 export function syncAvailable(): boolean {
@@ -252,7 +251,8 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
       const seenEpoch = Number((await options.device.get(SYNC_EPOCH_KEY)) ?? '0');
       if (seenEpoch !== keyring.epoch) {
         state = undefined;
-        await options.device.set(SYNC_EPOCH_KEY, String(keyring.epoch));
+        // 资产密文哈希跟着内容密钥走：换代后旧映射不可解，清掉让资产按新密钥重传（同一批明文不丢）
+        await Promise.all([options.device.set(SYNC_EPOCH_KEY, String(keyring.epoch)), options.device.set(SYNC_ASSET_MAP_KEY, ''), options.device.set(SYNC_ASSET_INDEX_SEQ_KEY, '')]);
       }
     }
     if (state !== undefined) engineOptions.state = state;
@@ -285,6 +285,7 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
 
     if (onOps !== undefined) engineOptions.onOps = onOps;
     if (options.graceMs !== undefined) engineOptions.graceMs = options.graceMs;
+    if (options.portsRef !== undefined) options.portsRef.ports = engineOptions.ports;
     const engine = new SyncEngine(engineOptions);
     return { engine, roster, restored, baseCursor, waiting: keyring !== undefined && keyring.mine === false, joinBlocked: agreement === undefined };
   };

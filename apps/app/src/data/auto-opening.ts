@@ -23,7 +23,7 @@ import type { ChatCall, ChatClient } from './chat-client.ts';
 import { characterCardOfLegacy } from './card-fallback.ts';
 import { describeError } from './error-text.ts';
 import { candidatesFor } from './model-routing.ts';
-import type { ChatPromptMessage } from './prompt.ts';
+import type { ChatPromptMessage } from './tokens.ts';
 import { buildChatRequestV2, type BuildChatRequestV2Options } from './prompt-v2.ts';
 import type { CardLibraryEntry, Repository } from './repository.ts';
 import { SETTING_KEYS, type Character } from './types.ts';
