@@ -55,3 +55,8 @@ eval/long-chat/.cache/
 .env.*
 *.local
 *.log
+
+# Playwright 产物（e2e）
+test-results/
+playwright-report/
+blob-report/

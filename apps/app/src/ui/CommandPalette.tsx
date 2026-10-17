@@ -34,6 +34,20 @@ export function CommandPalette({ open, commands, onClose, onRun }: CommandPalett
     return undefined;
   }, [open]);
 
+  useEffect(() => {
+    if (!open) return undefined;
+    // Esc 在窗口级也接一次：焦点可能不在输入框上（比如刚打开、还没 focus 完），
+    // 只在 input 的 onKeyDown 里处理会让"按 Esc 没反应"（e2e 抓到的就是这个）。
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [open, onClose]);
+
   if (!open) return null;
 
   const run = (command: PaletteCommand | undefined): void => {

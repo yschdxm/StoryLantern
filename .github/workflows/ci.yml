@@ -46,3 +46,18 @@ jobs:
       - uses: pnpm/action-setup@v4
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm run typecheck
+
+  e2e:
+    # 移动视口 + 触摸（Playwright，devDependency；测的是构建后的 dist，不是 dev server）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - uses: pnpm/action-setup@v4
+      - run: pnpm install --no-frozen-lockfile
+      - name: 装 Playwright 浏览器（含 Linux 依赖）
+        run: pnpm exec playwright install --with-deps chromium
+      - name: 跑 e2e（移动视口 + 触摸）
+        run: pnpm exec playwright test
