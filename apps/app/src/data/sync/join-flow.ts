@@ -188,6 +188,13 @@ export async function acceptJoinRequests(input: AcceptJoinInput): Promise<Accept
       outcome.accepted.push(request.deviceId);
       seen[request.deviceId] = request.at;
       seenChanged = true;
+      // 接纳后把请求文件删掉：它里面的"口令证明"等同于一个可离线猜口令的 oracle。
+      // best-effort（后端可能不支持删除）；失败不影响接纳结果，下次同步会再试。
+      try {
+        if (input.backend.delete !== undefined) await input.backend.delete(entry.path);
+      } catch {
+        // 忽略：请求文件残留只会多一次重复处理（seen 已挡），不影响正确性
+      }
     } else {
       outcome.refused.push({ deviceId: request.deviceId, reason: '写回 keyring 被抢占（有人同时在加人），下次同步再试' });
     }
@@ -195,4 +202,42 @@ export async function acceptJoinRequests(input: AcceptJoinInput): Promise<Accept
 
   if (seenChanged) await input.device.set(JOIN_SEEN_KEY, JSON.stringify(seen));
   return outcome;
+}
+
+/** v2 的证明带 `v2:` 前缀；没有前缀的是旧快 KDF 格式（会被清理）。 */
+export function isLegacyJoinProof(proof: string): boolean {
+  return proof !== '' && !proof.startsWith('v2:');
+}
+
+/**
+ * 清理旧格式加入请求：旧证明是用"快 KDF"派生的口令密钥封的，留在共享目录里
+ * 就等于给拿到后端读取权限的人一个离线猜口令的 oracle。升级到 v2 后这些请求本来也要重发。
+ *
+ * 返回删掉的条数；读不了的请求跳过（不因为一条坏数据卡死清理）。
+ */
+export async function dropLegacyJoinRequests(backend: SyncBackend): Promise<number> {
+  let listing: Awaited<ReturnType<SyncBackend['list']>>;
+  try {
+    listing = await backend.list(JOIN_PREFIX);
+  } catch {
+    return 0;
+  }
+  let dropped = 0;
+  for (const entry of listing.entries) {
+    if (!entry.path.startsWith(JOIN_PREFIX)) continue;
+    let request;
+    try {
+      request = parseJoinRequest(new TextDecoder().decode(await backend.get(entry.path)));
+    } catch {
+      continue;
+    }
+    if (!isLegacyJoinProof(request.proof)) continue;
+    try {
+      if (backend.delete !== undefined) await backend.delete(entry.path);
+      dropped += 1;
+    } catch {
+      // 删不掉就下次再试；不阻断同步
+    }
+  }
+  return dropped;
 }

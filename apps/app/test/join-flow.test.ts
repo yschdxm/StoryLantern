@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { acceptJoinRequests, publishJoinRequest, JOIN_SEEN_KEY } from '../src/data/sync/join-flow.ts';
+import { acceptJoinRequests, dropLegacyJoinRequests, publishJoinRequest, JOIN_SEEN_KEY } from '../src/data/sync/join-flow.ts';
 import { createWebCryptoKeyWrap } from '../src/data/sync/envelope.ts';
 import { createKeyring, openKeyring, parseKeyring, KEYRING_FILE } from '../../../packages/sync-core/src/keyring.ts';
+import { joinPath } from '../../../packages/sync-core/src/join.ts';
 import { createMemoryKeyValue } from '../src/data/local-repository.ts';
 import type { DeviceStore } from '../src/data/op-ports.ts';
 import type { SyncBackend, BackendEntry, ListResult, PutResult } from '../../../packages/sync-core/src/backend.ts';
@@ -38,6 +39,9 @@ function memoryBackend(): SyncBackend & { files: Map<string, Uint8Array> } {
     async put(path: string, bytes: Uint8Array): Promise<PutResult> {
       files.set(path, bytes);
       return { ok: true };
+    },
+    async delete(path: string): Promise<void> {
+      files.delete(path);
     },
   };
 }
@@ -106,6 +110,7 @@ test('加入流程：验过密码证明就把当前数据钥匙包给新设备�
 
   assert.deepEqual(outcome.accepted, ['joiner'], '应当接受并把它加进 keyring');
   assert.deepEqual(outcome.refused, []);
+  assert.equal(backend.files.has('join/joiner.json'), false, '接纳后请求文件应删除（证明不再留在共享目录）');
 
   const keyring = parseKeyring(new TextDecoder().decode(await backend.get(KEYRING_FILE)));
   assert.equal(keyring.epoch, 1, '**epoch 不变**：只是多一个人能解开同一把钥匙');
@@ -209,4 +214,18 @@ test('加入流程：处理过的请求记在本机（避免重复包钥匙）',
   await acceptJoinRequests({ backend, device, keyWrap, contentKey: created.contentKey, banned: new Set(), joinProof: proofPort('shared-secret'), selfId: 'host' });
   const recorded = await device.get(JOIN_SEEN_KEY);
   assert.ok(recorded !== undefined && recorded.includes('joiner'));
+});
+
+test('旧格式加入证明（无 v2 前缀）会被清理；v2 的保留', async () => {
+  const backend = memoryBackend();
+  const keyWrap = createWebCryptoKeyWrap();
+  const keys = await keyWrap.generateAgreementKeys();
+  const base = { v: 1, deviceId: 'legacy-device', agreementKey: keys.publicKey, at: 1 };
+  await backend.put(joinPath('legacy-device'), new TextEncoder().encode(JSON.stringify({ ...base, proof: 'bGVnYWN5' })));
+  await backend.put(joinPath('v2-device'), new TextEncoder().encode(JSON.stringify({ ...base, deviceId: 'v2-device', proof: 'v2:bmV3' })));
+
+  const dropped = await dropLegacyJoinRequests(backend);
+  assert.equal(dropped, 1);
+  assert.equal(backend.files.has(joinPath('legacy-device')), false);
+  assert.equal(backend.files.has(joinPath('v2-device')), true, 'v2 请求不能被误删');
 });

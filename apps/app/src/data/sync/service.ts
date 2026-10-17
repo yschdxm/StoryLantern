@@ -9,14 +9,14 @@ import type { Op } from '../../../../../packages/oplog/src/op.ts';
 import type { SyncDevice } from '../../screens/screen-props.ts';
 import type { DeviceStore } from '../op-ports.ts';
 import type { OpLogRepository } from '../op-repository.ts';
-import { createWebCryptoPorts, deriveSyncKeys, webCryptoAvailable } from './crypto.ts';
+import { createWebCryptoPorts, deriveSyncKeys, deriveSyncKeysV1, KDF_VERSION, webCryptoAvailable } from './crypto.ts';
 import { detectKeyWrapSupport } from './envelope.ts';
 import { createWebCryptoKeyWrap, loadOrCreateAgreementKeys } from './envelope.ts';
 import { ensureKeyring } from '../../../../../packages/sync-core/src/keyring-store.ts';
 import type { CryptoPorts } from '../../../../../packages/oplog/src/index.ts';
 import { createPasswordProofPort, createPortsFromContentKey } from './crypto.ts';
 import { rotateKeyring } from '../../../../../packages/sync-core/src/keyring-store.ts';
-import { acceptJoinRequests, publishJoinRequest } from './join-flow.ts';
+import { acceptJoinRequests, dropLegacyJoinRequests, publishJoinRequest } from './join-flow.ts';
 import { SYNC_ASSET_INDEX_SEQ_KEY, SYNC_ASSET_MAP_KEY } from './assets-sync.ts';
 import { describeDevice, loadRoster, mergeRoster, saveRoster } from './roster-store.ts';
 /** 同步服务：把 op 段推到"哑存储"，再从那儿拉回来。 */
@@ -28,6 +28,8 @@ export interface SyncStorePort {
 
 /** 本机上次用过的 keyring 世代：换了世代就把同步进度作废、全量重发（段只是传输）。 */
 export const SYNC_EPOCH_KEY = 'sync.epoch.v1';
+/** 本机上次用的口令派生版本：升级后路径/证明都变，同步进度作废、从本地日志重传。 */
+export const SYNC_KDF_KEY = 'sync.kdf.v1';
 export interface SyncSummary {
   uploaded: number;
   downloaded: number;
@@ -82,11 +84,16 @@ export function summarize(result: SyncResult, enqueued: number, imported: number
     appliedOps: imported,
     enqueued,
     requests,
-    warnings: [...result.warnings, ...(keyringNotice === undefined ? [] : [keyringNotice])],
+    warnings: [
+      ...result.warnings,
+      ...(keyringNotice === undefined ? [] : [keyringNotice]),
+      ...(kdfNotice === undefined ? [] : [kdfNotice]),
+    ],
   };
 }
 
 let keyringNotice: string | undefined;
+let kdfNotice: string | undefined;
 
 /**
  * 旧版本写下的同步进度要丢掉：那时段号是"设备全局"编号，而接收方按每会话
@@ -123,6 +130,8 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
   const requestsSoFar = (): number => { const c = backendCounters.counters; return c.list + c.get + c.put + c.delete; };
   const now = options.now ?? (() => Date.now());
   const keys = await deriveSyncKeys(options.secret);
+  // 旧口令派生（v1）只为**读旧加入证明**保留；新证明用 v2
+  const legacyKeys = await deriveSyncKeysV1(options.secret);
   const ports = createWebCryptoPorts(keys);
   /** 设备本地 kv：名单与同步状态都放这里。 */
   const store: SyncServiceOptions['store'] = options.store;
@@ -144,7 +153,18 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
   }> => {
     await options.repository.ready;
     const stored = await store.load();
-    const restored = sanitizeSyncState(stored.state);
+    let restored = sanitizeSyncState(stored.state);
+    // 口令派生升级（v1 快 KDF → v2 PBKDF2）：blind 路径与加入证明全变，同步进度作废、从本地日志重传。
+    // 内容密钥不受影响（它在 keyring 里由 P-256 包装），所以本地数据不会丢，只是要重发一遍。
+    if ((await options.device.get(SYNC_KDF_KEY)) !== String(KDF_VERSION)) {
+      restored = undefined;
+      await Promise.all([
+        options.device.set(SYNC_KDF_KEY, String(KDF_VERSION)),
+        options.device.set(SYNC_ASSET_MAP_KEY, ''),
+        options.device.set(SYNC_ASSET_INDEX_SEQ_KEY, ''),
+      ]);
+      kdfNotice = '口令派生已升级到 v2（PBKDF2）：本地同步进度已重置，本轮会从本地日志重新上传全部数据；旧远端文件不会自动删除，会在回收时清理。';
+    }
     // 状态被判为不可用（旧编号）时，本地 op 要整份重推一遍
     const baseCursor = restored === undefined ? 0 : stored.enqueuedSeq;
     // 远端发现：能解开我们密文并发布设备清单的，才是自己人
@@ -211,7 +231,7 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
     if (state !== undefined) engineOptions.state = state;
     // 加入流程：能打开 keyring 就替新设备发钥匙；打不开（我不在里面）就写自己的加入请求。
     if (keyring !== undefined && agreement !== undefined) {
-      const joinProof = createPasswordProofPort(keys);
+      const joinProof = createPasswordProofPort(keys, legacyKeys);
       if (keyring.mine) {
         await acceptJoinRequests({
           backend: options.backend,
@@ -223,6 +243,14 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
           selfId: options.deviceId,
           now,
         });
+        // 旧格式（v1 快 KDF）的加入证明留在远端就是一个可离线猜口令的 oracle：能删就删。
+        // 还没被接纳的旧请求会因此失效——升级后它们本来也要重新发（证明格式已变）。
+        try {
+          const dropped = await dropLegacyJoinRequests(options.backend);
+          if (dropped > 0) kdfNotice = `${kdfNotice === undefined ? '' : kdfNotice + ' '}已清理 ${dropped} 条旧格式加入请求（旧口令证明不再保留在共享目录里）。`;
+        } catch {
+          // 清理失败不影响同步；下次再试
+        }
       } else {
         await publishJoinRequest({
           backend: options.backend,
