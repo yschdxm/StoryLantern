@@ -40,7 +40,7 @@ test(`首会话拉取 ≤5MB：${TOTAL_MESSAGES} 条消息的新设备首次同�
         messageAppend(a, {
           sessionId: 'S1',
           messageId: `M${String(n).padStart(5, '0')}`,
-          author: n % 2 === 0 ? 'user' : 'assistant',
+          author: n % 2 === 0 ? 'user' : 'character',
           content: `第 ${n} 条：` + '雪线以上的风把灯吹得发颤。'.repeat(2),
         }),
       );
