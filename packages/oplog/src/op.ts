@@ -27,7 +27,16 @@ export type OpType =
   | 'summary.delete'
   | 'fact.upsert'
   | 'fact.delete'
-  | 'log.checkpoint';
+  | 'log.checkpoint'
+  // ---- 卡片模型（ADR-0011）：新写入一律走这五类 ----
+  | 'card.upsert'
+  | 'card.delete'
+  | 'session.setup'
+  | 'runtime.patch'
+  | 'pack.upsert'
+  | 'pack.delete'
+  | 'stash.upsert'
+  | 'stash.delete';
 
 /** 角色卡字段：整体覆盖写入（LWW 由 op 的 HLC 决定）。id 放在 entity 里，不重复进 payload。 */
 export interface CharacterUpsertPayload {

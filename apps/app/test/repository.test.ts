@@ -239,7 +239,11 @@ test('op-log：重启后（重放日志）数据还在，且每条写入都进�
   await first.messages.append(session.id, 'user', '风大吗');
 
   const before = await ports.ops.stats();
-  assert.equal(before.count, 4, '角色 upsert + 会话 create + 开场白 append + 用户消息 append');
+  assert.equal(
+    before.count,
+    5,
+    '角色 upsert + 会话 create + 开局配置 session.setup + 开场白 append + 用户消息 append（ADR-0011 后建会话同时落 setup）',
+  );
   assert.equal(before.devices, 1, '所有 op 都带着本设备 id');
 
   // "重启"：同一份 op 日志，全新仓储

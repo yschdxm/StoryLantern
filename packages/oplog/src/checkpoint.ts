@@ -1,6 +1,7 @@
 import { crc32Hex } from './crc32.ts';
 import type { Hlc, HlcClock } from './hlc.ts';
 import { createOp, type Op, type StampOptions } from './op.ts';
+import { normalizeState } from './materialize-support.ts';
 import type { MaterializedState } from './state-types.ts';
 
 /**
@@ -129,5 +130,7 @@ export function validateStateSnapshot(value: unknown): StateSnapshot {
   const snapshot = value as unknown as StateSnapshot;
   // 自校验：状态被改花/截断时，摘要对不上
   if (stateDigest(snapshot.state) !== snapshot.digest) throw new SnapshotBlobError('快照摘要不匹配（内容已损坏）');
-  return snapshot;
+  // 摘要校验必须针对**原始**状态（它就是这样存下来的）；之后再把缺的表补空，
+  // 这样"升级前生成、缺卡片模型那几张表"的旧快照仍然可用（normalizeState 只补空，不改已有内容）。
+  return { ...snapshot, state: normalizeState(snapshot.state) };
 }

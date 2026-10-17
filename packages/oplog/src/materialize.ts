@@ -12,7 +12,8 @@ import {
   applyRevisionSelect,
   applySettingSet,
 } from './message-projection.ts';
-import { cloneHlc, emptyState, laterThan } from './materialize-support.ts';
+import { cloneHlc, emptyState, laterThan, normalizeState } from './materialize-support.ts';
+import { applyCardModelOp, isCardModelOp } from './card-projection.ts';
 import {
   applyLoreEntryDelete,
   applyLoreEntryUpsert,
@@ -70,7 +71,8 @@ export class Materializer {
 
   constructor(snapshot?: Snapshot) {
     if (snapshot) {
-      this.#state = snapshot.state;
+      // 旧快照没有卡片模型那几张表：补空而不是崩溃（升级后第一次启动会走到这里）
+      this.#state = normalizeState(snapshot.state);
       this.#applied = new Set(snapshot.appliedOpIds);
     }
   }
@@ -277,6 +279,11 @@ export class Materializer {
   }
 
   #dispatch(op: Op): ApplyResult {
+    // 卡片模型（ADR-0011）：8 类 op 共用一套"文档 LWW + 补丁序列"投影，单独收口更不容易漏
+    if (isCardModelOp(op.type)) {
+      applyCardModelOp(this.#state, op);
+      return 'applied';
+    }
     switch (op.type) {
       case 'character.upsert':
         return this.#characterUpsert(op);

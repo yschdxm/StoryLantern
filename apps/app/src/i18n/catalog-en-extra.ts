@@ -18,4 +18,14 @@ export const enExtra: AppMessages = {
   'settings.profile.apply': 'Apply pasted profile',
   'settings.profile.applied': 'Applied {count} settings',
   'settings.profile.removed': ' ({count} secret-like settings rejected)',
+  // Card model (ADR-0011): block names shown in the request panel
+  'chat.trace.block.setup': 'Session setup',
+  'chat.trace.block.rules': 'Character rules',
+  'chat.trace.block.state': 'Current state',
+  'chat.trace.block.scene': 'Current scene',
+  'chat.trace.block.items': 'Held items',
+  'chat.trace.block.examples': 'Example dialogue',
+  'chat.trace.block.summary': 'Relevant summaries',
+  'chat.trace.rulesOmitted': '{count} conditional rules skipped (condition evaluator not implemented yet; not pretending they apply)',
+  'chat.trace.loreDropped': '{count} lore entries not injected (probability miss or over budget)',
 };

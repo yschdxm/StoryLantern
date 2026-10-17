@@ -50,6 +50,8 @@ importers:
 
   bundles/sync: {}
 
+  packages/cards: {}
+
   packages/i18n: {}
 
   packages/importer: {}

@@ -1,0 +1,10 @@
+{
+  "name": "@storylantern/cards",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Story Lantern 卡片模型：角色卡 / 场景簿 / 物品图鉴 / 典籍的统一基座、校验、brief 投影与旧数据迁移（纯类型与纯函数，零依赖）",
+  "exports": {
+    ".": "./src/index.ts"
+  }
+}

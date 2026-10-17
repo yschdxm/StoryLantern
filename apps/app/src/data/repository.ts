@@ -27,6 +27,15 @@ import type { SummaryStore } from './summary-types.ts';
 import type { FactStore } from './fact-types.ts';
 import type { TunerStore } from './op-tuner-store.ts';
 import type { BackupPorts } from '../../../../packages/oplog/src/backup.ts';
+import type {
+  CardDocument,
+  CardType,
+  CompatStashEntry,
+  RuntimeDelta,
+  SessionRuntime,
+  SessionSetup,
+  WorldPackManifest,
+} from '../../../../packages/cards/src/index.ts';
 
 export interface Repository {
   /** 分层摘要（M4）：内容，进 op 日志、跟同步走。 */
@@ -39,6 +48,18 @@ export interface Repository {
   readonly messages: MessageStore;
   readonly lorebooks: LorebookStore;
   readonly memories: MemoryStore;
+  /**
+   * 卡片模型（ADR-0011）的五类存储：卡片 / 开局 / 运行时 / 世界包 / 兼容草稿。
+   *
+   * 全部**可选**：只有 op-log 仓储（宿主实现）有它们。浏览器里的最小实现
+   * （`local-repository.ts`）没有 op 日志，不能假装支持——没有日志就没有迁移来源、
+   * 也没有 HLC 顺序，硬塞一份"看起来能用"的实现只会造出两个行为不一致的真相。
+   */
+  readonly cards?: CardStore;
+  readonly setups?: SetupStore;
+  readonly runtime?: RuntimeStore;
+  readonly packs?: PackStore;
+  readonly stash?: StashStore;
   /**
    * 调优助手（M5，ADR-0003 侧信道）：只看不改地给建议；应用与撤销都走既有的 op 写入路径。
    *
@@ -161,6 +182,63 @@ export function validateMemoryDraft(draft: MemoryDraft): Required<Omit<MemoryDra
     ...(draft.characterId === undefined || draft.characterId === '' ? {} : { characterId: draft.characterId }),
     ...(draft.sourceSessionId === undefined || draft.sourceSessionId === '' ? {} : { sourceSessionId: draft.sourceSessionId }),
   };
+}
+
+// ---------------------------------------------------------------- 卡片模型（ADR-0011）
+
+/**
+ * 卡片仓储：四类资源（角色 / 场景 / 物品 / 典籍）的统一读写口。
+ *
+ * `save` 是**整文档保存**（卡片是文档，冲突语义是整份 LWW）；调用方负责先过
+ * `validateCard`，仓储只做兜底校验：有 error 就抛 `DataError`，不写进日志。
+ * warning 不拦保存（导入的旧卡字段缺失是已知过渡态）。
+ */
+export interface CardStore {
+  list(type?: CardType): Promise<CardDocument[]>;
+  get(id: string): Promise<CardDocument | undefined>;
+  /** 保存整张卡（调用方负责先过 validateCard）；返回落库后的卡。 */
+  save(card: CardDocument): Promise<CardDocument>;
+  remove(id: string): Promise<boolean>;
+}
+
+/** 会话开局配置（成员 / 舞台 / 处境 / 开场模式）：一次写入，按 HLC LWW。 */
+export interface SetupStore {
+  get(sessionId: string): Promise<SessionSetup | undefined>;
+  save(sessionId: string, setup: SessionSetup): Promise<SessionSetup>;
+}
+
+/**
+ * 会话运行时的读写口。
+ *
+ * 读 = 从补丁序列按 HLC 全序重放派生（`deriveRuntime`）；写 = 追加一条 `runtime.patch`。
+ * **不存当前值**：两台设备离线各加一次好感，覆盖语义会丢掉其中一边的增量。
+ */
+export interface RuntimeStore {
+  get(sessionId: string): Promise<SessionRuntime>;
+  /** 一次写入一组增量并返回派生后的运行时状态；`source` 必填（审计用）。 */
+  patch(input: {
+    sessionId: string;
+    source: 'user' | 'llm' | 'engine';
+    deltas: readonly RuntimeDelta[];
+    causedByMessageId?: string;
+  }): Promise<SessionRuntime>;
+}
+
+/** 世界包（发布单位，不是卡片类型）：manifest 与包内卡片分开存。 */
+export interface PackStore {
+  list(): Promise<WorldPackManifest[]>;
+  save(pack: WorldPackManifest): Promise<WorldPackManifest>;
+  remove(id: string): Promise<boolean>;
+}
+
+/**
+ * 兼容草稿：旧格式里「我们有、设计里没有」的成品文本（scenario / 开场白…）。
+ * 不丢数据，也不塞回卡片字段（那样会造出两个真相）。
+ */
+export interface StashStore {
+  list(characterId?: string): Promise<CompatStashEntry[]>;
+  save(entry: CompatStashEntry): Promise<CompatStashEntry>;
+  remove(id: string): Promise<boolean>;
 }
 
 export interface ProbeInfo {

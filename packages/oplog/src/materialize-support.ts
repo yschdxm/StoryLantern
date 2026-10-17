@@ -13,7 +13,46 @@ import type { CharacterRecord, MaterializedState } from './state-types.ts';
 export type ApplyResult = 'applied' | 'duplicate' | 'orphan';
 
 export function emptyState(): MaterializedState {
-  return { characters: {}, sessions: {}, messages: {}, lorebooks: {}, memories: {}, summaries: {}, facts: {}, settings: {} };
+  return {
+    characters: {},
+    sessions: {},
+    messages: {},
+    lorebooks: {},
+    memories: {},
+    summaries: {},
+    facts: {},
+    settings: {},
+    cards: {},
+    setups: {},
+    runtimePatches: {},
+    packs: {},
+    stash: {},
+  };
+}
+
+/**
+ * 把可能缺字段的旧状态补成全量状态（旧快照没有卡片模型那几张表）。
+ *
+ * 为什么要它：冷启动快照是**设备本地**的派生数据，升级后旧快照仍然会被读到；
+ * 如果直接 `state.cards[id]` 就会 TypeError。缺的键补空、已有的原样保留。
+ */
+export function normalizeState(state: Partial<MaterializedState>): MaterializedState {
+  const base = emptyState();
+  return {
+    characters: state.characters ?? base.characters,
+    sessions: state.sessions ?? base.sessions,
+    messages: state.messages ?? base.messages,
+    lorebooks: state.lorebooks ?? base.lorebooks,
+    memories: state.memories ?? base.memories,
+    summaries: state.summaries ?? base.summaries,
+    facts: state.facts ?? base.facts,
+    settings: state.settings ?? base.settings,
+    cards: state.cards ?? base.cards,
+    setups: state.setups ?? base.setups,
+    runtimePatches: state.runtimePatches ?? base.runtimePatches,
+    packs: state.packs ?? base.packs,
+    stash: state.stash ?? base.stash,
+  };
 }
 
 export function cloneHlc(hlc: Hlc): Hlc {

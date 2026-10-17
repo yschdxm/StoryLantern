@@ -5,6 +5,11 @@ import type { BlockContext, BlockDefinition, BlockRegistry } from '../../../../p
 import type { Memory, MessageRole } from './types.ts';
 
 /**
+ * ⚠️ **已被 `prompt-blocks-v2.ts` 取代（ADR-0011，2026-10-17）。**
+ * 启动时注册的是 v2 的块（`main.tsx`）；本文件保留旧测试，不再接进产品路径。
+ */
+
+/**
  * 应用侧的上下文块：**唯一决定"模型看到什么"的代码**都在这里和 `prompt.ts`。
  *
  * 为什么用块注册表而不是在 `prompt.ts` 里拼字符串：

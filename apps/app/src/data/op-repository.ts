@@ -6,14 +6,18 @@ import {
   checkpointOp,
   decodeOp,
   encodeOp,
+  listCards,
   messageAppend,
   sessionCreate,
   sessionDelete,
+  sessionSetup,
   stateDigest,
   ulid,
   type Op,
   type Snapshot,
 } from '../../../../packages/oplog/src/index.ts';
+import { createCardStores, type CardModelStores } from './card-store.ts';
+import { migrateLegacyIntoLog } from './migrate-cards.ts';
 import { pickOpening } from './greeting.ts';
 import { createLoreStore } from './op-lore-store.ts';
 import { createMessageStore } from './op-message-store.ts';
@@ -54,7 +58,7 @@ import type { CharacterDraft, Message, Session } from './types.ts';
 
 export type { LegacyDump, OpLine, OpLogPort, OpLogStats } from './op-types.ts';
 
-export interface OpLogRepository extends Repository {
+export interface OpLogRepository extends Omit<Repository, 'cards' | 'setups' | 'runtime' | 'packs' | 'stash'>, CardModelStores {
   /** 初始化（读日志 + 必要时迁移）完成。 */
   ready: Promise<void>;
   /** 丢掉内存状态、从日志完整重放一遍：证明"读模型是派生的"。 */
@@ -62,7 +66,7 @@ export interface OpLogRepository extends Repository {
   /** 日志与隔离统计（开发者面板用）。 */
   logStats(): Promise<OpLogStats>;
   /** 实体数量（从物化状态取，也就是从日志派生）；开发者面板显示"真实数据量"用。 */
-  counts(): Promise<{ characters: number; sessions: number; messages: number }>;
+  counts(): Promise<{ characters: number; sessions: number; messages: number; cards: number }>;
   /** 生成冷启动快照（设备本地；日志不动）。 */
   createSnapshot(): Promise<{ upToHlc: { t: number; c: number }; opCount: number; digest: string; lastSeq: number }>;
   /** 丢掉快照（下次启动回到全量重放；调试与"快照疑似有问题"时用）。 */
@@ -130,6 +134,9 @@ export function createOpLogRepository(options: OpLogRepositoryOptions): OpLogRep
     materializer.applyAll(tail);
     loadTail = tail.length;
     loadMs = Math.round(performance.now() - startedAt);
+    // 3) 卡片模型迁移（ADR-0011）：状态载入之后跑（才知道哪些已迁移）；失败只记 loadProblem，不阻止启动
+    const migration = await migrateLegacyIntoLog({ state: materializer.state, appendAndApply });
+    if (migration.problem !== undefined) loadProblem = loadProblem === undefined ? migration.problem : `${loadProblem}；${migration.problem}`;
   })();
 
   const withReady = async <T>(action: () => Promise<T>): Promise<T> => {
@@ -216,6 +223,8 @@ export function createOpLogRepository(options: OpLogRepositoryOptions): OpLogRep
         const ops: Op[] = [
           sessionCreate(base(), { sessionId: id, title: clean === '' ? character.name : clean, characterId }),
         ];
+        // 开局配置（ADR-0011）：旧角色卡的 scenario 就是"这一局处境"的旧写法，迁移期直接当 premise
+        ops.push(sessionSetup(base(), { session_id: id, setup: { characters: [characterId], premise: character.scenario ?? '', opening_mode: 'designated', opening_speaker: characterId, origin: 'card' } }));
         // 开场白随会话一起落地：界面上"新建会话"就该看到那句话选哪一条由 greetingIndex 决定（-1 = 不插入），规则与内存实现共用 pickOpening
         const opening = pickOpening(character, greetingIndex);
         if (opening !== undefined) {
@@ -228,7 +237,6 @@ export function createOpLogRepository(options: OpLogRepositoryOptions): OpLogRep
         if (view === undefined) throw new DataError('store-error', '创建会话后读不到它');
         return view;
       }),
-
     rename: (id, title) =>
       withReady(async () => {
         const clean = title.trim();
@@ -253,21 +261,12 @@ export function createOpLogRepository(options: OpLogRepositoryOptions): OpLogRep
         return true;
       }),
   };
-  const messages: MessageStore = createMessageStore({
-    withReady,
-    materializer: () => materializer,
-    appendAndApply,
-    base,
-  });
-;
-  const lorebooks: LorebookStore = createLoreStore({
-    withReady,
-    materializer: () => materializer,
-    appendAndApply,
-    base,
-  });
+  const messages: MessageStore = createMessageStore({ withReady, materializer: () => materializer, appendAndApply, base });
+  const lorebooks: LorebookStore = createLoreStore({ withReady, materializer: () => materializer, appendAndApply, base });
   const summaries = createSummaryStore({ withReady, materializer: () => materializer, appendAndApply, base });
   const facts = createFactStore({ withReady, materializer: () => materializer, appendAndApply, base });
+  // 卡片模型（ADR-0011）的五个存储：同一套依赖，`withReady` 会等到迁移跑完
+  const cardStores = createCardStores({ withReady, materializer: () => materializer, appendAndApply, base });
   // 记忆与调优助手共用同一套依赖：于是"应用建议"走的就是普通本地写入那条路
   const memories: MemoryStore = createMemoryStore({ withReady, materializer: () => materializer, appendAndApply, base });
   const tuner: TunerStore = createTunerStore({ withReady, materializer: () => materializer, appendAndApply, base });
@@ -280,6 +279,7 @@ export function createOpLogRepository(options: OpLogRepositoryOptions): OpLogRep
     sessions,
     messages,
     lorebooks, memories, tuner, summaries, facts,
+    ...cardStores,
     // 设备配置不进 op 日志：密钥不该离开本机，主题/语言属于设备偏好
     settings: options.settings,
 
@@ -375,6 +375,7 @@ export function createOpLogRepository(options: OpLogRepositoryOptions): OpLogRep
         characters: materializer.characters().length,
         sessions: materializer.sessions().length,
         messages: liveMessageCount(),
+        cards: listCards(materializer.state).length,
       };
     },
 

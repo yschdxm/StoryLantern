@@ -26,4 +26,14 @@ export const zhExtra: AppMessages = {
   'settings.profile.apply': '应用粘贴的配置',
   'settings.profile.applied': '已应用 {count} 项设置',
   'settings.profile.removed': '（已拒绝 {count} 个密钥类设置）',
+  // 卡片模型（ADR-0011）：请求面板出现的新块名
+  'chat.trace.block.setup': '本局开局',
+  'chat.trace.block.rules': '角色硬约束',
+  'chat.trace.block.state': '当前状态',
+  'chat.trace.block.scene': '当前场景',
+  'chat.trace.block.items': '持有物品',
+  'chat.trace.block.examples': '对话示例',
+  'chat.trace.block.summary': '相关摘要',
+  'chat.trace.rulesOmitted': '跳过了 {count} 条带条件的规则（条件求值器尚未实现，不假装生效）',
+  'chat.trace.loreDropped': '{count} 条典籍没有注入（概率未命中或超出预算）',
 };

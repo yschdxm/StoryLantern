@@ -1,12 +1,12 @@
 import type { ReactNode } from 'react';
 import { useT } from '../i18n/context.tsx';
-import type { PromptTrace } from '../data/prompt.ts';
+import type { PromptTraceV2 } from '../data/prompt-v2.ts';
 import { Sheet } from '../ui/components.tsx';
 
 /**
  * 「本次请求」面板：把"模型到底看到了什么、裁了什么、为什么"如实摊开。
  *
- * 数据全部来自 `prompt.ts` 产出的 trace（块与理由由组装管线给出）与调用时的实测耗时；
+ * 数据全部来自 `prompt-v2.ts` 产出的 trace（块与理由由组装管线给出）与调用时的实测耗时；
  * 这里**不做**任何推断或美化：没有的字段就显示 `—`。
  */
 
@@ -18,7 +18,7 @@ export interface ModelAttempt {  label: string;
 }
 
 export interface RequestTraceState {
-  trace: PromptTrace;
+  trace: PromptTraceV2;
   startedAt: number;
   firstDeltaMs?: number;
   totalMs?: number;
@@ -136,6 +136,12 @@ export function RequestTracePanel({
               budget: state.trace.budgetTokens === 0 ? '—' : state.trace.budgetTokens,
             })}
           </p>
+          {state.trace.rulesOmitted > 0 && (
+            <p className="notice notice--warn">{t('chat.trace.rulesOmitted', { count: state.trace.rulesOmitted })}</p>
+          )}
+          {state.trace.loreDropped > 0 && (
+            <p className="trace__meta">{t('chat.trace.loreDropped', { count: state.trace.loreDropped })}</p>
+          )}
         </div>
       )}
     </Sheet>

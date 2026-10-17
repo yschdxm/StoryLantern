@@ -21,7 +21,7 @@ import { createSafFolderBackend } from './data/saf-folder.ts';
 import { createBackupAdmin } from './data/sync/backup-admin.ts';
 import { createRosterAdminSurface } from './data/sync/roster-admin.ts';
 import { createWebCryptoRecoveryProof } from './data/sync/recovery-key.ts';
-import { registerPromptBlocks } from './data/prompt-blocks.ts';
+import { registerPromptBlocksV2 } from './data/prompt-blocks-v2.ts';
 import type { BlockRegistry } from '../../../plugins/context-blocks/src/index.ts';
 import { createHostClient, type HostClient } from './host-panel.ts';
 import { I18nProvider } from './i18n/context.tsx';
@@ -105,7 +105,7 @@ function Root(): ReturnType<typeof AppShell> {
         registerAppMessages(runtime.locale);
         // 把应用侧的上下文块注册进组合出来的注册表：块的优先级/预算/理由由 pipeline 统一执行
         try {
-          registerPromptBlocks(runtime.ctx.require<BlockRegistry>('context.blocks'));
+          registerPromptBlocksV2(runtime.ctx.require<BlockRegistry>('context.blocks'));
         } catch {
           // 没有 context.blocks（那一行被关掉了）：prompt.ts 会走兜底拼接，并在面板里说明
         }

@@ -4,11 +4,13 @@ import type { ScreenProps } from './screen-props.ts';
 import { useAppState, useAsync } from './screen-props.ts';
 import { useT } from '../i18n/context.tsx';
 import { formatTime, isModelConfigured } from '../data/repository.ts';
-import { buildChatRequest, estimateTokens } from '../data/prompt.ts';
+import { buildChatRequestV2 } from '../data/prompt-v2.ts';
+import { estimateTokens } from '../data/prompt.ts';
+import { buildChatOptionsV2 } from './chat-request.ts';
+import { loadWorkspace, type WorkspaceSnapshot } from '../app/workspace.ts';
 import { computeUsage } from '../../../../packages/oplog/src/index.ts';
 import { createUsageStore } from '../data/usage-store.ts';
 import { selectSummariesForChat } from '../data/summary-vector-select.ts';
-import type { PromptSummary } from '../data/prompt-blocks.ts';
 import { SETTING_KEYS } from '../data/types.ts';
 import { candidatesFor, targetLabel } from '../data/model-routing.ts';
 import type { ChatReplyResult } from '../data/chat-client.ts';
@@ -54,6 +56,11 @@ export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings, t
   const heightBeforeRef = useRef(0);
 
   useAsync(() => store.actions.loadMessages(sessionId), [sessionId, store]);
+  /** 本会话的卡片设定视图（开局配置 / 卡片 / 运行时）：聊天页自己取，避免塞进全局状态。 */
+  const [workspace, setWorkspace] = useState<WorkspaceSnapshot | undefined>(undefined);
+  useAsync(async () => {
+    setWorkspace(await loadWorkspace(store.repository, store.getState(), sessionId));
+  }, [sessionId, store, state.characters, state.lorebooks]);
 
   const { visible, hidden, sentinel } = useWindowedList(state.messages, { pageSize: 40, from: 'end' });
 
@@ -82,8 +89,6 @@ export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings, t
   const runReply = async (): Promise<void> => {
     // 用 store 里的**最新**状态组上下文：刚发出去的那条消息要进上下文
     const fresh = store.getState();
-    const current = fresh.sessions.find((item) => item.id === sessionId);
-    const character = fresh.characters.find((item) => item.id === current?.characterId);
     // 检索（M4）：块渲染同步、embedding 异步 —— 所以检索必须在装配**之前**算好（见 selectSummariesForChat）。
     const usage = createUsageStore({ settings: () => store.getState().settings, setSetting: (key, value) => store.actions.setSetting(key, value) }); const allSummaries = await store.actions.summariesOf(sessionId);
     const preselected = await selectSummariesForChat({ onOutcome: (outcome) => void store.actions.setSetting(SETTING_KEYS.vectorOutcome, JSON.stringify({ ...outcome, at: Date.now() })),
@@ -97,25 +102,17 @@ export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings, t
         await usage.record(fresh.settings['device.id'] ?? 'unknown', computeUsage({ at: Date.now(), task: 'embed', modelId: call.modelId, promptTokens: call.promptTokens, completionTokens: 0, prices: usage.prices().value }));
       },
     });
-    const request = buildChatRequest({
-      cite: true,
-      settings: fresh.settings,
-      ...(character === undefined ? {} : { character }),
-      history: fresh.messages.map((message) => ({ role: message.role, content: message.content, status: message.status })),
-      // 世界书：全局的 + 绑定到这个角色的（按角色筛完再交给扫描器）
-      lorebooks: fresh.lorebooks.filter(
-        (book) => book.enabled && (book.characterIds.length === 0 || (character !== undefined && book.characterIds.includes(character.id))),
-      ),
-      // 长期记忆：同样是全局的 + 绑定到这个角色的
-      memories: fresh.memories.filter(
-        (memory) => memory.characterId === '' || (character !== undefined && memory.characterId === character.id),
-      ),
-      // 系统提示交给组装管线：优先级 / 预算 / 每条理由都在那里算
-      ...(assemble === undefined ? {} : { assemble }),
-      sessionTitle: current?.title ?? '',
-      ...(allSummaries.length === 0 ? {} : { summaries: allSummaries }),
-      ...(preselected === undefined ? {} : { preselectedSummaries: preselected }),
-    });
+    // 卡片模型（ADR-0011）：装配输入是"开局配置 + 本会话卡片 + 运行时"，不再是角色的 6 个文本字段
+    const request = buildChatRequestV2(
+      buildChatOptionsV2({
+        state: fresh,
+        sessionId,
+        workspace: workspace ?? (await loadWorkspace(store.repository, fresh, sessionId)),
+        summaries: allSummaries,
+        ...(preselected === undefined ? {} : { preselectedSummaries: preselected }),
+        ...(assemble === undefined ? {} : { assemble }),
+      }),
+    );
     // 注入痕迹：用户随时能看到"这次模型多看了哪几条设定"（可解释性的最小一步）
     setInjectedLore(request.lore);
     setTrace({ trace: request.trace, startedAt: Date.now(), attempts: [] });

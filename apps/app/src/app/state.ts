@@ -95,6 +95,7 @@ export interface AppStore {
   getState(): AppState;
   subscribe(listener: (state: AppState) => void): () => void;
   actions: AppActions;
+  readonly repository: Repository;
 }
 
 const INITIAL: AppState = {
@@ -393,5 +394,6 @@ export function createAppStore(repository: Repository): AppStore {
       return () => listeners.delete(listener);
     },
     actions,
+    repository,
   };
 }

@@ -111,10 +111,14 @@ test('快照：日志里留了一条检查点，且它不改变状态、日志�
   assert.equal(after.lastSeq, before.lastSeq + 1);
   assert.ok(after.load !== undefined);
 
-  // 检查点 op 不改变状态：全量重放（含检查点）与快照状态一致
+  // 检查点 op 不改变状态：全量重放（含检查点）与快照路径一致。
+  // 注意：ready 会跑一次卡片模型迁移（ADR-0011，旧角色 → card.upsert）；两边都要走一次 ready，
+  // 否则一边有迁移出的卡片、一边没有，摘要必然不同——那比较的就不是快照机制了。
+  const snapshotPath = open(ports, device);
+  await snapshotPath.ready;
   const reference = replayOnly(ports);
   await reference.ready;
-  assert.equal(stateDigest(repo.currentMaterializer().state), stateDigest(reference.currentMaterializer().state));
+  assert.equal(stateDigest(snapshotPath.currentMaterializer().state), stateDigest(reference.currentMaterializer().state));
   assert.equal(created.lastSeq, after.lastSeq, '快照覆盖到检查点为止');
 });
 

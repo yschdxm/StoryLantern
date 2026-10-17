@@ -6,6 +6,12 @@ import { formatMemoryBlock, selectMemories, type RetrievedMemory } from './memor
 import { SETTING_KEYS, type Lorebook, type Memory, type MessageRole } from './types.ts';
 
 /**
+ * ⚠️ **已被 `prompt-v2.ts` 取代（ADR-0011，2026-10-17）。**
+ * 聊天页现在调用 `buildChatRequestV2`；本文件保留是为了不一次性删掉旧测试与旧调用方，
+ * 新代码不要再往这里加东西。旧的块（角色卡 6 字段 + 世界书 + memory/summary）语义见 git 历史。
+ */
+
+/**
  * 组装模型请求。
  *
  * 为什么放在前端：M1 之后"上下文"的唯一来源是 op 日志（角色卡 + 历史消息都在前端物化状态里），

@@ -2,6 +2,7 @@ import type { Hlc } from './hlc.ts';
 import type { MessageAuthor } from './op.ts';
 import type { SummaryLevel } from './summary-ops.ts';
 import type { FactAuthor, FactState } from './fact-ops.ts';
+import type { CardDocument, CompatStashEntry, RuntimeDelta, SessionSetup, WorldPackManifest } from '../../cards/src/index.ts';
 
 /** 物化状态的记录类型。独立成文件，便于 protocol 层（快照/编解码）只依赖类型。 */
 
@@ -130,6 +131,63 @@ export interface MaterializedState {
   summaries: Record<string, SummaryRecord>;
   facts: Record<string, FactRecord>;
   settings: Record<string, { value: unknown; hlc: Hlc; opId: string }>;
+  // ---- 卡片模型（ADR-0011）----
+  /** 四类卡片（角色 / 场景 / 物品 / 典籍）。旧 `characters`/`lorebooks` 是迁移来源，不再写入。 */
+  cards: Record<string, CardRecord>;
+  /** 会话开局配置（成员、舞台、处境、开场模式）。 */
+  setups: Record<string, SetupRecord>;
+  /** 会话运行时的**补丁序列**（不存当前值：由 HLC 全序重放派生，见 runtime-derive.ts）。 */
+  runtimePatches: Record<string, RuntimePatchRecord[]>;
+  /** 世界包（发布单位，不是卡片类型）。 */
+  packs: Record<string, PackRecord>;
+  /** 兼容草稿：旧格式里"我们有、设计里没有"的成品文本（如 `scenario` / `first_mes`）。 */
+  stash: Record<string, StashRecord>;
+}
+
+/** 一张卡片的物化记录：整文档 LWW + 墓碑（与旧角色卡同一套语义）。 */
+export interface CardRecord {
+  id: string;
+  card: CardDocument;
+  createdHlc: Hlc;
+  updatedHlc: Hlc;
+  opId: string;
+  deleted?: { hlc: Hlc; opId: string };
+}
+
+export interface SetupRecord {
+  sessionId: string;
+  setup: SessionSetup;
+  updatedHlc: Hlc;
+  opId: string;
+}
+
+/** 一条运行时补丁（append-only；当前值由重放派生）。 */
+export interface RuntimePatchRecord {
+  sessionId: string;
+  opId: string;
+  deviceId: string;
+  hlc: Hlc;
+  source: 'user' | 'llm' | 'engine';
+  deltas: readonly RuntimeDelta[];
+  causedByMessageId?: string;
+}
+
+export interface PackRecord {
+  id: string;
+  pack: WorldPackManifest;
+  createdHlc: Hlc;
+  updatedHlc: Hlc;
+  opId: string;
+  deleted?: { hlc: Hlc; opId: string };
+}
+
+export interface StashRecord {
+  id: string;
+  entry: CompatStashEntry;
+  createdHlc: Hlc;
+  updatedHlc: Hlc;
+  opId: string;
+  deleted?: { hlc: Hlc; opId: string };
 }
 
 /**

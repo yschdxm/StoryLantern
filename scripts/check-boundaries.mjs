@@ -30,11 +30,12 @@ const SCAN_DIRS = ['packages', 'plugins', 'scripts', 'apps'];
  */
 const ALLOWED_DEPS = {
   'plugin-api': [],
+  cards: [],
   oplog: [],
   lore: [],
   i18n: ['plugin-api'],
   kernel: ['plugin-api'],
-  importer: ['sync-core'],
+  importer: ['sync-core', 'cards'],
   'sync-core': ['oplog'],
   tuner: ['oplog'],
   wire: ['plugin-api', 'sync-core'],
@@ -61,7 +62,7 @@ const PLUGIN_ALLOWED = {
   'writing-pipeline': ['plugin-api', 'i18n'],
 };
 
-const FORBID_ANY = new Set(['oplog', 'sync-core', 'lore']);
+const FORBID_ANY = new Set(['oplog', 'sync-core', 'lore', 'cards']);
 
 const violations = [];
 

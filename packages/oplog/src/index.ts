@@ -69,6 +69,44 @@ export {
 } from './lore-ops.ts';
 export { listLorebooks, listLoreEntries } from './lorebook-projection.ts';
 export { listMemories, memoriesFor } from './memory-projection.ts';
+// ---- 卡片模型（ADR-0011）：新写入走这几类 op ----
+export {
+  cardDelete,
+  cardUpsert,
+  packDelete,
+  packUpsert,
+  runtimePatch,
+  sessionSetup,
+  stashDelete,
+  stashUpsert,
+  type CardDeletePayload,
+  type CardUpsertPayload,
+  type OpBase,
+  type PackDeletePayload,
+  type PackUpsertPayload,
+  type SessionSetupPayload,
+  type StashDeletePayload,
+  type StashUpsertPayload,
+} from './card-ops.ts';
+export {
+  applyCardModelOp,
+  isCardModelOp,
+  liveCard,
+  liveStash,
+  listCards,
+  listPacks,
+  setupOf,
+} from './card-projection.ts';
+export { applyRuntimePatch, runtimePatchCount } from './runtime-projection.ts';
+export {
+  clampStateDelta,
+  defaultsFrom,
+  deriveRuntime,
+  patchesOf,
+  scopeKey,
+  type ClampResult,
+} from './runtime-derive.ts';
+export { normalizeState } from './materialize-support.ts';
 export {
   SnapshotBlobError,
   canonicalJson,
@@ -197,6 +235,13 @@ export {
 } from './fact-logic.ts';
 export { verifyProvenance, type ProvenanceCheck, type ProvenanceMessage } from './fact-verify.ts';
 export type { FactRecord, SummaryRecord } from './state-types.ts';
+export type {
+  CardRecord,
+  PackRecord,
+  RuntimePatchRecord,
+  SetupRecord,
+  StashRecord,
+} from './state-types.ts';
 export {
   Materializer,
   type CandidateRecord,
