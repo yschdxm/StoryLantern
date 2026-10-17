@@ -33,6 +33,10 @@ jobs:
         # （实测报 Cannot find module '.../apps'），本地我用的就是 glob 形式。
         run: node --test --test-reporter=spec "packages/**/*.test.ts" "apps/**/*.test.ts" "plugins/**/*.test.ts" "fixtures/**/*.test.ts" "eval/**/*.test.ts"
 
+      - name: 性能预算（只有真越线才红；int8 已标 INFO，不参与判定）
+        if: matrix.node == '24'
+        run: npm run perf
+
   typecheck:
     runs-on: ubuntu-latest
     steps:
