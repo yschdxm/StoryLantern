@@ -309,6 +309,92 @@ function ccv3Lorebook() {
   };
 }
 
+/** 卡片内嵌世界书用 **map** 形态（现实中两种混着出现）。 */
+function cardV3EmbeddedMapBook() {
+  const v3 = cardV3();
+  return {
+    ...v3,
+    data: {
+      ...v3.data,
+      character_book: {
+        name: '内嵌 map 形态',
+        entries: {
+          0: { key: ['雪'], content: '雪落下来的时候，隘口会安静得不像话。', comment: '雪', enabled: true },
+          1: { key: ['灯'], content: '灯的油只够撑到天亮。', comment: '灯', disable: true },
+        },
+      },
+    },
+  };
+}
+
+/** 字段大量留空的最小卡（导入器不能因为空字段就炸）。 */
+function cardV2EmptyFields() {
+  return {
+    spec: 'chara_card_v2',
+    spec_version: '2.0',
+    data: { name: '空白样本', description: '', personality: '', scenario: '', first_mes: '', mes_example: '' },
+  };
+}
+
+/** 扁平 legacy 最小卡。 */
+function cardLegacyMinimal() {
+  return { name: '最小卡', first_mes: '嗯。' };
+}
+
+/** 中文/emoji/换行混杂：编码边界（PNG 里是 base64(UTF-8)，JSONL 里是 UTF-8）。 */
+function cardV3Unicode() {
+  const v3 = cardV3();
+  return {
+    ...v3,
+    data: {
+      ...v3.data,
+      name: '霜·🌙',
+      description: '带 emoji 的描述 ✨\n第二行：「引号」、“弯引号”、\u0000后无空格。',
+      mes_example: '<START>\n{{user}}: 🙂\n{{char}}: 🙂‍↔️',
+    },
+  };
+}
+
+/** 单条目、默认关闭的世界书。 */
+function stWorldSingle() {
+  return {
+    entries: {
+      7: { uid: 7, key: ['孤灯'], comment: '唯一一条', content: '只有一盏灯还亮着。', disable: true, order: 1 },
+    },
+  };
+}
+
+/** CCv3 spec 但 entries 是 map（现实里见过的不规范导出）。 */
+function ccv3LorebookMapEntries() {
+  return {
+    spec: 'lorebook_v3',
+    data: {
+      name: '不规范的 CCv3',
+      entries: {
+        0: { keys: ['风'], content: '风会替你关门。', enabled: true },
+        1: { keys: ['雪'], content: '雪线以上没有名字。', enabled: true },
+      },
+    },
+  };
+}
+
+/** 没有表头的聊天：名字只写在每一行上。 */
+function buildChatNoHeader() {
+  return `${[
+    JSON.stringify({ name: '旅人', is_user: true, mes: '没有表头的一行。', send_date: 1_700_000_000_000 }),
+    JSON.stringify({ name: '星野', is_user: false, mes: '嗯。', send_date: 1_700_000_001_000 }),
+  ].join('\n')}\n`;
+}
+
+/** 只有 system 与两句话的聊天（最少可导入形态）。 */
+function buildChatSystemOnly() {
+  return `${[
+    JSON.stringify(chatHeader()),
+    JSON.stringify({ name: '系统', is_user: false, is_system: true, mes: '会话开始。', send_date: 1_700_000_000_000 }),
+    JSON.stringify(chatMessage(0)),
+  ].join('\n')}\n`;
+}
+
 // ----------------------------------------------------------------- 聊天
 
 function chatHeader(overrides = {}) {
@@ -464,18 +550,44 @@ function malformed() {
     ].join('\n'),
     'deep-nesting.json': `${'['.repeat(400)}1${']'.repeat(400)}`,
     'empty.json': '',
+    // 没有名字的卡：导入必须报 bad-card，而不是"导入一张无名卡"
+    'card-no-name.json': JSON.stringify({ spec: 'chara_card_v2', data: { description: '只有描述' } }),
+    // 空世界书：必须报 bad-lorebook
+    'lorebook-empty.json': JSON.stringify({ entries: {} }),
+    // 压缩包里没有 card.json：必须报 no-card-in-charx
+    'zip-no-card.charx': buildZip([{ name: 'readme.txt', data: '没有卡片' }]),
   };
 }
 
 // ----------------------------------------------------------------- 主流程
 
 export const FIXTURE_MANIFEST = {
-  cards: ['card-v1.json', 'card-v2.json', 'card-v3.json', 'card-v2.png', 'card-v3.png', 'card.charx'],
-  lorebooks: ['st-world.json', 'ccv3-lorebook.json'],
-  chats: ['single.jsonl', 'group.jsonl'],
+  cards: [
+    'card-v1.json',
+    'card-v2.json',
+    'card-v3.json',
+    'card-v2.png',
+    'card-v3.png',
+    'card.charx',
+    'card-v3-embedded-map.json',
+    'card-v2-empty-fields.json',
+    'card-legacy-minimal.json',
+    'card-v3-unicode.json',
+  ],
+  lorebooks: ['st-world.json', 'ccv3-lorebook.json', 'st-world-single.json', 'ccv3-lorebook-map.json'],
+  chats: ['single.jsonl', 'group.jsonl', 'no-header.jsonl', 'system-only.jsonl'],
   presets: ['chat-completion.json', 'text-completion.json'],
   regex: ['scripts.json'],
-  malformed: ['truncated-card.png', 'bad-card.json', 'bad-chat.jsonl', 'deep-nesting.json', 'empty.json'],
+  malformed: [
+    'truncated-card.png',
+    'bad-card.json',
+    'bad-chat.jsonl',
+    'deep-nesting.json',
+    'empty.json',
+    'card-no-name.json',
+    'lorebook-empty.json',
+    'zip-no-card.charx',
+  ],
 };
 
 async function main() {
@@ -514,10 +626,20 @@ async function main() {
   // 世界书
   await write('lorebooks/st-world.json', `${JSON.stringify(stWorldBook(), null, 2)}\n`);
   await write('lorebooks/ccv3-lorebook.json', `${JSON.stringify(ccv3Lorebook(), null, 2)}\n`);
+  await write('lorebooks/st-world-single.json', `${JSON.stringify(stWorldSingle(), null, 2)}\n`);
+  await write('lorebooks/ccv3-lorebook-map.json', `${JSON.stringify(ccv3LorebookMapEntries(), null, 2)}\n`);
+
+  // 更多卡片形态
+  await write('cards/card-v3-embedded-map.json', `${JSON.stringify(cardV3EmbeddedMapBook(), null, 2)}\n`);
+  await write('cards/card-v2-empty-fields.json', `${JSON.stringify(cardV2EmptyFields(), null, 2)}\n`);
+  await write('cards/card-legacy-minimal.json', `${JSON.stringify(cardLegacyMinimal(), null, 2)}\n`);
+  await write('cards/card-v3-unicode.json', `${JSON.stringify(cardV3Unicode(), null, 2)}\n`);
 
   // 聊天
   await write('chats/single.jsonl', buildSingleChat(6));
   await write('chats/group.jsonl', buildGroupChat());
+  await write('chats/no-header.jsonl', buildChatNoHeader());
+  await write('chats/system-only.jsonl', buildChatSystemOnly());
 
   // 预设与正则
   await write('presets/chat-completion.json', `${JSON.stringify(chatCompletionPreset(), null, 2)}\n`);

@@ -7,6 +7,16 @@ import { isZip, readZipEntry } from './zip.ts';
 
 export * from './types.ts';
 export { parseCharacterJson, parseLorebook } from './card.ts';
+export {
+  attachRaw,
+  exportCharacterJson,
+  exportChatJsonl,
+  exportImported,
+  exportLorebookEntry,
+  exportLorebookJson,
+  type ExportCharacterOptions,
+  type ExportResult,
+} from './export.ts';
 export { parseChatText } from './chat.ts';
 export { extractCardTextFromPng, isPng, readPngTextChunks } from './png.ts';
 export { isZip, listZipEntries, readZipEntry } from './zip.ts';

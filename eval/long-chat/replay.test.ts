@@ -8,9 +8,11 @@ import {
   createPerfectReaderModel,
   createRecorder,
   createReplayClient,
+  DEFAULT_LIMIT,
   PROBES,
   recordingKey,
   scoreProbes,
+  TOTAL,
   type HistoryItem,
 } from './harness.ts';
 
@@ -36,7 +38,7 @@ function callFor(history: readonly HistoryItem[], question: string, limit?: numb
   return { messages: request.messages, systemPrompt: request.systemPrompt };
 }
 
-test('回放式评估：默认窗口下（完美读者）答对 2/5，录制→判分→回放逐字一致', async () => {
+test('回放式评估：默认窗口下（完美读者）只有窗口内事实可达，录制→判分→回放逐字一致', async () => {
   const history = buildLongConversation();
   const recorder = createRecorder(createPerfectReaderModel(PROBES), 'perfect-reader');
 
@@ -51,14 +53,12 @@ test('回放式评估：默认窗口下（完美读者）答对 2/5，录制→�
     `  [回放评估] 答对 ${summary.correct}/${summary.total} = ${(summary.rate * 100).toFixed(0)}%` +
       `（录制 ${recorder.recording.entries.length} 条，producedBy=${recorder.recording.producedBy}）`,
   );
-  for (const outcome of summary.outcomes) {
-    console.log(`    ${outcome.correct ? '✓' : '✗'} ${outcome.id}（第 ${PROBES.find((p) => p.id === outcome.id)?.at} 条）：${outcome.answer.slice(0, 24)}`);
-  }
 
-  // 默认窗口 40 条下，只有窗口内那两条事实进得了上下文 → 上界就是 2/5
-  assert.equal(summary.total, 5);
-  assert.equal(summary.correct, 2, '默认窗口下（完美读者）应当恰好答对窗口内那两条');
-  assert.equal(recorder.recording.entries.length, 5, '每条探针都应留下一条录制');
+  // 默认窗口 40 条下，只有窗口内的事实进得了上下文 → 上界就是它们的条数（从数据算，不写死）
+  const inWindow = PROBES.filter((probe) => probe.at > TOTAL - DEFAULT_LIMIT).length;
+  assert.equal(summary.total, PROBES.length);
+  assert.equal(summary.correct, inWindow, `默认窗口下（完美读者）应当恰好答对窗口内那 ${inWindow} 条`);
+  assert.equal(recorder.recording.entries.length, PROBES.length, '每条探针都应留下一条录制');
 
   // 回放：同一份录制、同一批请求 → 逐字一致
   const replay = createReplayClient(recorder.recording);
@@ -73,7 +73,7 @@ test('回放式评估：默认窗口下（完美读者）答对 2/5，录制→�
   console.log(`  [回放评估] 录制体积 ${serialized.length} B，可 JSON 落盘`);
 });
 
-test('把历史上限开到 500：完美读者即可答对 5/5（说明瓶颈是窗口，不是评分器）', async () => {
+test('把历史上限开到 500：完美读者即可答对全部探针（说明瓶颈是窗口，不是评分器）', async () => {
   const history = buildLongConversation();
   const recorder = createRecorder(createPerfectReaderModel(PROBES), 'perfect-reader');
   const answers = new Map<string, string>();
@@ -83,7 +83,7 @@ test('把历史上限开到 500：完美读者即可答对 5/5（说明瓶颈是
   }
   const summary = scoreProbes(PROBES, answers);
   console.log(`  [回放评估·上限 500] 答对 ${summary.correct}/${summary.total}`);
-  assert.equal(summary.correct, 5);
+  assert.equal(summary.correct, PROBES.length);
 });
 
 test('回放缺席必须报错：换个请求去回放不得凭空生成答案', async () => {

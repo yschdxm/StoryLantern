@@ -1,0 +1,22 @@
+{
+  "spec": "lorebook_v3",
+  "data": {
+    "name": "不规范的 CCv3",
+    "entries": {
+      "0": {
+        "keys": [
+          "风"
+        ],
+        "content": "风会替你关门。",
+        "enabled": true
+      },
+      "1": {
+        "keys": [
+          "雪"
+        ],
+        "content": "雪线以上没有名字。",
+        "enabled": true
+      }
+    }
+  }
+}

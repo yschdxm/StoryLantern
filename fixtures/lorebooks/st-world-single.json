@@ -1,0 +1,14 @@
+{
+  "entries": {
+    "7": {
+      "uid": 7,
+      "key": [
+        "孤灯"
+      ],
+      "comment": "唯一一条",
+      "content": "只有一盏灯还亮着。",
+      "disable": true,
+      "order": 1
+    }
+  }
+}

@@ -1,3 +1,4 @@
+import { attachRaw } from './export.ts';
 import {
   asString,
   asStringArray,
@@ -22,21 +23,27 @@ export function parseLorebook(value: unknown, fallbackName: string): ImportedLor
 
   const entries: ImportedLorebookEntry[] = list.filter(isRecord).map((entry) => {
     const disabled = entry['disable'] === true || entry['enabled'] === false;
-    return {
-      keys: asStringArray(entry['key'] ?? entry['keys']),
-      secondaryKeys: asStringArray(entry['keysecondary'] ?? entry['secondary_keys']),
-      content: asString(entry['content']),
-      name: asString(entry['comment'] ?? entry['name']),
-      enabled: entry['enabled'] === true ? true : !disabled,
-      constant: entry['constant'] === true,
-    };
+    return attachRaw(
+      {
+        keys: asStringArray(entry['key'] ?? entry['keys']),
+        secondaryKeys: asStringArray(entry['keysecondary'] ?? entry['secondary_keys']),
+        content: asString(entry['content']),
+        name: asString(entry['comment'] ?? entry['name']),
+        enabled: entry['enabled'] === true ? true : !disabled,
+        constant: entry['constant'] === true,
+      },
+      entry,
+    );
   });
 
-  return {
-    name: asString(value['name']) || fallbackName,
-    description: asString(value['description']),
-    entries,
-  };
+  return attachRaw(
+    {
+      name: asString(value['name']) || fallbackName,
+      description: asString(value['description']),
+      entries,
+    },
+    value,
+  );
 }
 
 /** 角色卡里内嵌的世界书（CCv2/CCv3 的 `character_book`）。没有就返回 undefined。 */
@@ -87,24 +94,27 @@ export function parseCharacterJson(value: unknown, source: string): ImportedChar
   if (cardPrompt !== '') notes.push('卡片自带 system prompt 已带入角色（优先于全局提示）');
   if (asString(data['creator_notes']) !== '') notes.push('跳过 creator notes');
 
-  return {
-    kind: 'character',
-    source,
-    name: name.slice(0, 60),
-    description: withCreatorNotes(asString(data['description']), data),
-    personality: asString(data['personality']),
-    scenario: asString(data['scenario']),
-    firstMessage: asString(data['first_mes']),
-    exampleDialogue: asString(data['mes_example']),
-    systemPrompt: cardPrompt,
-    alternateGreetings: alternates,
-    spec: spec === '' ? 'legacy' : spec,
-    ...(lorebook === undefined ? {} : { lorebook }),
-    notes:
-      regexScriptCount(data) === 0
-        ? notes
-        : [...notes, `${regexScriptCount(data)} 条正则脚本没有导入：当前版本不执行正则（要么接进生成链路，要么不导，不做半支持）`],
-  };
+  return attachRaw(
+    {
+      kind: 'character',
+      source,
+      name: name.slice(0, 60),
+      description: withCreatorNotes(asString(data['description']), data),
+      personality: asString(data['personality']),
+      scenario: asString(data['scenario']),
+      firstMessage: asString(data['first_mes']),
+      exampleDialogue: asString(data['mes_example']),
+      systemPrompt: cardPrompt,
+      alternateGreetings: alternates,
+      spec: spec === '' ? 'legacy' : spec,
+      ...(lorebook === undefined ? {} : { lorebook }),
+      notes:
+        regexScriptCount(data) === 0
+          ? notes
+          : [...notes, `${regexScriptCount(data)} 条正则脚本没有导入：当前版本不执行正则（要么接进生成链路，要么不导，不做半支持）`],
+    },
+    value,
+  );
 }
 
 /** 描述为空时把 creator notes 放进去，避免"导入后一片空白"。 */

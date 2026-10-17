@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 import { HlcClock, runSummaries, toHex, utf8, nodeDigest, type SummarizeRequest } from '../../packages/oplog/src/index.ts';
 import { buildChatRequest } from '../../apps/app/src/data/prompt.ts';
 import { SUMMARY_INJECT_LIMIT, type PromptSummary } from '../../apps/app/src/data/prompt-blocks.ts';
-import { buildLongConversation, FACTS, TOTAL } from './harness.ts';
+import { buildLongConversation, DEFAULT_LIMIT, FACTS, TOTAL } from './harness.ts';
 
 /**
  * 「检索接进上下文」这一步的**效果测量**（M4）。
  *
- * 早先（DEVELOPMENT.md 第六节）量到的基线是：默认历史上限 40 条时，500 条对话里埋的 5 条事实
- * **只有 2 条**进得了上下文 —— 60% 到不了模型。这里量的是同一件事，但**把会话摘要也接上**之后：
- * 探针问题作为最后一条 user 消息 → 摘要按检索挑 3 条注入 → 事实是否因此变得可达。
+ * 早先量到的基线是：默认历史上限 40 条时，500 条对话里埋的事实**只有窗口里那几条**进得了上下文
+ * （早期 5 条探针时是 2/5；样本扩到 30 条后是 4/30）—— 其余到不了模型。这里量的是同一件事，
+ * 但**把会话摘要也接上**之后：探针问题作为最后一条 user 消息 → 摘要按检索挑 3 条注入 → 事实是否因此变得可达。
  *
  * **说准这个方法**：摘要文本由"完美摘要器"桩生成（覆盖窗口里出现事实原文就照抄那一条），
  * 所以这里量的是**管线的可达性**，不是"模型能不能答对"。真实摘要文本取决于模型质量。
@@ -99,8 +99,12 @@ test(`${TOTAL} 条长对话：接上摘要注入后，埋点事实的可达率�
   console.log(`  [摘要注入] 事实可达 基线 ${baseline}/${FACTS.length} → 接摘要 ${withSummaries}/${FACTS.length}（每次注入上限 ${SUMMARY_INJECT_LIMIT} 条）`);
   for (const line of detail) console.log(line);
 
-  assert.equal(baseline, 2, '基线：默认窗口下只有 2 条可达（与 probe.test.ts 一致）');
-  // 钉住今天的成绩：基线 2/5（那三条深埋在历史里、根本到不了模型），接上摘要注入后 5/5。
+  // 基线：默认窗口（最后 DEFAULT_LIMIT 条）里能装下几条事实 —— 从数据算，不写死
+  const inWindow = FACTS.filter((fact) => fact.at > TOTAL - DEFAULT_LIMIT).length;
+  assert.equal(baseline, inWindow, `基线：默认窗口下只有 ${inWindow} 条可达（与 probe.test.ts 一致）`);
+  // 钉住今天的成绩（2026-10-17 实测 25/30）：基线之外的事实深埋在历史里、根本到不了模型，
+  // 接上摘要注入后大部分可达 —— 但不是全部：每次只注入 SUMMARY_INJECT_LIMIT（3）条，
+  // 少数早期事实在检索里挑不中（第 30/14/8 条没有摘要被选中，第 488/465 条选中了别的摘要）。
   // 将来如果有意改动检索/摘要策略，这条会红——那时要么是变好、要么是变坏，都得看一眼数字。
-  assert.equal(withSummaries, FACTS.length, '接上摘要注入后，5 条事实都应当可达');
+  assert.equal(withSummaries, 25, `接上摘要注入后，今天实测 ${withSummaries}/${FACTS.length} 可达（放宽前是 25）`);
 });
