@@ -2,14 +2,7 @@ import { readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { HlcClock } from '../packages/oplog/src/hlc.ts';
 import { Materializer } from '../packages/oplog/src/materialize.ts';
-import {
-  createAesGcmCipher,
-  createDeviceSigner,
-  createRosterVerifier,
-  generateDeviceKeyPair,
-  nodeDigest,
-  nodeGzip,
-} from '../packages/oplog/src/node-adapters.ts';
+import { createAesGcmCipher, nodeDigest, nodeGzip } from '../packages/oplog/src/node-adapters.ts';
 import { messageAppend } from '../packages/oplog/src/index.ts';
 import { SyncEngine } from '../packages/sync-core/src/engine.ts';
 import { DeviceRosterList } from '../packages/sync-core/src/roster.ts';
@@ -94,16 +87,10 @@ export async function runTwoPeers(input) {
 
   const blindKey = new Uint8Array(32).fill(7);
   const cipher = createAesGcmCipher({ key: new Uint8Array(32).fill(9) });
-  const keysByDevice = new Map();
-  const records = ['peer-a', 'peer-b', 'peer-c'].map((deviceId, index) => {
-    const keys = generateDeviceKeyPair(deviceId);
-    keysByDevice.set(deviceId, keys);
-    return { deviceId, publicKey: keys.publicKeyPem, addedAt: BASE_TIME + index };
-  });
+  const records = ['peer-a', 'peer-b', 'peer-c'].map((deviceId, index) => ({ deviceId, addedAt: BASE_TIME + index }));
   const roster = new DeviceRosterList(records);
 
   const makePeer = (deviceId) => {
-    const keys = keysByDevice.get(deviceId);
     let wall = BASE_TIME;
     const clock = new HlcClock({ now: () => wall });
     const engine = new SyncEngine({
@@ -112,8 +99,6 @@ export async function runTwoPeers(input) {
       ports: {
         digest: nodeDigest,
         compressor: nodeGzip,
-        signer: createDeviceSigner(keys),
-        verifier: createRosterVerifier(roster.toVerifierMap()),
         cipher,
       },
       roster,

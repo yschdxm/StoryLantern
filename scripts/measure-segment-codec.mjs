@@ -90,7 +90,7 @@ const aFirst = await packA();
 const aBytes = aFirst.bytes.length;
 const aPackMs = await timeIt(packA);
 const aUnpackMs = await timeIt(async () => {
-  await unpackSegment(aFirst.bytes, { ports, requireSignature: false });
+  await unpackSegment(aFirst.bytes, { ports });
 });
 
 // ---- B：先 gzip 明文 → 再 seal → base64 塞 JSON ----

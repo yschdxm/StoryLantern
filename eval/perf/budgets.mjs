@@ -18,7 +18,7 @@ import { HlcClock } from '../../packages/oplog/src/hlc.ts';
 import { Materializer } from '../../packages/oplog/src/materialize.ts';
 import { messageAppend, settingSet } from '../../packages/oplog/src/op.ts';
 import { packSegment } from '../../packages/oplog/src/segment.ts';
-import { createAesGcmCipher, createDeviceSigner, generateDeviceKeyPair, nodeDigest, nodeGzip } from '../../packages/oplog/src/node-adapters.ts';
+import { createAesGcmCipher, nodeDigest, nodeGzip } from '../../packages/oplog/src/node-adapters.ts';
 import { scanLore } from '../../packages/lore/src/scan.ts';
 import { assembleBlocks } from '../../plugins/writing-pipeline/src/index.ts';
 
@@ -154,8 +154,7 @@ function makeOps(count, deviceId) {
 // ---------------------------------------------------------------- 4. 段压缩比（≥3×）
 {
   const ops = makeOps(2000, 'device-a');
-  const device = generateDeviceKeyPair('device-a');
-  const ports = { digest: nodeDigest, compressor: nodeGzip, signer: createDeviceSigner(device) };
+  const ports = { digest: nodeDigest, compressor: nodeGzip };
   const raw = new TextEncoder().encode(ops.map((op) => JSON.stringify(op)).join('\n')).length;
   const packed = await packSegment({ ops, deviceId: 'device-a', seq: 1, blindSessionId: 'a'.repeat(32), ports });
   const ratio = raw / packed.bytes.length;
