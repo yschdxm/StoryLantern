@@ -7,6 +7,7 @@ import { SETTING_KEYS } from '../data/types.ts';
 import { formatTime } from '../data/repository.ts';
 import { HostPanel } from '../HostPanel.tsx';
 import { ModelProfilesPanel } from './ModelProfilesPanel.tsx';
+import { ProfilesPanel } from './ProfilesPanel.tsx';
 import { SyncDevices } from './SyncDevices.tsx';
 import { S3Fields, S3_SETTING_KEYS } from './S3Fields.tsx';
 import { WebDavFields } from './WebDavFields.tsx';
@@ -364,16 +365,14 @@ export function SettingsScreen({ store, router, host, chat, ops, sync, tuner, pl
       <section className="settings-group">
         <h2 className="settings-group__title">{t('settings.data')}</h2>
         <p className="muted">{host.available ? t('settings.data.store.host') : t('settings.data.store.browser')}</p>
-        <p className="muted">
-          {t('settings.data.counts', {
-            characters: t('count.characters', { count: state.characters.length }),
-            sessions: t('count.sessions', { count: state.sessions.length }),
-          })}
-        </p>
+        <p className="muted">{t('settings.data.counts', { characters: t('count.characters', { count: state.characters.length }), sessions: t('count.sessions', { count: state.sessions.length }) })}</p>
+
         <Button variant="ghost" onClick={() => router.navigate({ name: 'import' })}>
           {t('import.title')}
         </Button>
       </section>
+
+      <ProfilesPanel store={store} />
 
       <section className="settings-group">
         <h2 className="settings-group__title">{t('settings.plugins')}</h2>

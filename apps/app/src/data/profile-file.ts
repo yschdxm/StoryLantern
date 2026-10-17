@@ -127,3 +127,21 @@ export function parseProfile(input: unknown): ImportProfileResult {
     removedKeys,
   };
 }
+
+/**
+ * 把导入的配置档**合并进现有设置**：只覆盖配置档里有的键，其余保持不变。
+ *
+ * 纯函数：不碰存储、不碰界面 —— 设置页只负责把结果逐条写进去，测试可以逐项断言。
+ */
+export function mergeProfileSettings(
+  current: Readonly<Record<string, string>>,
+  profile: ProfileFile,
+): { settings: Record<string, string>; changed: string[] } {
+  const settings: Record<string, string> = { ...current };
+  const changed: string[] = [];
+  for (const [key, value] of Object.entries(profile.settings)) {
+    if (settings[key] !== value) changed.push(key);
+    settings[key] = value;
+  }
+  return { settings, changed };
+}

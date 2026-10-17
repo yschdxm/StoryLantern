@@ -1193,3 +1193,17 @@ button.chip {
   color: var(--muted, #777);
   font-size: 14px;
 }
+
+/* 设置页的配置文件文本框（导出物 / 待粘贴内容） */
+.settings__profile-text {
+  width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 10px 12px;
+  border: 1px solid var(--border, #ddd);
+  border-radius: 10px;
+  background: var(--surface-2, #fafafa);
+  color: inherit;
+  resize: vertical;
+}
