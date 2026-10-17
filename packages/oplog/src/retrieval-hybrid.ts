@@ -1,4 +1,5 @@
 import { retrieve, tokenize, type RetrieveOptions, type RetrievalDoc, type ScoredDoc } from './retrieval.ts';
+import type { RerankPort } from './rerank-openai.ts';
 
 /**
  * 混合检索（M4 第三块的另一半）：**BM25 + 向量**，用 RRF 合并。
@@ -38,12 +39,24 @@ export interface HybridRetrieveOptions extends RetrieveOptions {
   /** RRF 的 k（默认 60）。 */
   rrfK?: number | undefined;
   /**
-   * 融合后是否再做一次词法重排（见 `rerankDocs`）。**默认关闭**：
-   * 它会偏向字面命中，对"语义改写"类提问可能变差 —— 要开必须先量。
+   * 融合后是否再重排。四种取值：
+   *  - `'none'`（默认）：不重排；
+   *  - `'lexical'`：纯词法重排（词项覆盖率 + 短语命中，零成本，偏字面）；
+   *  - `'embedding'`：用 **embedding 模型的余弦**重排（复用已算好的向量，不额外花钱；
+   *    注意它不是 rerank 模型 —— 双塔模型，比较粗）；
+   *  - `'model'`：用 **rerank 模型**（交叉编码器）重排 —— 需要传 `reranker`；这是排序最准的那条，
+   *    代价是额外一次网络调用（工程上先检索 20 条、再 rerank 出前 5）。
+   * 开了重排但缺少必要输入（无 embedder/无 reranker/无向量）时，不静默降级，在 notes 里写清原因。
    */
-  rerank?: boolean | undefined;
-  /** 重排参数（只在 rerank: true 时生效）。 */
+  rerank?: 'none' | 'lexical' | 'embedding' | 'model' | undefined;
+  /** 词法重排参数（只在 rerank: 'lexical' 时生效）。 */
   rerankOptions?: RerankOptions | undefined;
+  /** 向量余弦重排参数（只在 rerank: 'embedding' 时生效）。 */
+  embeddingRerankOptions?: EmbeddingRerankOptions | undefined;
+  /** rerank 模型（只在 rerank: 'model' 时用得到）。 */
+  reranker?: RerankPort | undefined;
+  /** rerank 模型重排的候选数（默认 20：先粗排 20 条再精细排，和工程实践一致）。 */
+  rerankCandidates?: number | undefined;
 }
 
 export interface HybridRetrieveResult {
@@ -147,6 +160,59 @@ export function rerankDocs(
     .sort((left, right) => right.score - left.score || left.id.localeCompare(right.id));
 }
 
+/**
+ * **向量重排（embedding rerank）**：有模型时走这条，而不是拿词法启发式凑数。
+ *
+ * 输入是已经算好的查询向量与候选向量（混合检索那边本来就为了向量那一路算过了，
+ * 重排**不额外花一次 API 调用**）：
+ *   - RRF 分数归一化到 [0,1]；
+ *   - 余弦**负值截到 0**（正交 = "没有相似信号"，不该被映射成 0.5 —— 那样不相关的候选会凭空拿半分，
+ *     实测会让"RRF 高但与查询正交"的候选压过真正同向的候选）；
+ *   - score = (1 - weight) * rrfNorm + weight * cosClipped。
+ *
+ * 没有向量的候选：默认保留并只用 RRF 分数（`missing: 'rrf-only'`），并**统计个数**由调用方决定怎么提示；
+ * 也可以选 `'drop'` 直接丢掉（少一条结果，但不会把没算过的当作相似）。
+ */
+export interface EmbeddingRerankOptions {
+  /** 向量分的权重（默认 0.5）。 */
+  weight?: number;
+  /** 没有向量的候选：保留按 RRF 排序（默认）或丢掉。 */
+  missing?: 'rrf-only' | 'drop';
+}
+
+export interface EmbeddingRerankResult {
+  docs: ScoredDoc[];
+  /** 没有向量的候选数（如实回报，便于判断模型覆盖是否完整）。 */
+  missingVectors: number;
+}
+
+export function rerankByEmbedding(
+  queryVector: readonly number[],
+  candidates: readonly ScoredDoc[],
+  vectors: ReadonlyMap<string, readonly number[]>,
+  options: EmbeddingRerankOptions = {},
+): EmbeddingRerankResult {
+  const weight = Math.min(1, Math.max(0, options.weight ?? 0.5));
+  const missingMode = options.missing ?? 'rrf-only';
+  const maxRrf = candidates.reduce((max, candidate) => Math.max(max, candidate.score), 0);
+  let missingVectors = 0;
+  const scored: ScoredDoc[] = [];
+  for (const candidate of candidates) {
+    const vector = vectors.get(candidate.id);
+    if (vector === undefined) {
+      missingVectors += 1;
+      if (missingMode === 'drop') continue;
+      scored.push({ ...candidate, score: maxRrf === 0 ? 0 : candidate.score / maxRrf });
+      continue;
+    }
+    const rrfNorm = maxRrf === 0 ? 0 : candidate.score / maxRrf;
+    const cosNorm = Math.max(0, cosineSimilarity(queryVector, vector));
+    scored.push({ ...candidate, score: (1 - weight) * rrfNorm + weight * cosNorm });
+  }
+  scored.sort((left, right) => right.score - left.score || left.id.localeCompare(right.id));
+  return { docs: scored, missingVectors };
+}
+
 export async function retrieveHybrid(
   query: string,
   docs: readonly RetrievalDoc[],
@@ -209,13 +275,47 @@ export async function retrieveHybrid(
       };
     });
 
-  return { mode: 'hybrid', sources: ['bm25', embedder.id], docs: options.rerank === true ? reranked(merged, notes) : merged, notes };
-
-  /** 重排并记一条 note（只走这里，保证"为什么变了"永远写在结果里）。 */
-  function reranked(input: ScoredDoc[], log: string[]): ScoredDoc[] {
-    log.push('已做词法重排（覆盖率 + 短语命中；默认关闭，需显式开启）');
-    return rerankDocs(query, input, docs, options.rerankOptions);
+  const mode = options.rerank ?? 'none';
+  if (mode === 'none') return { mode: 'hybrid', sources: ['bm25', embedder.id], docs: merged, notes };
+  if (mode === 'lexical') {
+    notes.push('已做词法重排（词项覆盖率 + 短语命中；默认关闭，需显式开启）');
+    return { mode: 'hybrid', sources: ['bm25', embedder.id], docs: rerankDocs(query, merged, docs, options.rerankOptions), notes };
   }
+  if (mode === 'model') {
+    const reranker = options.reranker;
+    if (reranker === undefined) {
+      notes.push('要求用 rerank 模型重排，但没有可用的 reranker —— 本次保持融合后的排序');
+      return { mode: 'hybrid', sources: ['bm25', embedder.id], docs: merged, notes };
+    }
+    // 工程实践：先取较宽的候选（默认 20 条）交给交叉编码器，再截到 limit
+    const wide = Math.max(limit, options.rerankCandidates ?? 20);
+    const fusedWide = [...fused.entries()]
+      .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+      .slice(0, wide)
+      .map(([id, score]) => {
+        const doc = byId.get(id);
+        return {
+          id,
+          kind: doc?.kind ?? 'message',
+          score,
+          ...(doc?.covers === undefined ? {} : { covers: doc.covers }),
+        } satisfies ScoredDoc;
+      });
+    const texts = fusedWide.map((candidate) => byId.get(candidate.id)?.text ?? '');
+    const hits = await reranker.rerank(query, texts, { topN: limit });
+    const rerankedDocs: ScoredDoc[] = [];
+    for (const hit of hits) {
+      const candidate = fusedWide[hit.index];
+      if (candidate !== undefined) rerankedDocs.push({ ...candidate, score: hit.score });
+    }
+    notes.push(`已用 rerank 模型重排（${reranker.id}；粗排 ${fusedWide.length} 条 → 精排前 ${rerankedDocs.length}）`);
+    return { mode: 'hybrid', sources: ['bm25', embedder.id, reranker.id], docs: rerankedDocs, notes };
+  }
+  // 'embedding'：用 embedding 模型的余弦重排（复用混合检索已经算好的向量，不额外花 API 调用）
+  const reranked = rerankByEmbedding(queryVector, merged, vectors, options.embeddingRerankOptions);
+  notes.push(`已做 embedding 余弦重排（权重 ${(options.embeddingRerankOptions?.weight ?? 0.5).toFixed(2)}；复用已算好的向量；注意这不是 rerank 模型）`);
+  if (reranked.missingVectors > 0) notes.push(`${reranked.missingVectors} 条候选没有向量，按 RRF 分数参与排序`);
+  return { mode: 'hybrid', sources: ['bm25', embedder.id], docs: reranked.docs, notes };
 }
 
 /**

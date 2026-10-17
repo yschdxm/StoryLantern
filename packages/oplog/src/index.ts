@@ -128,13 +128,26 @@ export {
   type ParsedEmbeddingResponse,
 } from './embedding-openai.ts';
 export {
+  createLexicalRerankStub,
+  createOpenAiRerankPort,
+  parseRerankResponse,
+  type OpenAiRerankOptions,
+  type RerankFetch,
+  type RerankFetchResponse,
+  type RerankHit,
+  type RerankPort,
+} from './rerank-openai.ts';
+export {
   cosineSimilarity,
   createHashEmbeddingStub,
   reciprocalRankFusion,
+  rerankByEmbedding,
   rerankDocs,
   retrieveHybrid,
   vectorSearch,
   type EmbeddingPort,
+  type EmbeddingRerankOptions,
+  type EmbeddingRerankResult,
   type HybridRetrieveOptions,
   type HybridRetrieveResult,
   type RerankOptions,

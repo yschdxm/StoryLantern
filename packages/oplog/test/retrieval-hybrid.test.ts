@@ -5,6 +5,7 @@ import {
   cosineSimilarity,
   createHashEmbeddingStub,
   reciprocalRankFusion,
+  rerankByEmbedding,
   retrieveHybrid,
   vectorSearch,
   type EmbeddingPort,
@@ -159,6 +160,100 @@ test('rerank 默认关闭：retrieveHybrid 不开 rerank 时不重排、也不�
   const stub = createHashEmbeddingStub({ dimensions: 8 });
   const off = await retrieveHybrid('铜铃', docs, { embedder: stub, limit: 2 });
   assert.equal(off.notes.some((note) => note.includes('词法重排')), false);
-  const on = await retrieveHybrid('铜铃', docs, { embedder: stub, limit: 2, rerank: true });
+  const on = await retrieveHybrid('铜铃', docs, { embedder: stub, limit: 2, rerank: 'lexical' });
   assert.equal(on.notes.some((note) => note.includes('词法重排')), true, '开了 rerank 必须如实写一条 note');
+});
+test('向量重排（模型打分）：余弦高的候选压过 RRF 高但语义不相关的候选', () => {
+  // 查询向量 [1,0]；a 与查询同向（cos=1），b 正交（cos=0）
+  const query = [1, 0];
+  const vectors = new Map<string, number[]>([
+    ['a', [1, 0]],
+    ['b', [0, 1]],
+  ]);
+  const candidates = [
+    { id: 'b', kind: 'message' as const, score: 0.05 }, // RRF 更高
+    { id: 'a', kind: 'message' as const, score: 0.02 },
+  ];
+  const result = rerankByEmbedding(query, candidates, vectors);
+  assert.equal(result.docs[0]?.id, 'a', '向量重排应当让语义更接近的那条排第一');
+  assert.equal(result.missingVectors, 0);
+  // 权重 0 → 退回 RRF 原序
+  const pureRrf = rerankByEmbedding(query, candidates, vectors, { weight: 0 });
+  assert.equal(pureRrf.docs[0]?.id, 'b');
+});
+
+test('向量重排：没有向量的候选如实计数；missing: drop 时丢掉', () => {
+  const query = [1, 0];
+  const vectors = new Map<string, number[]>([['a', [1, 0]]]);
+  const candidates = [
+    { id: 'a', kind: 'message' as const, score: 0.02 },
+    { id: 'c', kind: 'message' as const, score: 0.01 },
+  ];
+  const kept = rerankByEmbedding(query, candidates, vectors);
+  assert.equal(kept.missingVectors, 1);
+  assert.equal(kept.docs.length, 2);
+  const dropped = rerankByEmbedding(query, candidates, vectors, { missing: 'drop' });
+  assert.deepEqual(dropped.docs.map((doc) => doc.id), ['a']);
+});
+
+test('retrieveHybrid：rerank: embedding 会重排并写明用了什么、缺多少向量', async () => {
+  const docs = [
+    { id: 'a', kind: 'message' as const, text: '铜铃响的时候别回头' },
+    { id: 'b', kind: 'message' as const, text: '雪线以上的风' },
+  ];
+  const stub = createHashEmbeddingStub({ dimensions: 8 });
+  const result = await retrieveHybrid('铜铃', docs, { embedder: stub, limit: 2, rerank: 'embedding' });
+  assert.equal(result.mode, 'hybrid');
+  assert.ok(result.notes.some((note) => note.includes('余弦重排')), '必须写清楚做了向量重排');
+  assert.equal(result.docs.length, 2);
+});
+
+test('rerank 模型（交叉编码器）：解析响应、越界抛错、按分降序', async () => {
+  const { parseRerankResponse } = await import('../src/rerank-openai.ts');
+  const cohere = JSON.stringify({
+    results: [
+      { index: 0, relevance_score: 0.12 },
+      { index: 2, relevance_score: 0.87 },
+      { index: 1, relevance_score: 0.5 },
+    ],
+  });
+  const hits = parseRerankResponse(cohere, 3);
+  assert.deepEqual(hits.map((hit) => hit.index), [2, 1, 0], '必须按分降序');
+  // 也兼容 score 字段名
+  assert.deepEqual(
+    parseRerankResponse(JSON.stringify({ results: [{ index: 1, score: 0.9 }] }), 2).map((hit) => hit.index),
+    [1],
+  );
+  // 越界/缺分/非 JSON 都必须抛：坏数据不能当分数用
+  assert.throws(() => parseRerankResponse(JSON.stringify({ results: [{ index: 3, relevance_score: 0.9 }] }), 3), /下标非法/);
+  assert.throws(() => parseRerankResponse(JSON.stringify({ results: [{ index: 0 }] }), 1), /relevance_score/);
+  assert.throws(() => parseRerankResponse('not json', 1), /不是合法 JSON/);
+  assert.throws(() => parseRerankResponse(JSON.stringify({}), 1), /results/);
+});
+
+test('retrieveHybrid：rerank: model 用交叉编码器重排，并在 sources/notes 里写明用的哪个模型', async () => {
+  const { createLexicalRerankStub } = await import('../src/rerank-openai.ts');
+  const docs = [
+    { id: 'a', kind: 'message' as const, text: '雪线以上的风' },
+    { id: 'b', kind: 'message' as const, text: '铜铃响的时候别回头' },
+    { id: 'c', kind: 'message' as const, text: '铜铃是父亲留下来的遗物' },
+  ];
+  const stub = createHashEmbeddingStub({ dimensions: 8 });
+  const result = await retrieveHybrid('铜铃 遗物', docs, {
+    embedder: stub,
+    limit: 2,
+    rerank: 'model',
+    reranker: createLexicalRerankStub(),
+  });
+  assert.equal(result.mode, 'hybrid');
+  assert.ok(result.sources.includes('stub-lexical-rerank'), 'sources 里要出现 rerank 模型');
+  assert.ok(result.notes.some((note) => note.includes('rerank 模型重排')), '必须写清楚用了 rerank 模型');
+  assert.ok(result.docs.length > 0);
+});
+
+test('retrieveHybrid：要求 rerank 模型但没给 reranker → 不静默降级，note 里说明原因', async () => {
+  const docs = [{ id: 'a', kind: 'message' as const, text: '铜铃' }];
+  const stub = createHashEmbeddingStub({ dimensions: 4 });
+  const result = await retrieveHybrid('铜铃', docs, { embedder: stub, limit: 2, rerank: 'model' });
+  assert.ok(result.notes.some((note) => note.includes('没有可用的 reranker')));
 });
