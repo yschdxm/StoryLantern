@@ -4,6 +4,8 @@ import { enSync } from './catalog-en-sync.ts';
 import { zhSync } from './catalog-zh-sync.ts';
 import { zhExtra } from './catalog-zh-extra.ts';
 import { enExtra } from './catalog-en-extra.ts';
+import { zhSettings } from './catalog-zh-settings.ts';
+import { enSettings } from './catalog-en-settings.ts';
 import type { AppMessages } from './messages-types.ts';
 
 /**
@@ -21,6 +23,6 @@ export const APP_LOCALES = ['zh-CN', 'en'] as const;
 export type { AppMessages } from './messages-types.ts';
 
 export const APP_MESSAGES: Record<string, AppMessages> = {
-  'zh-CN': { ...zhCN, ...zhSync, ...zhExtra },
-  en: { ...en, ...enSync, ...enExtra },
+  'zh-CN': { ...zhCN, ...zhSync, ...zhExtra, ...zhSettings },
+  en: { ...en, ...enSync, ...enExtra, ...enSettings },
 };

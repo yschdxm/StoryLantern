@@ -5,11 +5,23 @@
  * 天然与 Android 的返回手势/返回键一致（history 由浏览器管）。自己写 60 行，换来零依赖与可测。
  */
 
+/**
+ * 设置页的分区（L2）。L1 是 `{ name: 'settings' }`（设置首页），
+ * 每个分区再往下一层是各分区自己的详情/编辑页（L3，页内状态，不改 hash）。
+ */
+export type SettingsSection = 'model' | 'appearance' | 'sync' | 'data' | 'advanced' | 'about';
+
+export const SETTINGS_SECTIONS: readonly SettingsSection[] = ['model', 'appearance', 'sync', 'data', 'advanced', 'about'];
+
+export function isSettingsSection(value: string | undefined): value is SettingsSection {
+  return value !== undefined && (SETTINGS_SECTIONS as readonly string[]).includes(value);
+}
+
 export type Route =
   | { name: 'sessions' }
   | { name: 'characters' }
   | { name: 'lore' }
-  | { name: 'settings' }
+  | { name: 'settings'; section?: SettingsSection }
   | { name: 'import' }
   | { name: 'chat'; sessionId: string }
   | { name: 'character'; characterId: string | 'new' }
@@ -38,7 +50,8 @@ export function parseRoute(hash: string): Route {
     case 'memories':
       return tail === undefined || tail === '' ? { name: 'characters' } : { name: 'memories', characterId: tail };
     case 'settings':
-      return { name: 'settings' };
+      // `#/settings/sync` → 同步分区；未知分区回设置首页（而不是掉到会话页）
+      return isSettingsSection(tail) ? { name: 'settings', section: tail } : { name: 'settings' };
     case 'import':
       return { name: 'import' };
     case 'chat': {
@@ -73,7 +86,7 @@ export function routeToHash(route: Route): string {
     case 'facts':
       return `#/facts/${route.characterId}`;
     case 'settings':
-      return '#/settings';
+      return route.section === undefined ? '#/settings' : `#/settings/${route.section}`;
     case 'import':
       return '#/import';
     case 'chat':
@@ -92,7 +105,9 @@ export const TABS: Array<{ route: Route; label: string; icon: string }> = [
 ];
 
 export function isRootRoute(route: Route): boolean {
-  return route.name === 'sessions' || route.name === 'characters' || route.name === 'lore' || route.name === 'settings';
+  // 设置分区是 L2：要显示返回按钮（回设置首页），所以不算根页面；底栏仍通过 activeTabName 高亮「设置」。
+  if (route.name === 'settings') return route.section === undefined;
+  return route.name === 'sessions' || route.name === 'characters' || route.name === 'lore';
 }
 
 /** 当前标签（二级页面归属它的来源标签，保证底栏高亮不闪）。 */
@@ -122,6 +137,9 @@ export function parentOf(route: Route): Route | undefined {
       return { name: 'characters' };
     case 'lorebook':
       return { name: 'lore' };
+    case 'settings':
+      // 设置首页是 L1；分区页一次返回回首页（不是回会话页）
+      return route.section === undefined ? undefined : { name: 'settings' };
     default:
       return undefined;
   }

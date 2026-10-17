@@ -9,8 +9,8 @@ import type { AppMessages } from './messages-types.ts';
 export const enSync: AppMessages = {
   'settings.sync.kind': 'Method',
   'settings.sync.off': 'Off (this device only)',
-  'settings.sync.webdav': 'WebDAV (NAS / Nextcloud / Jianguoyun)',
-  'settings.sync.s3': 'S3-compatible storage (MinIO / R2 / B2 / AWS)',
+  'settings.sync.webdav': 'WebDAV',
+  'settings.sync.s3': 'S3-compatible',
   'settings.sync.s3.endpoint': 'S3 endpoint',
   'settings.sync.s3.endpoint.hint': 'e.g. http://127.0.0.1:9000 (MinIO); use the console endpoint for R2/B2',
   'settings.sync.s3.bucket': 'Bucket',

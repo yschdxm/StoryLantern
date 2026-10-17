@@ -11,6 +11,8 @@ test('路由：hash 与 Route 往返一致，脏输入回落到根页面', () =>
     { name: 'sessions' } as const,
     { name: 'characters' } as const,
     { name: 'settings' } as const,
+    { name: 'settings', section: 'sync' } as const,
+    { name: 'settings', section: 'about' } as const,
     { name: 'import' } as const,
     { name: 'chat', sessionId: '01JABCXYZ' } as const,
     { name: 'character', characterId: '01JABCXYZ' } as const,
@@ -28,6 +30,9 @@ test('路由：hash 与 Route 往返一致，脏输入回落到根页面', () =>
   assert.deepEqual(parseRoute('#/chat/'), { name: 'sessions' });
   assert.deepEqual(parseRoute('#/character/'), { name: 'characters' });
   assert.deepEqual(parseRoute('#/chat/01JABC?from=x'), { name: 'chat', sessionId: '01JABC' }, '查询串应被忽略');
+  // 设置分区：已知分区直接渲染；未知分区回设置首页（不是掉回会话页）
+  assert.deepEqual(parseRoute('#/settings/sync'), { name: 'settings', section: 'sync' });
+  assert.deepEqual(parseRoute('#/settings/unknown'), { name: 'settings' });
 });
 
 test('路由：返回层级与底栏高亮归属', () => {
@@ -35,14 +40,20 @@ test('路由：返回层级与底栏高亮归属', () => {
   assert.deepEqual(parentOf({ name: 'character', characterId: 'new' }), { name: 'characters' });
   assert.deepEqual(parentOf({ name: 'import' }), { name: 'characters' });
   assert.equal(parentOf({ name: 'sessions' }), undefined, '根页面没有上一级（交给系统退出）');
+  // 设置三级：分区页一次返回回设置首页（L1），首页才是根
+  assert.deepEqual(parentOf({ name: 'settings', section: 'sync' }), { name: 'settings' });
+  assert.equal(parentOf({ name: 'settings' }), undefined);
 
   assert.equal(isRootRoute({ name: 'sessions' }), true);
   assert.equal(isRootRoute({ name: 'chat', sessionId: 's1' }), false);
+  assert.equal(isRootRoute({ name: 'settings' }), true);
+  assert.equal(isRootRoute({ name: 'settings', section: 'sync' }), false, '分区页要显示返回键');
 
   assert.equal(activeTabName({ name: 'chat', sessionId: 's1' }), 'sessions');
   assert.equal(activeTabName({ name: 'character', characterId: 'c1' }), 'characters');
   assert.equal(activeTabName({ name: 'import' }), 'characters');
   assert.equal(activeTabName({ name: 'settings' }), 'settings');
+  assert.equal(activeTabName({ name: 'settings', section: 'sync' }), 'settings', '分区页仍高亮设置标签');
 });
 
 test('路由：底栏正好四个根标签（标签名是 i18n key，不是硬编码文案）', () => {
@@ -61,6 +72,8 @@ test('路由：每个路由的 hash 都能解析回自己（新增路由漏写 p
     { name: 'characters' },
     { name: 'lore' },
     { name: 'settings' },
+    { name: 'settings', section: 'model' },
+    { name: 'settings', section: 'sync' },
     { name: 'import' },
     { name: 'chat', sessionId: '01ABC' },
     { name: 'character', characterId: '01DEF' },

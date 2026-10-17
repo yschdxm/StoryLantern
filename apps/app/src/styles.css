@@ -1292,3 +1292,154 @@ button.chip { min-height: 36px; }
 
 /* 命令面板选中行用主色软底（--accent-soft 此前未定义 → 用了兜底蓝） */
 .palette__item--active, .palette__item:hover { background: var(--accent-soft); }
+
+/* ------------------------------------------------------------------ 设置三级分层（L1 首页 / L2 分区 / L3 详情） */
+.settings-home,
+.settings-shell,
+.settings-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-stack);
+}
+
+.settings-home__search {
+  width: 100%;
+  min-height: var(--tap-min);
+}
+
+.settings-home__list,
+.settings-list {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.settings-home__list--about {
+  margin-top: calc(var(--space-2) * -1);
+}
+
+.settings-home__empty {
+  margin: 0;
+  padding: var(--space-4);
+  color: var(--dim);
+  font-size: var(--text-sm);
+}
+
+/* L2 行：标签 + 当前值（次级文字）+ 右箭头；触控目标 ≥44px */
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-stack);
+  width: 100%;
+  min-height: var(--tap-min);
+  padding: var(--space-3) var(--space-4);
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.settings-row:last-child {
+  border-bottom: 0;
+}
+
+.settings-row--button {
+  cursor: pointer;
+}
+
+.settings-row--button:active {
+  background: var(--surface-2);
+}
+
+.settings-row:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.settings-row__main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.settings-row__label {
+  font-size: var(--text-md);
+  white-space: nowrap;
+}
+
+.settings-row__value {
+  color: var(--dim);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.settings-row__control {
+  display: flex;
+  flex: 0 1 auto;
+  align-items: center;
+  justify-content: flex-end;
+  max-width: 62%;
+  min-width: 0;
+}
+
+.settings-row__control .segmented {
+  width: 100%;
+  min-width: 0;
+}
+
+.settings-row__select {
+  width: 100%;
+  min-width: 0;
+  min-height: var(--tap-min);
+}
+
+.settings-row__arrow {
+  display: flex;
+  flex: 0 0 auto;
+  color: var(--dim);
+}
+
+/* 分区页的面包屑（AppBar 的返回键是系统级返回，这里补"我在哪一层"） */
+.settings-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--dim);
+  font-size: var(--text-sm);
+}
+
+.settings-breadcrumb__link {
+  min-height: var(--tap-min);
+  margin-left: calc(var(--space-2) * -1);
+  padding: 0 var(--space-2);
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+.settings-breadcrumb__sep {
+  color: var(--muted);
+}
+
+.settings-breadcrumb__current {
+  color: var(--text);
+}
+
+.settings-detail__title {
+  margin: 0;
+  font-size: var(--text-lg);
+}
+
+.settings-about__note {
+  margin: 0;
+  font-size: var(--text-sm);
+}

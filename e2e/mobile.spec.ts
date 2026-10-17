@@ -36,6 +36,65 @@ test('移动视口：底部标签可触摸切换，窄屏无横向溢出', async
   expect(tabBox?.height ?? 0).toBeGreaterThanOrEqual(44);
 });
 
+test('设置三级可达：L1 五组 → 同步与设备 → 返回 L1', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+
+  // 直接打开设置首页（L1）：5 个分组入口 + 关于，任何语言下都用 data-testid 定位
+  await page.goto('/#/settings');
+  const home = page.locator('[data-testid="settings-home"]');
+  await expect(home).toBeVisible();
+  for (const section of ['model', 'appearance', 'sync', 'data', 'advanced'] as const) {
+    await expect(page.getByTestId(`settings-section-${section}`)).toBeVisible();
+  }
+  await expect(page.getByTestId('settings-section-about')).toBeVisible();
+
+  // 触控目标 ≥44px（L2 行的硬约束）
+  const syncRow = page.getByTestId('settings-section-sync');
+  expect((await syncRow.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
+
+  // 搜索：匹配关键词后直达对应 L3（model.chat → 聊天模型详情）
+  await page.locator('.settings-home__search').fill('deepseek');
+  const searchHit = page.getByTestId('settings-search-result-model.chat');
+  await expect(searchHit).toBeVisible();
+  await searchHit.tap();
+  await expect(page).toHaveURL(/#\/settings\/model$/);
+  await expect(page.getByTestId('settings-detail-model')).toBeVisible();
+  await page.getByTestId('settings-detail-model').locator('.btn').first().tap();
+  await expect(page.getByTestId('settings-section-model-page')).toBeVisible();
+  await page.locator('.settings-breadcrumb__link').tap();
+  await expect(home).toBeVisible();
+
+  // 进 L2：同步与设备
+  await syncRow.tap();
+  await expect(page).toHaveURL(/#\/settings\/sync$/);
+  await expect(page.getByTestId('settings-section-sync-page')).toBeVisible();
+  // 底栏仍高亮「设置」（activeTabName 对分区页返回 settings）
+  await expect(page.locator('nav.tabbar .tab--active')).toHaveCount(1);
+
+  // 返回 L1：AppBar 的返回键（parentOf 让分区页回到设置首页）
+  await page.locator('.appbar .icon-btn').first().tap();
+  await expect(page).toHaveURL(/#\/settings$/);
+  await expect(home).toBeVisible();
+
+  // L3 也真实存在：模型与密钥 → 聊天模型 → 详情页 → 页内返回 L2
+  await page.getByTestId('settings-section-model').tap();
+  await expect(page.getByTestId('settings-section-model-page')).toBeVisible();
+  await page.getByTestId('settings-section-model-page').locator('.settings-row--button').first().tap();
+  const detail = page.getByTestId('settings-detail-model');
+  await expect(detail).toBeVisible();
+  await detail.locator('.btn').first().tap();
+  await expect(page.getByTestId('settings-section-model-page')).toBeVisible();
+  await page.locator('.appbar .icon-btn').first().tap();
+  await expect(home).toBeVisible();
+
+  // 直接深链 #/settings/sync 也能渲染（P1-a 的验收）
+  await page.goto('/#/settings/sync');
+  await expect(page.getByTestId('settings-section-sync-page')).toBeVisible();
+
+  expect(errors, `设置页不应抛未捕获异常：${errors.join(' | ')}`).toHaveLength(0);
+});
+
 test('Ctrl/Cmd+K 命令面板：打开、过滤、跳转、Esc 关闭', async ({ page }) => {
   await page.goto('/');
   // 先等界面挂载完（快捷键监听在挂载后才生效；不等就会按下"没人听"的键）

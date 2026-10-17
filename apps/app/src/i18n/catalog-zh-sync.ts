@@ -9,8 +9,8 @@ import type { AppMessages } from './messages-types.ts';
 export const zhSync: AppMessages = {
   'settings.sync.kind': '同步方式',
   'settings.sync.off': '关闭（只在本机）',
-  'settings.sync.webdav': 'WebDAV（NAS / Nextcloud / 坚果云）',
-  'settings.sync.s3': 'S3 兼容对象存储（MinIO / R2 / B2 / AWS）',
+  'settings.sync.webdav': 'WebDAV（NAS / 网盘）',
+  'settings.sync.s3': 'S3 兼容',
   'settings.sync.s3.endpoint': 'S3 端点',
   'settings.sync.s3.endpoint.hint': '例如 http://127.0.0.1:9000（MinIO）；R2/B2 用它们给的控制台端点',
   'settings.sync.s3.bucket': '桶名',

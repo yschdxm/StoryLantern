@@ -7,6 +7,7 @@ export type IconName =
   | 'user'
   | 'gear'
   | 'back'
+  | 'chevron'
   | 'plus'
   | 'more'
   | 'send'
@@ -35,6 +36,8 @@ const PATHS: Record<IconName, ReactNode> = {
     </>
   ),
   back: <path d="M15 5l-7 7 7 7" />,
+  // 设置列表行右侧的"进入"箭头（RTL 不做，项目只做 LTR）
+  chevron: <path d="M9 5l7 7-7 7" />,
   plus: <path d="M12 5v14M5 12h14" />,
   more: (
     <>
