@@ -1,4 +1,4 @@
-/* ------------------------------------------------------------------ 设计令牌 */
+/* ------------------------------------------------------------------ 设计变量 */
 :root {
   --bg: #0f1115;
   --surface: #171a21;
@@ -1211,7 +1211,7 @@ button.chip {
 
 /* ================= P0 设计系统基线（2026-10-17）=================
  * 依据：docs/DESIGN.md、docs/FRONTEND-RULES.md；三方评审见 docs/research/*.md。
- * 这里只做"加令牌 + 改基线 + 修 bug"，不动布局结构（布局迁移见 DESIGN §6）。
+ * 这里只做"加设计变量 + 改基线 + 修 bug"，不动布局结构（布局迁移见 DESIGN §6）。
  */
 :root {
   /* 间距：4px 网格，组件禁止再写字面量间距 */
@@ -1239,7 +1239,7 @@ button.chip {
   --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px color-mix(in srgb, var(--accent) 70%, transparent);
   --tap-min: 44px;
   --selection-bg: color-mix(in srgb, var(--accent) 30%, transparent);
-  /* 之前从未定义、导致命令面板选中行渲染成蓝色的两个令牌 */
+  /* 之前从未定义、导致命令面板选中行渲染成蓝色的两个设计变量 */
   --muted: #7c8798;
   --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
   --danger-soft: color-mix(in srgb, var(--danger) 14%, transparent);
