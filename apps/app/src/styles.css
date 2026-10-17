@@ -1443,3 +1443,64 @@ button.chip { min-height: 36px; }
   margin: 0;
   font-size: var(--text-sm);
 }
+
+/* ------------------------------------------------------------------ 世界资源（场景 / 物品 / 典籍） */
+/* 编辑器的"行列表"：连接图 / 在场者 / 道具各自成块，空行由 world-form 在保存时丢弃 */
+.world-note {
+  margin: 0 0 var(--space-3);
+  color: var(--dim);
+  font-size: var(--text-sm);
+}
+
+.world-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  padding: var(--space-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.world-row .field {
+  margin-bottom: 0;
+}
+
+.world-row__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.world-row__title {
+  color: var(--dim);
+  font-size: var(--text-sm);
+}
+
+/* 筛选 chips 是主要操作入口：触控目标抬到 --tap-min（默认 .chip 只有 32px） */
+.world-filters .chip {
+  min-height: var(--tap-min);
+  padding-block: var(--space-2);
+}
+
+/* 成对字段（键/值、货币/数值、优先级/概率）：窄屏自动换行 */
+.world-pair {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.world-pair > .input {
+  flex: 1 1 8rem;
+  width: auto;
+  min-width: 0;
+}
+
+.world-pair > .field {
+  flex: 1 1 8rem;
+  margin-bottom: 0;
+}

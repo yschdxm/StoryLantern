@@ -1,0 +1,19 @@
+feat(world): 世界资源界面（场景簿/物品图鉴/典籍）+ 修复非 ASCII id 的路由 bug
+
+- 第三标签改为「世界」（#/world）：screens/WorldScreen.tsx（常驻类型筛选、行副标题=类型+当前值+启停、
+  FAB 新建三选一、世界包只读 Sheet、空态）；新增 #/worldcard/<kind>/<id> 路由
+- 场景/物品/典籍结构化编辑器（screens/world-edit/）：
+  - 场景：类型/完整描述/结构化外观/氛围/连接图/在场者/场景物品/轻量事件/默认公开状态/起始场景开关
+  - 物品：类型/描述/功能/稀有度/价值/使用条件/耐久/结构化外观
+  - 典籍：kind/内容/概述/主次触发词/logic/触发策略（常驻·优先级·概率·递归·深度）/条件表达式（只存不执行，界面写明）
+  - 纯表单逻辑在 world-form.ts（保留 visuals/refs/agent/compat/extensions/behaviors 等表单外字段）
+- 修复真机 bug：hash 路由未对实体 id 编解码。非 ASCII id（如事实导出的 fact-fact-铜铃-…）在
+  location.hash 里是百分号编码，导致编辑器「找不到这张卡片」；parseRoute 逐段 decodeURIComponent、
+  routeToHash 全部 id 段 encodeURIComponent，并加回归测试 apps/app/test/router.test.ts
+- 迁移数据质量修复：旧世界书条目的 comment 常是 provenance（来源：<id> | …），不再拿它当卡片名；
+  名称优先第一个触发词，正文首行进 meta.description
+- 旧 LoreScreen/LorebookScreen 不再被路由引用（文件暂留，等导入导出界面重做后删除）
+- 测试 805（796 pass / 9 skip / 0 fail）：新增 world-form 5 条、router 3 条；e2e 5 passed（新增世界页用例）
+- 真机验证（M2104K10AC）：世界列表/新建 Sheet/场景编辑器渲染、非 ASCII id 典籍可正常打开；
+  logcat 无 FATAL/ANR（截图 docs/screenshots/device/32~36-*.png，本地文档）
+- AGENTS.md §1/§2/§12 同步当前 UI 状态与模块路径

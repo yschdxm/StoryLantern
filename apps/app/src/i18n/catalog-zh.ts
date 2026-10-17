@@ -185,7 +185,7 @@ export const zhCN: AppMessages = {
   'dev.oplog.corrupt': '隔离的坏行',
   'dev.oplog.rebuild': '从 op 日志重建',
   'dev.oplog.rebuilt': '重建完成：{{ops}} 条 op → {{characters}} 个角色 / {{sessions}} 个会话 / {{messages}} 条消息',  'common.save': '保存',
-  'tab.lore': '世界书',
+  'tab.lore': '世界',
   'chat.lore': '本次上下文注入了 {{count}} 条世界书设定（{{keys}}）',
   'import.lore': ' · 世界书 {{books}} 本 / {{entries}} 条',
   'lore.loading': '正在读取世界书…',

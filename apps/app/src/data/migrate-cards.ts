@@ -201,7 +201,9 @@ function stashEntriesOf(character: CharacterRecord): CompatStashEntry[] {
 function loreCardOf(entry: LoreEntryRecord): LoreCard {
   const keys = [...entry.keys].filter((key) => key.trim() !== '');
   const comment = (entry.comment ?? '').trim();
-  const name = comment !== '' ? comment : (keys[0] ?? '条目');
+  // 名字优先用第一个触发词：旧数据的 `comment` 里常放 provenance（"来源：<id> | ..."），
+  // 拿它当名字会让列表全是哈希串（真机上看到过）。没有关键词时才退回 comment。
+  const name = keys[0] ?? (comment !== '' ? comment : '条目');
   const firstContentLine = (entry.content ?? '').split(/\r?\n/).find((line) => line.trim() !== '')?.trim() ?? '';
   return {
     card_type: 'lore',
@@ -212,9 +214,9 @@ function loreCardOf(entry: LoreEntryRecord): LoreCard {
       version: '1.0.0',
       language: 'zh-CN',
       rating: 'general',
-      // 简介取注释；没有注释就用正文首行（都是作者原文，不是编的）
-      description: comment !== '' ? comment : firstContentLine,
-      // 语义缺口：卡片没有 enabled 字段。标记出来，报告里如实说明"迁移后会被注入"。
+      // 简介取正文首行（作者原文）；正文为空才退回注释
+      description: firstContentLine !== '' ? firstContentLine : comment,
+      // 语义缺口：条目级 enabled 尚未进卡片模型（库级启停见 card.library）。标记出来，报告里如实说明。
       ...(entry.enabled ? {} : { tags: ['legacy-disabled'] }),
     },
     kind: 'other',

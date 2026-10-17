@@ -126,6 +126,28 @@ test('Ctrl/Cmd+K 命令面板：打开、过滤、跳转、Esc 关闭', async ({
   await expect(page.locator('.palette')).toBeHidden();
 });
 
+test('世界页：第三个标签进入世界资源，类型筛选与新建入口可见', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.goto('/');
+  await expect(page.locator('nav.tabbar')).toBeVisible();
+
+  // 第三个标签是「世界」（ADR-0011：世界书 → 场景簿/物品图鉴/典籍）
+  await page.locator('nav.tabbar button.tab').nth(2).tap();
+  await expect(page).toHaveURL(/#\/world$/);
+
+  // 五个筛选 chips：全部 / 场景 / 物品 / 典籍 / 世界包（按位置选，与语言无关）
+  const filters = page.locator('.world-filters .chip');
+  await expect(filters).toHaveCount(5);
+  await filters.nth(1).tap();
+  // 浏览器里没有数据：筛选后仍是空态（不要求 world-list 存在），只断言筛选真的生效
+  await expect(page.getByTestId('world-filter-scene')).toHaveAttribute('aria-pressed', 'true');
+
+  // 一屏一个主按钮：新建卡片（FAB 有无障碍名，与语言无关的是类名）
+  await expect(page.locator('.fab')).toBeVisible();
+  expect(errors, `世界页不应抛未捕获异常：${errors.join(' | ')}`).toHaveLength(0);
+});
+
 test('没有宿主 IPC 时界面诚实降级（不报错、不假装已连接）', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));

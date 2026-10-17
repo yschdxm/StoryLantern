@@ -25,18 +25,26 @@ pnpm --filter @storylantern/app exec vite preview --port 15199 --strictPort
 ## 1. 硬约束（违反即失败）
 
 - **运行时零第三方依赖**：界面只允许 React；`typescript`、`@playwright/test` 是仅有的 devDependency。不要 `pnpm add` 运行时包。
-- **单文件 ≤400 行**；`apps/app/src/main.tsx` 已 378 行，**不许变长**。
+- **单文件 ≤400 行**；`apps/app/src/main.tsx` 已约 396 行（贴着上限），**不许再变长**：要加页面先抽组件/路由分发。
 - 文本文件必须 UTF-8；不伪造：不用假数据/示例功能冒充实现，不在报告或提交信息里写没跑过的结论。
 - **术语**：英文 design token 统一称**设计变量（样式变量）**，不写"令牌"。
 - 中文优先；界面文案中英双语，中文为主。
 
 ## 2. 当前 UI 实现状态（先读，别重造）
 
+- **卡片模型已落地**（ADR-0011，`packages/cards`）：角色 / 场景 / 物品 / 典籍四类卡 + 会话开局配置 + 运行时补丁；
+  角色列表/会话读的是**卡片兼容视图**（`data/character-compat.ts`），旧 `scenario`/开场白在 CompatStash 草稿里。
+- **卡片启停与激活**（`packages/cards/src/activation.ts`）：库级启停（op `card.library`）+ 会话资源池
+  `SessionSetup.mounts` + 会话 `overrides`；没参与的卡连同原因进「本次请求」面板。新卡片功能不要另造"注册列表"。
+- 角色编辑器：`screens/CharacterEditScreen.tsx` + `screens/character-edit/*`（基本信息/身份/人格/语言/示例/状态变量/高级+启停）。
+- 世界页（第三标签）：`screens/WorldScreen.tsx`（L1 列表 + 类型筛选 + 新建）+ `screens/world-edit/`
+  （场景/物品/典籍编辑器；纯表单逻辑在 `world-form.ts`）。路由：`#/world`、`#/worldcard/<kind>/<id>`。
 - 设置页已三级分层：`screens/SettingsScreen.tsx`（约 65 行薄壳）+ `settings/SettingsHome.tsx`（L1）+ 6 个分区页 `settings/{Model,Appearance,Sync,Data,Advanced,About}Settings.tsx`。新增设置项**放进对应分区页**，不要往外壳加内容。
 - 设置行复用 `ui/SettingsRow.tsx`（label + 当前值 + 箭头/行内控件，≥44px）。
 - 设计变量在 `styles.css` 顶部 `:root`（间距/字阶/圆角/阴影/层级/动效/聚焦环/触控/语义色，暗亮 system 三态）。
 - 无障碍基线已全局提供：`:focus-visible`、`prefers-reduced-motion` 归零、`.sr-only`。
-- 已知限制：L3 无独立 URL（系统返回会从 L3 跳回 L1）；无 `Select` 原语；详见 `docs/SETTINGS-IA.md §8`。
+- 已知限制：视觉资产/物品行为规则/世界包编辑器未做；会话创建界面还没接 `SessionSetup`；L3 无独立 URL（设置分区）；详见 ADR-0011 与 `docs/SETTINGS-IA.md §8`。
+- **hash 路由必须对实体 id 编解码**（`router.ts` 的 `encodePart`/`decodePart`）：id 不保证是 ASCII，漏了会出现"找不到这张卡片"。
 
 ## 3. 代码边界
 
@@ -153,6 +161,9 @@ adb -s <serial> logcat -d -t 400 | grep -E "FATAL EXCEPTION|ANR in"   # 必须�
 | 设计变量/全局样式 | `apps/app/src/styles.css` 顶部 |
 | 通用组件 / 设置行 | `apps/app/src/ui/components.tsx`、`apps/app/src/ui/SettingsRow.tsx` |
 | 设置首页/分区 | `apps/app/src/settings/` |
+| 角色编辑器 | `apps/app/src/screens/CharacterEditScreen.tsx`、`screens/character-edit/` |
+| 世界页 / 场景·物品·典籍编辑器 | `apps/app/src/screens/WorldScreen.tsx`、`screens/world-edit/` |
+| 卡片模型 / 校验 / 激活 / brief | `packages/cards/src/` |
 | 屏幕 | `apps/app/src/screens/` |
 | 路由 | `apps/app/src/app/router.ts` |
 | 文案 | `apps/app/src/i18n/catalog-*.ts` |

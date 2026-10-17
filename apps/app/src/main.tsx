@@ -33,8 +33,8 @@ import { CommandPaletteHost } from './ui/CommandPaletteHost.tsx';
 import { SessionsScreen } from './screens/SessionsScreen.tsx';
 import { ChatScreen } from './screens/ChatScreen.tsx';
 import { CharactersScreen } from './screens/CharactersScreen.tsx';
-import { LoreScreen } from './screens/LoreScreen.tsx';
-import { LorebookScreen } from './screens/LorebookScreen.tsx';
+import { WorldScreen } from './screens/WorldScreen.tsx';
+import { WorldCardEditScreen } from './screens/world-edit/WorldCardEditScreen.tsx';
 import { MemoriesScreen } from './screens/MemoriesScreen.tsx';
 import { FactsScreen } from './screens/FactsScreen.tsx';
 import { CharacterEditScreen } from './screens/CharacterEditScreen.tsx';
@@ -286,7 +286,6 @@ function Root(): ReturnType<typeof AppShell> {
   }, []);
 
   const session = route.name === 'chat' ? state.sessions.find((item) => item.id === route.sessionId) : undefined;
-  const openBook = route.name === 'lorebook' ? state.lorebooks.find((item) => item.id === route.lorebookId) : undefined;
   const title =
     route.name === 'chat'
       ? (session?.title ?? t('tab.sessions'))
@@ -296,9 +295,8 @@ function Root(): ReturnType<typeof AppShell> {
           : t('character.edit.title')
         : route.name === 'import'
           ? t('import.title')
-          : route.name === 'lorebook'
-            // 世界书详情直接用书名做标题：`tab.lorebook` 这种 key 不该出现在界面上
-            ? (openBook?.name ?? t('tab.lore'))
+          : route.name === 'worldCard'
+            ? t(route.cardId === 'new' ? `world.new.${route.kind}` : `world.edit.${route.kind}`)
             : t(`tab.${route.name}`);
 
   return (
@@ -321,14 +319,19 @@ function Root(): ReturnType<typeof AppShell> {
         onNavigate={(next) => router.navigate(next)}
         layout={route.name === 'chat' ? 'fill' : 'scroll'}
         hideTabs={
-          route.name === 'chat' || route.name === 'character' || route.name === 'import' || route.name === 'lorebook' || route.name === 'memories' || route.name === 'facts'
+          route.name === 'chat' || route.name === 'character' || route.name === 'import' || route.name === 'worldCard' || route.name === 'memories' || route.name === 'facts'
         }
       >
         {route.name === 'sessions' && <SessionsScreen store={store} router={router} host={host} chat={chat} />}
         {route.name === 'characters' && <CharactersScreen store={store} router={router} host={host} chat={chat} />}
-        {route.name === 'lore' && <LoreScreen store={store} router={router} host={host} chat={chat} />}
-        {route.name === 'lorebook' && (
-          <LorebookScreen store={store} router={router} host={host} chat={chat} lorebookId={route.lorebookId} />
+        {route.name === 'world' && <WorldScreen store={store} router={router} />}
+        {route.name === 'worldCard' && (
+          <WorldCardEditScreen
+            store={store}
+            kind={route.kind}
+            cardId={route.cardId}
+            onDone={() => router.navigate({ name: 'world' }, { replace: true })}
+          />
         )}
         {route.name === 'facts' && (
           <FactsScreen store={store} router={router} host={host} chat={chat} characterId={route.characterId} {...(transport === undefined ? {} : { transport })} />

@@ -21,6 +21,8 @@ export type Route =
   | { name: 'sessions' }
   | { name: 'characters' }
   | { name: 'lore' }
+  | { name: 'world'; kind?: WorldKind }
+  | { name: 'worldCard'; kind: WorldKind; cardId: string | 'new' }
   | { name: 'settings'; section?: SettingsSection }
   | { name: 'import' }
   | { name: 'chat'; sessionId: string }
@@ -29,12 +31,41 @@ export type Route =
   | { name: 'memories'; characterId: string }
   | { name: 'facts'; characterId: string };
 
+/** 世界资源的三类卡片（世界包不是卡片，单独在列表里展示，不给编辑器）。 */
+export type WorldKind = 'scene' | 'item' | 'lore';
+
+export const WORLD_KINDS: readonly WorldKind[] = ['scene', 'item', 'lore'];
+
+export function isWorldKind(value: string | undefined): value is WorldKind {
+  return value !== undefined && (WORLD_KINDS as readonly string[]).includes(value);
+}
+
 export const ROOT_ROUTE: Route = { name: 'sessions' };
+
+/**
+ * 路径段解码。
+ *
+ * 为什么必须解码：实体 id 不保证是 ASCII（例如从事实导出的典籍 id 是
+ * `fact-fact-铜铃-…`）。`history.pushState` 之后 `location.hash` 返回的是**百分号编码**后的形式，
+ * 不解码就会拿 `%E9%93%9C…` 去查卡片 → 查不到（真机上踩过："找不到这张卡片"）。
+ */
+function decodePart(part: string): string {
+  try {
+    return decodeURIComponent(part);
+  } catch {
+    return part;
+  }
+}
+
+/** 路径段编码：id 里可能出现中文/空格/保留字符，必须编码后再进 hash。 */
+function encodePart(part: string): string {
+  return encodeURIComponent(part);
+}
 
 /** `#/chat/12` → `{ name: 'chat', sessionId: 12 }`；无法识别时回根路由。 */
 export function parseRoute(hash: string): Route {
   const clean = hash.replace(/^#\/?/, '').split('?')[0] ?? '';
-  const parts = clean.split('/').filter((part) => part !== '');
+  const parts = clean.split('/').filter((part) => part !== '').map(decodePart);
   const [head, tail] = parts;
 
   switch (head) {
@@ -45,6 +76,13 @@ export function parseRoute(hash: string): Route {
       return { name: 'characters' };
     case 'lore':
       return { name: 'lore' };
+    case 'world':
+      return isWorldKind(tail) ? { name: 'world', kind: tail } : { name: 'world' };
+    case 'worldcard': {
+      const [, kind, cardId] = parts;
+      if (!isWorldKind(kind) || cardId === undefined || cardId === '') return { name: 'world' };
+      return { name: 'worldCard', kind, cardId };
+    }
     case 'lorebook':
       return tail === undefined || tail === '' ? { name: 'lore' } : { name: 'lorebook', lorebookId: tail };
     case 'memories':
@@ -79,20 +117,24 @@ export function routeToHash(route: Route): string {
       return '#/characters';
     case 'lore':
       return '#/lore';
+    case 'world':
+      return route.kind === undefined ? '#/world' : `#/world/${route.kind}`;
+    case 'worldCard':
+      return `#/worldcard/${route.kind}/${encodePart(route.cardId)}`;
     case 'lorebook':
-      return `#/lorebook/${route.lorebookId}`;
+      return `#/lorebook/${encodePart(route.lorebookId)}`;
     case 'memories':
-      return `#/memories/${route.characterId}`;
+      return `#/memories/${encodePart(route.characterId)}`;
     case 'facts':
-      return `#/facts/${route.characterId}`;
+      return `#/facts/${encodePart(route.characterId)}`;
     case 'settings':
       return route.section === undefined ? '#/settings' : `#/settings/${route.section}`;
     case 'import':
       return '#/import';
     case 'chat':
-      return `#/chat/${route.sessionId}`;
+      return `#/chat/${encodePart(route.sessionId)}`;
     case 'character':
-      return `#/character/${route.characterId}`;
+      return `#/character/${encodePart(route.characterId)}`;
   }
 }
 
@@ -100,21 +142,22 @@ export function routeToHash(route: Route): string {
 export const TABS: Array<{ route: Route; label: string; icon: string }> = [
   { route: { name: 'sessions' }, label: 'tab.sessions', icon: 'chat' },
   { route: { name: 'characters' }, label: 'tab.characters', icon: 'user' },
-  { route: { name: 'lore' }, label: 'tab.lore', icon: 'book' },
+  { route: { name: 'world' }, label: 'tab.lore', icon: 'book' },
   { route: { name: 'settings' }, label: 'tab.settings', icon: 'gear' },
 ];
 
 export function isRootRoute(route: Route): boolean {
   // 设置分区是 L2：要显示返回按钮（回设置首页），所以不算根页面；底栏仍通过 activeTabName 高亮「设置」。
   if (route.name === 'settings') return route.section === undefined;
-  return route.name === 'sessions' || route.name === 'characters' || route.name === 'lore';
+  return route.name === 'sessions' || route.name === 'characters' || route.name === 'world';
 }
 
 /** 当前标签（二级页面归属它的来源标签，保证底栏高亮不闪）。 */
 export function activeTabName(route: Route): Route['name'] {
   if (route.name === 'chat') return 'sessions';
   if (route.name === 'character' || route.name === 'import' || route.name === 'memories') return 'characters';
-  if (route.name === 'lorebook') return 'lore';
+  if (route.name === 'lorebook' || route.name === 'lore') return 'lore';
+  if (route.name === 'worldCard') return 'world';
   return route.name;
 }
 
@@ -137,6 +180,8 @@ export function parentOf(route: Route): Route | undefined {
       return { name: 'characters' };
     case 'lorebook':
       return { name: 'lore' };
+    case 'worldCard':
+      return { name: 'world', kind: route.kind };
     case 'settings':
       // 设置首页是 L1；分区页一次返回回首页（不是回会话页）
       return route.section === undefined ? undefined : { name: 'settings' };

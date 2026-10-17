@@ -217,7 +217,8 @@ test('迁移：旧世界书 2 条 → 1 个包 + 2 张典籍卡（含触发与�
   assert.equal(listCards(materializer.state, 'lore').length, 2);
   const first = liveCard(materializer.state, 'entry-1')?.card;
   assert.ok(first !== undefined && first.card_type === 'lore');
-  assert.equal(first.meta.name, '遗物', 'name 优先用 comment');
+  assert.equal(first.meta.name, '铜铃', 'name 优先用第一个触发词（旧 comment 常是 provenance，拿它当名字会全是哈希）');
+  assert.equal(first.meta.description, '铜铃是父亲留下来的遗物。', '简介用正文首行');
   assert.equal(first.kind, 'other');
   assert.equal(first.content, '铜铃是父亲留下来的遗物。');
   assert.deepEqual([...first.keys], ['铜铃']);

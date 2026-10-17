@@ -74,11 +74,12 @@ export function loreCardsOfLegacy(book: Lorebook): LoreCard[] {
     meta: {
       id: entry.id,
       schema: 'lore/v1',
-      name: entry.comment.trim() !== '' ? entry.comment : (entry.keys[0] ?? '条目'),
+      // 与迁移规则一致：名字优先第一个触发词（旧 comment 常是 provenance 文本）
+      name: entry.keys[0] ?? (entry.comment.trim() !== '' ? entry.comment.trim() : '条目'),
       version: '1.0.0',
       language: 'zh-CN',
       rating: 'general',
-      description: '',
+      description: entry.content.split(/\r?\n/).find((line) => line.trim() !== '')?.trim() ?? '',
       ...(entry.enabled ? {} : { tags: ['legacy-disabled'] }),
     },
     kind: 'other',

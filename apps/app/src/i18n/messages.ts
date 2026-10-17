@@ -8,6 +8,8 @@ import { zhSettings } from './catalog-zh-settings.ts';
 import { enSettings } from './catalog-en-settings.ts';
 import { zhEditor } from './catalog-zh-editor.ts';
 import { enEditor } from './catalog-en-editor.ts';
+import { zhWorld } from './catalog-zh-world.ts';
+import { enWorld } from './catalog-en-world.ts';
 import type { AppMessages } from './messages-types.ts';
 
 /**
@@ -25,6 +27,6 @@ export const APP_LOCALES = ['zh-CN', 'en'] as const;
 export type { AppMessages } from './messages-types.ts';
 
 export const APP_MESSAGES: Record<string, AppMessages> = {
-  'zh-CN': { ...zhCN, ...zhSync, ...zhExtra, ...zhSettings, ...zhEditor },
-  en: { ...en, ...enSync, ...enExtra, ...enSettings, ...enEditor },
+  'zh-CN': { ...zhCN, ...zhSync, ...zhExtra, ...zhSettings, ...zhEditor, ...zhWorld },
+  en: { ...en, ...enSync, ...enExtra, ...enSettings, ...enEditor, ...enWorld },
 };

@@ -174,7 +174,7 @@ export const en: AppMessages = {
   'dev.oplog.corrupt': 'Quarantined lines',
   'dev.oplog.rebuild': 'Rebuild from op log',
   'dev.oplog.rebuilt': 'Rebuilt: {{ops}} ops → {{characters}} characters / {{sessions}} chats / {{messages}} messages',  'common.save': 'Save',
-  'tab.lore': 'Lore',
+  'tab.lore': 'World',
   'chat.lore': 'Injected {{count}} lore entries ({{keys}})',
   'import.lore': ' · {{books}} lorebook(s) / {{entries}} entries',
   'lore.loading': 'Loading lorebooks…',
