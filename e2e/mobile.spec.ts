@@ -31,9 +31,9 @@ test('移动视口：底部标签可触摸切换，窄屏无横向溢出', async
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow, '窄屏下不应出现横向溢出').toBeLessThanOrEqual(1);
 
-  // ③ 触摸目标不小于 40px（44px 是目标；留 4px 容差给不同字号）
+  // ③ 触摸目标 ≥44px（--tap-min；DESIGN.md §1.6）
   const tabBox = await tabs.first().boundingBox();
-  expect(tabBox?.height ?? 0).toBeGreaterThanOrEqual(40);
+  expect(tabBox?.height ?? 0).toBeGreaterThanOrEqual(44);
 });
 
 test('Ctrl/Cmd+K 命令面板：打开、过滤、跳转、Esc 关闭', async ({ page }) => {

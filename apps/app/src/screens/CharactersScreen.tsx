@@ -65,10 +65,12 @@ export function CharactersScreen({ store, router }: ScreenProps): ReactNode {
         </ul>
       )}
       <LoadMore hidden={hidden} sentinel={sentinel} />
+      {state.characters.length > 0 && (
 
       <button type="button" className="fab" aria-label={t('characters.new')} onClick={openNew}>
         <Icon name="plus" size={26} />
       </button>
+      )}
       <button type="button" className="fab fab--secondary" aria-label={t('import.title')} onClick={() => router.navigate({ name: 'import' })}>
         <Icon name="import" size={22} />
       </button>

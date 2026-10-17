@@ -5,6 +5,9 @@ import type { AppMessages } from './messages-types.ts';
  * 合并点在 `messages.ts`。
  */
 export const enExtra: AppMessages = {
+  'palette.label': 'Command palette',
+  'palette.placeholder': 'Go to… (↑↓ select, Enter open, Esc close)',
+  'palette.empty': 'No matching page',
   'settings.profile.title': 'Shareable profile',
   'settings.profile.hint':
     'Export settings as JSON to share, or paste someone else’s JSON to apply it. No secrets: keys are stripped on export and rejected on import.',

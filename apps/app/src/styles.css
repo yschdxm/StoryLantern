@@ -1207,3 +1207,88 @@ button.chip {
   color: inherit;
   resize: vertical;
 }
+
+
+/* ================= P0 设计系统基线（2026-10-17）=================
+ * 依据：docs/DESIGN.md、docs/FRONTEND-RULES.md；三方评审见 docs/research/*.md。
+ * 这里只做"加令牌 + 改基线 + 修 bug"，不动布局结构（布局迁移见 DESIGN §6）。
+ */
+:root {
+  /* 间距：4px 网格，组件禁止再写字面量间距 */
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+  --space-5: 20px; --space-6: 24px; --space-7: 32px; --space-8: 40px;
+  --space-9: 48px; --space-10: 64px;
+  --gap-inline: var(--space-2); --gap-stack: var(--space-3);
+  --pad-screen: var(--space-4); --pad-card: var(--space-3) var(--space-4);
+  /* 字阶：12px 是可读下限，禁止更小 */
+  --text-xs: 0.75rem; --text-sm: 0.875rem; --text-md: 1rem; --text-lg: 1.125rem; --text-xl: 1.25rem;
+  --leading-tight: 1.25; --leading-normal: 1.55; --leading-loose: 1.75;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', system-ui, sans-serif;
+  /* 圆角：再加 pill 一档（此前四套并存且无 pill） */
+  --radius-sm: 8px; --radius-lg: 16px; --radius-pill: 999px;
+  /* 阴影 */
+  --shadow-1: 0 1px 2px rgb(0 0 0 / 0.18);
+  --shadow-2: 0 8px 24px rgb(0 0 0 / 0.28);
+  /* 层级：只允许这几档（此前 Sheet 与 Modal 同为 z=60 撞车） */
+  --z-sticky: 10; --z-fab: 20; --z-appbar: 30;
+  --z-sheet-backdrop: 40; --z-sheet: 41; --z-modal-backdrop: 50; --z-modal: 51; --z-toast: 60;
+  /* 动效 */
+  --dur-fast: 120ms; --dur-normal: 200ms; --dur-slow: 320ms;
+  --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+  /* 聚焦环 / 触控目标 / 选区 */
+  --focus-ring: 0 0 0 2px var(--bg), 0 0 0 4px color-mix(in srgb, var(--accent) 70%, transparent);
+  --tap-min: 44px;
+  --selection-bg: color-mix(in srgb, var(--accent) 30%, transparent);
+  /* 之前从未定义、导致命令面板选中行渲染成蓝色的两个令牌 */
+  --muted: #7c8798;
+  --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+  --danger-soft: color-mix(in srgb, var(--danger) 14%, transparent);
+  --danger-text: #2a0f0f;
+}
+
+/* 亮色主题：补齐 danger/ok/warn/muted（此前没换色 → ok 1.74:1、warn 1.67:1、danger 2.58:1，均不达 AA） */
+:root[data-theme='light'] {
+  --muted: #8b93a1;
+  --danger: #b42318; --ok: #15803d; --warn: #a16207;
+  --danger-text: #fff;
+}
+@media (prefers-color-scheme: light) {
+  :root[data-theme='system'] {
+    --muted: #8b93a1;
+    --danger: #b42318; --ok: #15803d; --warn: #a16207;
+    --danger-text: #fff;
+  }
+}
+
+/* 动效偏好：减少动态时把时长归零 */
+@media (prefers-reduced-motion: reduce) {
+  :root { --dur-fast: 0ms; --dur-normal: 0ms; --dur-slow: 0ms; }
+}
+
+/* 键盘焦点可见（此前全仓 0 条 :focus-visible） */
+:where(button, a, input, textarea, select, [tabindex]):focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+}
+::selection { background: var(--selection-bg); }
+
+/* 仅供读屏的文字 */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* 触控目标 ≥ 44px（此前 .btn 42、segmented 38、chip 32） */
+.btn { min-height: var(--tap-min); }
+.icon-btn { min-width: var(--tap-min); min-height: var(--tap-min); }
+.segmented__item, .palette__item { min-height: var(--tap-min); }
+button.chip { min-height: 36px; }
+
+/* 字号对齐刻度：.tab__label/.msg__meta 此前 0.69rem（≈11px，低于可读下限） */
+.tab__label, .msg__meta { font-size: var(--text-xs); }
+
+/* 危险按钮/滑动删除的文字色跟随主题（此前硬编码 #2a0f0f，亮色下不可读） */
+.btn--danger, .list__delete { color: var(--danger-text); }
+
+/* 命令面板选中行用主色软底（--accent-soft 此前未定义 → 用了兜底蓝） */
+.palette__item--active, .palette__item:hover { background: var(--accent-soft); }

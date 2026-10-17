@@ -11,10 +11,14 @@ export const zhExtra: AppMessages = {
     'rerank 模型是交叉编码器：直接给「问题+文档」打分，和上面的 embedding 模型不是一类。留空 = 不做精排（少一次网络调用）。',
   'settings.vector.testRerank': '测试 rerank',
   'settings.vector.rerankOk': 'rerank 正常：{order}（{ms} ms）',
+  // 命令面板
+  'palette.label': '命令面板',
+  'palette.placeholder': '去哪里…（↑↓ 选择，Enter 进入，Esc 关闭）',
+  'palette.empty': '没有匹配的页面',
   // 可分享的配置档
   'settings.profile.title': '配置文件（可分享）',
   'settings.profile.hint':
-    '把设置导出成 JSON 发给别人，或把别人给的 JSON 粘回来应用。**不含任何密钥**：导出时就剔除，导入时也会拒绝。',
+    '把设置导出成 JSON 发给别人，或把别人给的 JSON 粘回来应用。不含任何密钥：导出时就剔除，导入时也会拒绝。',
   'settings.profile.generate': '生成配置文件',
   'settings.profile.copy': '复制',
   'settings.profile.copied': '已复制到剪贴板',

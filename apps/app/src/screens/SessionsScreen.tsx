@@ -89,10 +89,12 @@ export function SessionsScreen({ store, router }: ScreenProps): ReactNode {
         </ul>
       )}
       <LoadMore hidden={hidden} sentinel={sentinel} />
+      {state.sessions.length > 0 && (
 
       <button type="button" className="fab" aria-label={t('sessions.new')} onClick={startNew}>
         <Icon name="plus" size={26} />
       </button>
+      )}
 
       <Sheet open={pickCharacter} title={t('sessions.pick.title')} onClose={() => setPickCharacter(false)}>
         {state.characters.map((character) => (

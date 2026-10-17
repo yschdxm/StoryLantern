@@ -70,9 +70,11 @@ export function LoreScreen({ store, router }: ScreenProps): ReactNode {
               />
             ))}
           </ul>
+      {state.lorebooks.length > 0 && (
           <button type="button" className="fab" aria-label={t('lore.new')} onClick={() => setCreating(true)}>
             <Icon name="plus" />
           </button>
+      )}
         </>
       )}
 

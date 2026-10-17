@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useT } from '../i18n/context.tsx';
 import { filterCommands, nextIndex, type PaletteCommand } from './command-palette.ts';
 
 /**
@@ -20,6 +21,7 @@ export function CommandPalette({ open, commands, onClose, onRun }: CommandPalett
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const t = useT();
 
   const filtered = useMemo(() => filterCommands(query, commands), [query, commands]);
 
@@ -57,13 +59,13 @@ export function CommandPalette({ open, commands, onClose, onRun }: CommandPalett
   };
 
   return (
-    <div className="palette" role="dialog" aria-modal="true" aria-label="命令面板" onMouseDown={onClose}>
+    <div className="palette" role="dialog" aria-modal="true" aria-label={t('palette.label')} onMouseDown={onClose}>
       <div className="palette__box" onMouseDown={(event) => event.stopPropagation()}>
         <input
           ref={inputRef}
           className="palette__input"
           value={query}
-          placeholder="去哪里…（↑↓ 选择，Enter 进入，Esc 关闭）"
+          placeholder={t('palette.placeholder')}
           onChange={(event) => {
             setQuery(event.target.value);
             setActive(0);
@@ -85,7 +87,7 @@ export function CommandPalette({ open, commands, onClose, onRun }: CommandPalett
           }}
         />
         <ul className="palette__list" role="listbox">
-          {filtered.length === 0 && <li className="palette__empty">没有匹配的页面</li>}
+          {filtered.length === 0 && <li className="palette__empty">{t('palette.empty')}</li>}
           {filtered.map((command, index) => (
             <li key={command.id} role="option" aria-selected={index === active}>
               <button
