@@ -59,6 +59,7 @@ export const zhSync: AppMessages = {
   'backup.restoreHint': '选一个目录，找里面最新的 .slbak。它不是"覆盖导入"：日志只会追加，重复的 op 会被认出来，现有数据不会丢',
   'backup.restoreRun': '选择目录并恢复',
   'backup.imported': '恢复完成：共 {{total}} 条 op，其中新导入 {{applied}} 条、已存在 {{duplicates}} 条',
+  'backup.importedAssets': '恢复完成：共 {{total}} 条 op（新导入 {{applied}}、已存在 {{duplicates}}）；资产 {{assets}} 张（跳过 {{skipped}}）',
   'sync.roster.stamp.action': '用恢复密钥给名单盖章',
   'sync.roster.stamp.hint': '盖的是**本机名单文件**的章：谁增删了设备、改了吊销状态，验章都能发现。本机从此要求名单必须带章（用同一把恢复密钥在别的设备上各盖一次）',
   'settings.sync.running': '同步中…',

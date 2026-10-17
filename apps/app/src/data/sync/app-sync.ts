@@ -199,9 +199,9 @@ export interface RunSyncOutcome extends SyncSummary {
   downloadedAssets?: number;
 }
 
-/** `buildSyncService` 额外入口：回填本次实际加密端口（资产同步必须复用同一套）。 */
+/** `buildSyncService` 额外入口：回填本次实际加密端口与**仅索引用**的签名端口。 */
 export interface SyncBuildInput extends RunSyncInput {
-  portsRef?: { ports?: CryptoPorts };
+  portsRef?: { ports?: CryptoPorts; signing?: CryptoPorts };
 }
 
 /** 结果加上本地文件夹根目录（角标提示用）。 */
@@ -210,7 +210,7 @@ function finish(built: BuiltSyncService, outcome: RunSyncOutcome): RunSyncOutcom
 }
 
 export async function runSync(input: RunSyncInput): Promise<RunSyncOutcome> {
-  const portsRef: { ports?: CryptoPorts } = {};
+  const portsRef: { ports?: CryptoPorts; signing?: CryptoPorts } = {};
   const built = await buildSyncService({ ...input, portsRef });
   const summary = await built.service.sync();
   // 能力降级要**说出来**：只读挂载不删旧快照（空间会涨）、不认条件写的网盘只能靠内容寻址兜底 ——
@@ -232,6 +232,7 @@ export async function runSync(input: RunSyncInput): Promise<RunSyncOutcome> {
       device: input.device,
       deviceId: built.deviceId,
       materializer: input.repository.currentMaterializer(),
+      ...(portsRef.signing === undefined ? {} : { signing: portsRef.signing }),
       ...(input.now === undefined ? {} : { now: input.now }),
     });
     merged.uploadedAssets = assets.uploaded;

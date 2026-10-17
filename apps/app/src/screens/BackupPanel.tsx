@@ -38,7 +38,19 @@ export function BackupPanel(props: { sync: BackupAdmin }): ReactNode {
           return;
         }
         if (typeof result.applied === 'number') {
-          setNote(t('backup.imported', { total: String(result.total), applied: String(result.applied), duplicates: String(result.duplicates) }));
+          const assets = typeof result.assets === 'number' ? result.assets : undefined;
+          const assetsSkipped = typeof result.assetsSkipped === 'number' ? result.assetsSkipped : 0;
+          setNote(
+            assets === undefined
+              ? t('backup.imported', { total: String(result.total), applied: String(result.applied), duplicates: String(result.duplicates) })
+              : t('backup.importedAssets', {
+                  total: String(result.total),
+                  applied: String(result.applied),
+                  duplicates: String(result.duplicates),
+                  assets: String(assets),
+                  skipped: String(assetsSkipped),
+                }),
+          );
           return;
         }
         setNote(t('backup.done', { name: String(result.name ?? '') }));

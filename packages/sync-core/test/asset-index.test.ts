@@ -108,6 +108,48 @@ test('索引：畸形（坏 JSON / 版本 / 哈希 / bytes）一律拒绝', asyn
   }
 });
 
+test('索引签名：sign 收到的 payload 是规范元组，验签失败则拒绝', async () => {
+  const signedPayloads: string[] = [];
+  const verifiedPayloads: string[] = [];
+  const signer: SegmentSigner = {
+    deviceId: 'device-a',
+    async sign(data) {
+      signedPayloads.push(new TextDecoder().decode(data));
+      return nodeDigest.sha256(data);
+    },
+  };
+  const verifier: SignatureVerifier = {
+    async verify(deviceId, data, signature) {
+      if (deviceId !== 'device-a') return false;
+      verifiedPayloads.push(new TextDecoder().decode(data));
+      return bytesEqual(await nodeDigest.sha256(data), signature);
+    },
+  };
+  const encoded = await encodeAssetIndex(INDEX, { ports: ports({ cipher: true, signer }), seq: 5, encrypt: true });
+  const decoded = await decodeAssetIndex(encoded.bytes, {
+    ports: ports({ cipher: true, verifier }),
+    deviceId: 'device-a',
+    seq: 5,
+    requireSignature: true,
+  });
+  const expectedPayload = assetIndexSignaturePayload('device-a', 5, decoded.contentHash);
+  assert.deepEqual(signedPayloads, [expectedPayload], '签名覆盖：用途|设备|seq|内容摘要');
+  assert.deepEqual(verifiedPayloads, [expectedPayload], '验签用同一条规范元组');
+
+  // 验签失败：一律拒绝（不采信索引条目）
+  const alwaysFalse: SignatureVerifier = { async verify() { return false; } };
+  await assert.rejects(
+    () =>
+      decodeAssetIndex(encoded.bytes, {
+        ports: ports({ cipher: true, verifier: alwaysFalse }),
+        deviceId: 'device-a',
+        seq: 5,
+        requireSignature: true,
+      }),
+    /签名无效/,
+  );
+});
+
 test('索引：无签名可以读（容忍），但要求签名时必须拒绝', async () => {
   const plain = ports();
   const unsigned = await encodeAssetIndex(INDEX, { ports: plain, seq: 2 });

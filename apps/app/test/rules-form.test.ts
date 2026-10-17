@@ -10,6 +10,7 @@ import {
   draftsToRules,
   emptyActionDraft,
   emptyRuleDraft,
+  parseSampleScope,
   rulesToDrafts,
 } from '../src/data/rules-form.ts';
 
@@ -109,6 +110,31 @@ test('语法检查：真实语法错误报错；未知变量不算语法错误�
   const unknown = checkConditionSyntax('missing > 1');
   assert.equal(unknown.ok, true, '未知变量在运行时才有值，不应当成语法错误');
   assert.equal(checkConditionSyntax('   ').ok, false);
+});
+
+test('parseSampleScope：数字/布尔/字符串/引号自动识别，保序；坏行收集错误', () => {
+  const parsed = parseSampleScope('affection = 80\nbrave = true\nmood = "温柔"\nheight = 1.75\nplain = 北境');
+  assert.deepEqual(parsed.errors, []);
+  assert.deepEqual(parsed.scope, { affection: 80, brave: true, mood: '温柔', height: 1.75, plain: '北境' });
+
+  const bad = parseSampleScope('affection = 80\nno-equals\nempty =\n= 3');
+  assert.equal(bad.scope.affection, 80);
+  assert.equal(bad.errors.length, 3, bad.errors.join('；'));
+});
+
+test('试算联动：parseSampleScope 的值真的能喂给 evaluateConditions', () => {
+  const scope = parseSampleScope('affection = 80\nmood = "温柔"').scope;
+  const hit = evaluateConditions(['affection >= 70', 'mood == "温柔"'], scope);
+  assert.equal(hit.ok, true);
+
+  const low = parseSampleScope('affection = 10').scope;
+  const miss = evaluateConditions(['affection >= 70'], low);
+  assert.equal(miss.ok, false);
+  assert.deepEqual(miss.errors, []);
+
+  const unknown = evaluateConditions(['missing > 1'], parseSampleScope('affection = 80').scope);
+  assert.equal(unknown.ok, false);
+  assert.ok(unknown.errors.length > 0);
 });
 
 test('attachRules：清空规则时移除字段；有规则时挂回', () => {

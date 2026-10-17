@@ -1,13 +1,8 @@
 /**
- * 资产（图片）同步：本机资产库 ↔ 哑存储。
- *
- * 与 op/段同步的区别：二进制不进日志，远端按**密文哈希**命名（ADR-0008）。
- * 所以一次资产同步由两半组成：
- *  1. **上传**：本机 `assets.list()` → 缺的字节 `createAssetStore.put` → 记映射，最后发布索引；
- *  2. **下载**：只拉「当前卡片真正引用」的图（`visuals[].path` / `meta.cover`）——
- *     懒加载：索引里有但没被引用的图不下载，避免一同步就拉整个资产库。
- *
- * 失败策略：任何一步失败只进 `warnings`，绝不阻断 op 同步；计数用于同步摘要。
+ * 资产（图片）同步：本机资产库 ↔ 哑存储。二进制不进日志，远端按密文哈希命名（ADR-0008）。
+ * 上传：`assets.list()` → 缺的字节 `createAssetStore.put` → 记映射，最后发布索引；
+ * 下载：只拉当前卡片引用（`visuals[].path` / `meta.cover`）且本机缺失的图（懒加载），
+ * 索引里其它资产不下载。失败只进 warnings，绝不阻断 op 同步。
  */
 
 import { toHex } from '../../../../../packages/oplog/src/bytes.ts';
@@ -21,6 +16,7 @@ import {
 } from '../../../../../packages/sync-core/src/asset-index.ts';
 import { createAssetStore } from '../../../../../packages/sync-core/src/asset.ts';
 import type { SyncBackend } from '../../../../../packages/sync-core/src/backend.ts';
+import type { SignerPort } from '../../../../../packages/sync-core/src/signing.ts';
 import { getAssetClient, hashOfAssetRef, type AssetClient } from '../asset-client.ts';
 import { describeError } from '../error-text.ts';
 import type { DeviceStore } from '../op-ports.ts';
@@ -44,12 +40,38 @@ export interface AssetSyncInput {
   backend: SyncBackend;
   /** 与 op 段相同的加密端口（内容密钥可用时由同步服务传入那一套）。 */
   ports: CryptoPorts;
+  /**
+   * 只用于**索引**的签名端口（可选）。
+   * 不提供时索引不签名（读取时按"无签名兼容"处理）；提供时索引对象签名/验签，
+   * 资产字节本身不签（内容哈希已校验）。
+   */
+  signing?: CryptoPorts;
   device: DeviceStore;
   deviceId: string;
   materializer: MaterializerLike;
   /** 测试注入；默认走 `getAssetClient()`（宿主或浏览器内存实现）。 */
   assetClient?: AssetClient;
   now?: () => number;
+}
+
+/**
+ * 资产索引专用的签名端口。
+ *
+ * 为什么只给索引加签名：段/快照的信任模型不变（历史段本来就没签名，强加验签会把它们全拒掉）。
+ * 索引是"明文 sha → 远端密文哈希"的**权威映射**，被篡改会把卡片指向错误字节；内容哈希只能挡
+ * "内容与明文不符"，挡不住"索引把明文指向别的合法密文"。所以索引值得单独签名。
+ */
+export function createAssetIndexSigningPorts(
+  base: CryptoPorts,
+  signer: SignerPort,
+  publicKeyOf: (deviceId: string) => string | undefined,
+): CryptoPorts {
+  return {
+    ...base,
+    signer: { deviceId: signer.deviceId, sign: (message) => signer.sign(message) },
+    // 弱模式没有设备公钥：SignerPort.verify('') 会退回组内密钥（见 signer.ts），照它的语义用
+    verifier: { verify: (deviceId, message, signature) => signer.verify(publicKeyOf(deviceId) ?? '', message, signature) },
+  };
 }
 
 export interface AssetSyncSummary {
@@ -102,9 +124,16 @@ async function sha256Hex(ports: CryptoPorts, bytes: Uint8Array): Promise<string>
   return toHex(await ports.digest.sha256(bytes));
 }
 
-/** 发现远端所有设备的最新索引（同设备只看最大 seq）。读失败的只告警，不影响其它设备。 */
+/**
+ * 发现远端所有设备的最新索引（同设备只看最大 seq）。读失败的只告警，不影响其它设备。
+ *
+ * 签名策略（只针对索引，不动段/快照）：**有签名必须验过**（验不过 → 告警并跳过该索引，
+ * 不采信其条目）；**无签名**（旧版本/弱模式）告警一次后兼容接受——否则升级会把所有旧索引拒掉。
+ */
 async function readLatestIndexes(input: AssetSyncInput, warnings: string[]): Promise<Map<string, PeerIndex>> {
   const latest = new Map<string, { seq: number; path: string; hash8: string }>();
+  const indexPorts = input.signing ?? input.ports;
+  let unsigned = 0;
   let listing: { entries: { path: string; size: number }[] };
   try {
     listing = await input.backend.list(ASSET_INDEX_PREFIX);
@@ -127,10 +156,12 @@ async function readLatestIndexes(input: AssetSyncInput, warnings: string[]): Pro
     try {
       const bytes = await input.backend.get(info.path);
       // 路径里的 hash8 是整份字节的摘要：对不上说明文件被换过（解码前先挡掉）
-      if (!(await sha256Hex(input.ports, bytes)).startsWith(info.hash8)) {
+      if (!(await sha256Hex(indexPorts, bytes)).startsWith(info.hash8)) {
         throw new Error(`索引文件名里的摘要与内容不符（${info.hash8}）`);
       }
-      const decoded = await decodeAssetIndex(bytes, { ports: input.ports, deviceId, seq: info.seq });
+      // requireSignature 保持 false：无签名兼容（见上方策略）；有签名时 verifyEnvelope 必验，失败即抛
+      const decoded = await decodeAssetIndex(bytes, { ports: indexPorts, deviceId, seq: info.seq, requireSignature: false });
+      if (decoded.envelope.sig === undefined) unsigned += 1;
       indexes.set(deviceId, {
         deviceId,
         seq: info.seq,
@@ -139,6 +170,9 @@ async function readLatestIndexes(input: AssetSyncInput, warnings: string[]): Pro
     } catch (cause) {
       warnings.push(`资产索引 ${info.path} 读取失败：${describeError(cause)}`);
     }
+  }
+  if (unsigned > 0) {
+    warnings.push(`${unsigned} 份远端资产索引没有签名（旧版本/弱模式），已按兼容模式采信；升级对端后自动改为强验签`);
   }
   return indexes;
 }
@@ -171,9 +205,7 @@ async function pruneOwnIndexes(input: AssetSyncInput, keepSeq: number): Promise<
   }
   own.sort((a, b) => b.seq - a.seq);
   // 新发布的那份 + 上一份 = 2 份；更旧的尽力删
-  const keep = new Set<number>([keepSeq]);
-  const previous = own.find((item) => item.seq !== keepSeq);
-  if (previous !== undefined) keep.add(previous.seq);
+  const keep = new Set<number>([keepSeq, own.find((item) => item.seq !== keepSeq)?.seq ?? keepSeq]);
   if (input.backend.delete === undefined) return;
   for (const item of own) {
     if (keep.has(item.seq)) continue;
@@ -186,13 +218,7 @@ async function pruneOwnIndexes(input: AssetSyncInput, keepSeq: number): Promise<
 }
 
 /** 上传本机资产并发布索引；返回本机完整条目（含跳过/新上传的）。 */
-async function uploadLocalAssets(
-  input: AssetSyncInput,
-  client: AssetClient,
-  own: PeerIndex | undefined,
-  mapping: Record<string, string>,
-  warnings: string[],
-): Promise<{ entries: AssetIndexEntry[]; uploaded: number; skipped: number; changed: boolean }> {
+async function uploadLocalAssets(input: AssetSyncInput, client: AssetClient, own: PeerIndex | undefined, mapping: Record<string, string>, warnings: string[]): Promise<{ entries: AssetIndexEntry[]; uploaded: number; skipped: number; changed: boolean }> {
   const assetStore = createAssetStore({ backend: input.backend, ports: input.ports });
   const localHashes = (await client.list()).filter((hash) => HEX64.test(hash)).sort();
   const limited = localHashes.slice(0, 2000);
@@ -229,14 +255,7 @@ async function uploadLocalAssets(
 }
 
 /** 下载被引用但本机缺失的资产（懒加载 + 单次预算 + sha256 校验）。 */
-async function downloadRequestedAssets(
-  input: AssetSyncInput,
-  client: AssetClient,
-  indexes: Map<string, PeerIndex>,
-  localHashes: ReadonlySet<string>,
-  mapping: Record<string, string>,
-  warnings: string[],
-): Promise<{ downloaded: number; changed: boolean }> {
+async function downloadRequestedAssets(input: AssetSyncInput, client: AssetClient, indexes: Map<string, PeerIndex>, localHashes: ReadonlySet<string>, mapping: Record<string, string>, warnings: string[]): Promise<{ downloaded: number; changed: boolean }> {
   const requested = collectAssetHashes(input.materializer.state).filter((hash) => !localHashes.has(hash));
   if (requested.length === 0) return { downloaded: 0, changed: false };
 
@@ -319,7 +338,8 @@ async function publishIndex(
   const now = input.now ?? (() => Date.now());
   const encoded = await encodeAssetIndex(
     { v: 1, deviceId: input.deviceId, updatedAt: now(), entries: sorted },
-    { ports: input.ports, seq, encrypt: input.ports.cipher !== undefined },
+    // 只有索引签名：signer 存在时 envelope 会签；不存在则维持"不签名"的兼容行为
+    { ports: input.signing ?? input.ports, seq, encrypt: input.ports.cipher !== undefined },
   );
   await input.backend.put(encoded.path, encoded.bytes);
   await input.device.set(SYNC_ASSET_INDEX_SEQ_KEY, String(seq));
@@ -363,10 +383,6 @@ export async function syncAssets(input: AssetSyncInput): Promise<AssetSyncSummar
     const localHashes = new Set((await client.list()).filter((hash) => HEX64.test(hash)));
     const downloaded = await downloadRequestedAssets(input, client, indexes, localHashes, mapping, warnings);
     result.downloaded = downloaded.downloaded;
-    if (downloaded.changed) {
-      // 映射表可能因下载而更新；索引内容没变（本机资产没多）就不必重发
-      await input.device.set(SYNC_ASSET_MAP_KEY, JSON.stringify(mapping));
-    }
   } catch (cause) {
     warnings.push(`资产下载失败：${describeError(cause)}`);
   }

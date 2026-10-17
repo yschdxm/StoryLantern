@@ -3,6 +3,7 @@ import { useT } from '../i18n/context.tsx';
 import { useAppState } from '../screens/screen-props.ts';
 import { BackupPanel } from '../screens/BackupPanel.tsx';
 import { ProfilesPanel } from '../screens/ProfilesPanel.tsx';
+import { AssetSelfTest } from './AssetSelfTest.tsx';
 import { SettingsRow } from '../ui/SettingsRow.tsx';
 import { SettingsDetail, SettingsList, useSectionDetail } from './SettingsSection.tsx';
 import type { SettingsProps } from './settings-types.ts';
@@ -25,14 +26,13 @@ export function DataSettings({ store, router, host, sync, initialRow }: Settings
   });
 
   if (detail !== undefined) {
+    const titleKey =
+      detail === 'backup' ? 'settings.row.backup' : detail === 'profile' ? 'settings.row.profile' : 'settings.row.assetSelfTest';
     return (
-      <SettingsDetail
-        section="data"
-        titleKey={detail === 'backup' ? 'settings.row.backup' : 'settings.row.profile'}
-        onBack={close}
-      >
+      <SettingsDetail section="data" titleKey={titleKey} onBack={close}>
         {detail === 'backup' && sync !== undefined && <BackupPanel sync={sync} />}
         {detail === 'profile' && <ProfilesPanel store={store} />}
+        {detail === 'assets' && <AssetSelfTest />}
       </SettingsDetail>
     );
   }
@@ -43,6 +43,11 @@ export function DataSettings({ store, router, host, sync, initialRow }: Settings
         <SettingsRow label={t('settings.row.backup')} value={t('settings.value.backup')} onPress={() => open('backup')} />
       )}
       <SettingsRow label={t('settings.row.profile')} value={t('settings.value.profile')} onPress={() => open('profile')} />
+      <SettingsRow
+        label={t('settings.row.assetSelfTest')}
+        value={t('settings.value.assetSelfTest')}
+        onPress={() => open('assets')}
+      />
       <SettingsRow label={t('import.title')} value={t('settings.value.import')} onPress={() => router.navigate({ name: 'import' })} />
       <SettingsRow label={t('settings.row.localData')} value={counts} arrow={false} />
     </SettingsList>

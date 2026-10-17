@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import type { RuleActionType, RuleEvent } from '../../../../../packages/cards/src/index.ts';
+import { evaluateConditions, type RuleActionType, type RuleEvent } from '../../../../../packages/cards/src/index.ts';
 import { useT } from '../../i18n/context.tsx';
 import { Button, Field, TextArea, TextInput } from '../../ui/components.tsx';
 import {
@@ -8,6 +8,7 @@ import {
   checkConditionSyntax,
   emptyActionDraft,
   emptyRuleDraft,
+  parseSampleScope,
   splitConditions,
   type RuleActionDraft,
   type RuleDraft,
@@ -27,6 +28,11 @@ interface CheckResult {
   notes: string[];
 }
 
+interface SampleResult {
+  status: 'true' | 'false' | 'error' | 'unconditional';
+  errors: string[];
+}
+
 export function RulesSection({
   rules,
   onChange,
@@ -41,6 +47,8 @@ export function RulesSection({
   const t = useT();
   const [expandedId, setExpandedId] = useState<string | undefined>(undefined);
   const [check, setCheck] = useState<CheckResult | undefined>(undefined);
+  const [samples, setSamples] = useState<Record<string, string>>({});
+  const [sampleResults, setSampleResults] = useState<Record<string, SampleResult>>({});
 
   const update = (id: string, patch: Partial<RuleDraft>): void => {
     onChange(rules.map((rule) => (rule.id === id ? { ...rule, ...patch } : rule)));
@@ -69,6 +77,23 @@ export function RulesSection({
     }
     setCheck({ ruleId: rule.id, errors, notes });
   };
+  const runSample = (rule: RuleDraft): void => {
+    const parsed = parseSampleScope(samples[rule.id] ?? '');
+    if (parsed.errors.length > 0) {
+      setSampleResults((current) => ({ ...current, [rule.id]: { status: 'error', errors: parsed.errors } }));
+      return;
+    }
+    const conditions = splitConditions(rule.conditions);
+    if (conditions.length === 0) {
+      setSampleResults((current) => ({ ...current, [rule.id]: { status: 'unconditional', errors: [] } }));
+      return;
+    }
+    const evaluated = evaluateConditions(conditions, parsed.scope);
+    setSampleResults((current) => ({
+      ...current,
+      [rule.id]: { status: evaluated.ok ? 'true' : evaluated.errors.length > 0 ? 'error' : 'false', errors: evaluated.errors },
+    }));
+  };
 
   return (
     <section className="settings-group">
@@ -78,6 +103,7 @@ export function RulesSection({
       {rules.map((rule) => {
         const open = expandedId === rule.id;
         const result = check?.ruleId === rule.id ? check : undefined;
+        const sample = sampleResults[rule.id];
         return (
           <div className="rule-row" key={rule.id}>
             <div className="rule-row__head">
@@ -150,6 +176,30 @@ export function RulesSection({
                       <p className="notice notice--ok">{t('rules.check.ok')}</p>
                     )}
                     {result.notes.length > 0 && <p className="field__hint">{t('rules.check.runtime')}</p>}
+                  </div>
+                )}
+
+                <h3 className="settings-group__title">{t('rules.sample')}</h3>
+                <p className="field__hint">{t('rules.sample.hint')}</p>
+                <Field label={t('rules.sample.variables')} hint={t('rules.sample.note')}>
+                  <TextArea
+                    value={samples[rule.id] ?? ''}
+                    onChange={(value) => setSamples((current) => ({ ...current, [rule.id]: value }))}
+                    rows={2}
+                    placeholder={t('rules.sample.placeholder')}
+                  />
+                </Field>
+                <Button variant="ghost" onClick={() => runSample(rule)}>
+                  {t('rules.sample.run')}
+                </Button>
+                {sample !== undefined && (
+                  <div className="rule-check" role="status">
+                    {sample.status === 'unconditional' && <p className="notice">{t('rules.sample.unconditional')}</p>}
+                    {sample.status === 'true' && <p className="notice notice--ok">{t('rules.sample.true')}</p>}
+                    {sample.status === 'false' && <p className="notice">{t('rules.sample.false')}</p>}
+                    {sample.status === 'error' && (
+                      <p className="notice notice--warn">{t('rules.sample.error', { message: sample.errors.join('；') })}</p>
+                    )}
                   </div>
                 )}
 

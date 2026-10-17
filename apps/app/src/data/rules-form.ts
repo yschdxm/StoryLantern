@@ -18,6 +18,7 @@ import {
   type RuleAction,
   type RuleActionType,
   type RuleEvent,
+  type StateValue,
 } from '../../../../packages/cards/src/index.ts';
 import { ulid } from '../../../../packages/oplog/src/index.ts';
 
@@ -190,4 +191,54 @@ export function checkConditionSyntax(source: string): SyntaxCheck {
   if (result.error === undefined) return { ok: true };
   const syntax = SYNTAX_ERROR_HINTS.some((hint) => result.error?.includes(hint));
   return syntax ? { ok: false, error: result.error } : { ok: true, note: result.error };
+}
+
+// ---------------------------------------------------------------- 试算用样例变量
+
+export interface SampleScopeResult {
+  scope: Record<string, StateValue>;
+  errors: string[];
+}
+
+function sampleValueOf(raw: string): StateValue {
+  if (raw === 'true') return true;
+  if (raw === 'false') return false;
+  if (raw === 'null') return null;
+  if (/^-?\d+(?:\.\d+)?$/.test(raw)) return Number(raw);
+  if (raw.length >= 2) {
+    const first = raw[0];
+    const last = raw[raw.length - 1];
+    if ((first === '"' && last === '"') || (first === "'" && last === "'")) return raw.slice(1, -1);
+  }
+  return raw;
+}
+
+/**
+ * 试算样例变量：一行一条 `name = value`。
+ * 值自动识别 数字 / true|false / null / 字符串（可带引号）；坏行收集错误，不抛异常。
+ */
+export function parseSampleScope(text: string): SampleScopeResult {
+  const scope: Record<string, StateValue> = {};
+  const errors: string[] = [];
+  text.split(/\r?\n/).forEach((rawLine, index) => {
+    const line = rawLine.trim();
+    if (line === '') return;
+    const separator = line.indexOf('=');
+    if (separator <= 0) {
+      errors.push(`第 ${String(index + 1)} 行：需要写成 name = value（当前「${line}」）`);
+      return;
+    }
+    const name = line.slice(0, separator).trim();
+    const value = line.slice(separator + 1).trim();
+    if (name === '') {
+      errors.push(`第 ${String(index + 1)} 行：缺少变量名`);
+      return;
+    }
+    if (value === '') {
+      errors.push(`第 ${String(index + 1)} 行：缺少值`);
+      return;
+    }
+    scope[name] = sampleValueOf(value);
+  });
+  return { scope, errors };
 }

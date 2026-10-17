@@ -59,6 +59,7 @@ export const enSync: AppMessages = {
   'backup.restoreHint': 'Pick a folder; the newest .slbak inside is used. This is not a replace-import: the log only appends, duplicates are detected, and existing data is never dropped',
   'backup.restoreRun': 'Pick a folder and restore',
   'backup.imported': 'Restore done: {{total}} ops, {{applied}} newly imported and {{duplicates}} already present',
+  'backup.importedAssets': 'Restore done: {{total}} ops ({{applied}} new, {{duplicates}} already present); {{assets}} assets ({{skipped}} skipped)',
   'sync.roster.stamp.action': 'Stamp the roster with the recovery key',
   'sync.roster.stamp.hint': 'This stamps the **local roster file**: adding/removing devices or changing revocations becomes detectable. This device will then require a stamp (stamp once per device with the same recovery key)',
   'settings.sync.running': 'Syncing…',

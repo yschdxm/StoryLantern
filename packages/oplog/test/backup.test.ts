@@ -4,6 +4,7 @@ import { createBackup, readBackup, BACKUP_MAGIC, BackupError } from '../src/back
 import { Materializer } from '../src/materialize.ts';
 import { messageAppend } from '../src/index.ts';
 import { HlcClock } from '../src/hlc.ts';
+import { toHex, utf8 } from '../src/bytes.ts';
 import { nodeDigest, nodeGzip } from '../src/node-adapters.ts';
 import type { CryptoPorts } from '../src/ports.ts';
 
@@ -98,5 +99,103 @@ test('空日志也是合法备份（恢复出来是空的，不是报错）', as
   const restored = await readBackup(bytes, { ports });
   assert.deepEqual(restored.ops, []);
   assert.equal(restored.header.opCount, 0);
+  assert.equal(restored.header.assetCount, 0);
+  assert.deepEqual(restored.assets, []);
+  assert.equal(restored.header.v, 2);
   assert.equal(BACKUP_MAGIC, 'SLBAK1');
+});
+
+// ---------------------------------------------------------------- v2：op + 资产
+
+const ASSET_HASH = 'a'.repeat(64);
+
+/**
+ * 手工拼一个备份（可以造出 writer 不会产生的畸形头/畸形 body）。
+ * 摘要口径与 `createBackup` 相同：头（digest 置空）+ "\n" + body。
+ */
+async function packBackup(header: Record<string, unknown>, body: string): Promise<Uint8Array> {
+  const canonical = `${JSON.stringify({ ...header, digest: '' })}\n${body}`;
+  const digest = toHex(await nodeDigest.sha256(utf8(canonical)));
+  const finalHeader = JSON.stringify({ ...header, digest });
+  return nodeGzip.compress(utf8(`${BACKUP_MAGIC}\n${finalHeader}\n${body}`));
+}
+
+test('v2：op + 资产往返（头里 assetCount、资产字节逐字节相同）', async () => {
+  const { ops } = sampleOps();
+  const asset = { hash: ASSET_HASH, bytes: Uint8Array.from([0, 1, 2, 255]) };
+  const bytes = await createBackup(ops, { ports, createdAt: 1_700_000_000_000, assets: [asset] });
+  const restored = await readBackup(bytes, { ports });
+  assert.equal(restored.header.v, 2);
+  assert.equal(restored.header.assetCount, 1);
+  assert.deepEqual(restored.ops, ops);
+  assert.deepEqual(restored.assets, [asset]);
+});
+
+test('v2：没有资产也是合法备份（assetCount = 0，assets 为空数组）', async () => {
+  const { ops } = sampleOps();
+  const bytes = await createBackup(ops, { ports, createdAt: 1_700_000_000_000 });
+  const restored = await readBackup(bytes, { ports });
+  assert.equal(restored.header.assetCount, 0);
+  assert.deepEqual(restored.assets, []);
+  assert.deepEqual(restored.ops, ops);
+});
+
+test('v1 兼容：老备份没有 assetCount，读出来 assets 为空且 op 逐条相同', async () => {
+  const { ops } = sampleOps();
+  const body = ops.map((op) => JSON.stringify(op)).join('\n');
+  const bytes = await packBackup(
+    { v: 1, createdAt: 1_700_000_000_000, opCount: ops.length, compression: 'gzip' },
+    body,
+  );
+  const restored = await readBackup(bytes, { ports });
+  assert.equal(restored.header.v, 1);
+  assert.equal(restored.header.assetCount, 0);
+  assert.deepEqual(restored.assets, []);
+  assert.deepEqual(restored.ops, ops);
+});
+
+test('v2 的 assetCount 缺省按 0 处理（body 里没有资产行时接受）', async () => {
+  const { ops } = sampleOps();
+  const body = ops.map((op) => JSON.stringify(op)).join('\n');
+  const bytes = await packBackup(
+    { v: 2, createdAt: 1_700_000_000_000, opCount: ops.length, compression: 'gzip' },
+    body,
+  );
+  const restored = await readBackup(bytes, { ports });
+  assert.equal(restored.header.assetCount, 0);
+  assert.deepEqual(restored.assets, []);
+});
+
+test('assetCount 对不上（头声称 1 张、body 里 0 行）→ format 错误', async () => {
+  const bytes = await packBackup(
+    { v: 2, createdAt: 1_700_000_000_000, opCount: 0, assetCount: 1, compression: 'gzip' },
+    '',
+  );
+  await assert.rejects(
+    () => readBackup(bytes, { ports }),
+    (error: unknown) => error instanceof BackupError && error.reason === 'format' && /资产/.test(error.message),
+  );
+});
+
+test('畸形资产行 → format 错误（不是跳过）', async () => {
+  const bytes = await packBackup(
+    { v: 2, createdAt: 1_700_000_000_000, opCount: 0, assetCount: 1, compression: 'gzip' },
+    '{"asset":"not-a-hash","data":""}',
+  );
+  await assert.rejects(
+    () => readBackup(bytes, { ports }),
+    (error: unknown) => error instanceof BackupError && error.reason === 'format' && /第 1 条资产/.test(error.message),
+  );
+});
+
+test('v2 资产内容被改（body 变了、头没变）→ 摘要不符', async () => {
+  const { ops } = sampleOps();
+  const asset = { hash: ASSET_HASH, bytes: Uint8Array.from([1, 2, 3]) };
+  const bytes = await createBackup(ops, { ports, createdAt: 1_700_000_000_000, assets: [asset] });
+  const text = new TextDecoder().decode(await nodeGzip.decompress(bytes));
+  const tampered = await nodeGzip.compress(utf8(text.replace('"data":"AQID"', '"data":"AQIE"')));
+  await assert.rejects(
+    () => readBackup(tampered, { ports }),
+    (error: unknown) => error instanceof BackupError && error.reason === 'digest',
+  );
 });

@@ -19,7 +19,7 @@ import { createPasswordProofPort, createPortsFromContentKey } from './crypto.ts'
 import { rotateKeyring } from '../../../../../packages/sync-core/src/keyring-store.ts';
 import { publishRecoveryKey } from './recovery-publish.ts';
 import { acceptJoinRequests, publishJoinRequest } from './join-flow.ts';
-import { SYNC_ASSET_INDEX_SEQ_KEY, SYNC_ASSET_MAP_KEY } from './assets-sync.ts';
+import { createAssetIndexSigningPorts, SYNC_ASSET_INDEX_SEQ_KEY, SYNC_ASSET_MAP_KEY } from './assets-sync.ts';
 import { describeDevice, loadTrustedRoster, mergeRoster, saveRoster, type RosterStampPort } from './roster-store.ts';
 /** 同步服务：把 op 段推到"哑存储"，再从那儿拉回来。 */
 
@@ -72,7 +72,7 @@ export interface SyncServiceOptions {
   device: DeviceStore;
   /** 名单盖章端口（配了管理密钥时用它验章；没配则不参与）。 */ stampPort?: RosterStampPort;
   /** GC 宽限期（毫秒）：回收不可恢复，默认 30 天，宁可多占空间。 */
-  graceMs?: number; now?: () => number; portsRef?: { ports?: CryptoPorts };
+  graceMs?: number; now?: () => number; portsRef?: { ports?: CryptoPorts; signing?: CryptoPorts };
 }
 
 export function syncAvailable(): boolean {
@@ -285,7 +285,7 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
 
     if (onOps !== undefined) engineOptions.onOps = onOps;
     if (options.graceMs !== undefined) engineOptions.graceMs = options.graceMs;
-    if (options.portsRef !== undefined) options.portsRef.ports = engineOptions.ports;
+    if (options.portsRef !== undefined) { options.portsRef.ports = engineOptions.ports; options.portsRef.signing = createAssetIndexSigningPorts(engineOptions.ports, signer.port, (deviceId) => roster.get(deviceId)?.publicKey); }
     const engine = new SyncEngine(engineOptions);
     return { engine, roster, restored, baseCursor, waiting: keyring !== undefined && keyring.mine === false, joinBlocked: agreement === undefined };
   };
