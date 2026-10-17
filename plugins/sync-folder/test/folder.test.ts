@@ -26,13 +26,13 @@ interface DeviceHarness {
   materializer: Materializer;
 }
 
-function harness(root: string, deviceId: string, keys: DeviceKeyPair, roster: DeviceRosterList, blindKey: Uint8Array): DeviceHarness {
+function harness(root: string, deviceId: string, keys: DeviceKeyPair, roster: DeviceRosterList, verifierKeys: ReadonlyMap<string, string>, blindKey: Uint8Array): DeviceHarness {
   const cipher = createAesGcmCipher({ key: new Uint8Array(32).fill(9) });
   const ports: CryptoPorts = {
     digest: nodeDigest,
     compressor: nodeGzip,
     signer: createDeviceSigner(keys),
-    verifier: createRosterVerifier(roster.toVerifierMap()),
+    verifier: createRosterVerifier(verifierKeys),
     cipher,
   };
   const clock = new HlcClock({ now: () => 1_700_000_000_000 });
@@ -50,13 +50,14 @@ test('文件夹后端：两个设备共用同一目录（网盘/NAS 场景）即
     const keysA = generateDeviceKeyPair('device-a');
     const keysB = generateDeviceKeyPair('device-b');
     const records: DeviceRecord[] = [
-      { deviceId: 'device-a', publicKey: keysA.publicKeyPem, addedAt: 1 },
-      { deviceId: 'device-b', publicKey: keysB.publicKeyPem, addedAt: 2 },
+      { deviceId: 'device-a', addedAt: 1 },
+      { deviceId: 'device-b', addedAt: 2 },
     ];
     const roster = new DeviceRosterList(records);
+    const verifierKeys = new Map([['device-a', keysA.publicKeyPem], ['device-b', keysB.publicKeyPem]]);
 
-    const a = harness(root, 'device-a', keysA, roster, blindKey);
-    const b = harness(root, 'device-b', keysB, roster, blindKey);
+    const a = harness(root, 'device-a', keysA, roster, verifierKeys, blindKey);
+    const b = harness(root, 'device-b', keysB, roster, verifierKeys, blindKey);
 
     const opA: Op = messageAppend(
       { deviceId: 'device-a', clock: new HlcClock({ now: () => 1_700_000_000_000 }) },

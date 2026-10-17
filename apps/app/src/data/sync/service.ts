@@ -11,16 +11,14 @@ import type { DeviceStore } from '../op-ports.ts';
 import type { OpLogRepository } from '../op-repository.ts';
 import { createWebCryptoPorts, deriveSyncKeys, webCryptoAvailable } from './crypto.ts';
 import { detectKeyWrapSupport } from './envelope.ts';
-import { createDeviceSigner } from './signer.ts';
 import { createWebCryptoKeyWrap, loadOrCreateAgreementKeys } from './envelope.ts';
 import { ensureKeyring } from '../../../../../packages/sync-core/src/keyring-store.ts';
 import type { CryptoPorts } from '../../../../../packages/oplog/src/index.ts';
 import { createPasswordProofPort, createPortsFromContentKey } from './crypto.ts';
 import { rotateKeyring } from '../../../../../packages/sync-core/src/keyring-store.ts';
-import { publishRecoveryKey } from './recovery-publish.ts';
 import { acceptJoinRequests, publishJoinRequest } from './join-flow.ts';
-import { createAssetIndexSigningPorts, SYNC_ASSET_INDEX_SEQ_KEY, SYNC_ASSET_MAP_KEY } from './assets-sync.ts';
-import { describeDevice, loadTrustedRoster, mergeRoster, saveRoster, type RosterStampPort } from './roster-store.ts';
+import { SYNC_ASSET_INDEX_SEQ_KEY, SYNC_ASSET_MAP_KEY } from './assets-sync.ts';
+import { describeDevice, loadRoster, mergeRoster, saveRoster } from './roster-store.ts';
 /** 同步服务：把 op 段推到"哑存储"，再从那儿拉回来。 */
 
 export interface SyncStorePort {
@@ -43,21 +41,18 @@ export interface SyncSummary {
 }
 
 export interface SyncService {
-  /** 忘记口令时把恢复私钥传进来（只这一次调用用，不落盘）。 */
-  sync(recoveryPrivateKey?: string): Promise<SyncSummary>;
+  sync(): Promise<SyncSummary>;
   /** 设备名单（本地持久化 + 远端发现合并后的结果）。 */
   devices(): Promise<SyncDevice[]>;
   /** 吊销设备：它离线期间的新数据将不再保留。本机不能被吊销。 */
   revoke(deviceId: string): Promise<boolean>;
   /**
-   * **永久禁用（黑名单）**：拒绝它的签名、不认它的加入请求。
+   * **永久禁用（黑名单）**：不认它的加入请求。
    *
    * 注意这条**单独做不到"读不到新内容"**——要配合换代（新数据钥匙只包给留下的设备）才成立；
    * 已经在它手里的旧内容收不回。这两条都写在界面上。
    */
   ban(deviceId: string): Promise<boolean>;
-  /** 生成恢复密钥：公钥发布到共享目录；私钥只返回这一次（离线保存，不落地）。 */
-  createRecovery(): Promise<{ publicKey: string; privateKey: string }>;
   /** 回收分析/执行；默认只分析（`dryRun = true`）。 */
   collect(dryRun?: boolean): Promise<{ candidates: string[]; moved: string[]; reasons: string[] }>;
 }
@@ -70,9 +65,8 @@ export interface SyncServiceOptions {
   store: SyncStorePort;
   /** 设备本地 kv：设备名单放在这里（吊销必须能跨重启保持）。 */
   device: DeviceStore;
-  /** 名单盖章端口（配了管理密钥时用它验章；没配则不参与）。 */ stampPort?: RosterStampPort;
   /** GC 宽限期（毫秒）：回收不可恢复，默认 30 天，宁可多占空间。 */
-  graceMs?: number; now?: () => number; portsRef?: { ports?: CryptoPorts; signing?: CryptoPorts };
+  graceMs?: number; now?: () => number; portsRef?: { ports?: CryptoPorts };
 }
 
 export function syncAvailable(): boolean {
@@ -120,43 +114,14 @@ export function sanitizeSyncState(state: LocalSyncState | undefined): LocalSyncS
   };
 }
 
-/**
- * 从引擎状态里收集对端公钥写进名单。
- *
- * 为什么要落盘：验签发生在**收段**的时候，那时不一定刚好有清单在手边；
- * 而且名单本来就要跨重启保持（吊销状态同理）。
- */
-function learnPublicKeys(roster: DeviceRosterList, selfId: string, state: LocalSyncState): number {
-  let changed = 0;
-  for (const [owner, publicKey] of Object.entries(state.peerPublicKeys ?? {})) {
-    if (owner === selfId) continue;
-    {
-      if (publicKey === '') continue;
-      const existing = roster.get(owner);
-      if (existing?.publicKey === publicKey) continue;
-      roster.add({
-        deviceId: owner,
-        publicKey,
-        addedAt: existing?.addedAt ?? Date.now(),
-        ...(existing?.name === undefined ? {} : { name: existing.name }),
-        ...(existing?.revokedAt === undefined ? {} : { revokedAt: existing.revokedAt }),
-      });
-      changed += 1;
-    }
-  }
-  return changed;
-}
-
 export async function createSyncService(options: SyncServiceOptions): Promise<SyncService> {
   // 后端只在这里包一层计数器：**所有**请求都经过它——引擎自己那一轮（pull/push）、以及服务直接发的
-  // keyring 读写 / 加入请求 / 换代 / 恢复密钥。以前 summarize 只报引擎那一轮，于是 requests 少算一半。
+  // keyring 读写 / 加入请求 / 换代。以前 summarize 只报引擎那一轮，于是 requests 少算一半。
   const backendCounters = instrumentBackend(options.backend);
   options = { ...options, backend: backendCounters.backend };
   // 请求数 = 后端计数器四项之和（每次 sync 取差值）
   const requestsSoFar = (): number => { const c = backendCounters.counters; return c.list + c.get + c.put + c.delete; };
   const now = options.now ?? (() => Date.now());
-  // 忘记口令时的一次性恢复私钥：只在本次 sync 调用里生效，不落盘
-  let pendingRecoveryKey: string | undefined;
   const keys = await deriveSyncKeys(options.secret);
   const ports = createWebCryptoPorts(keys);
   /** 设备本地 kv：名单与同步状态都放这里。 */
@@ -197,11 +162,9 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
     }
 
     // 本地名单（含吊销） + 这次发现的设备；本机永远在里面且不被吊销
-    const persisted = await loadTrustedRoster(options.device, { port: options.stampPort });
+    const persisted = await loadRoster(options.device);
     const { roster } = mergeRoster(persisted, discovered, { selfId: options.deviceId, now: now() });
     await saveRoster(options.device, roster);
-    // 每台设备自己的"锁和钥匙"：公钥随设备清单发布，供对端验签
-    const signer = await createDeviceSigner({ deviceId: options.deviceId, device: options.device, secret: options.secret });
     const engineOptions: SyncEngineOptions = {
       deviceId: options.deviceId,
       backend: options.backend,
@@ -213,23 +176,13 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
       snapshotThreshold: 16,
     };
     if (restored !== undefined) engineOptions.state = restored;
-    // 协商密钥对（P-256）：收自己那份内容密钥要用它，管理方式与签名密钥一致
+    // 协商密钥对（P-256）：收自己那份内容密钥要用它。
     const keyWrapSupported = await detectKeyWrapSupport();
     const agreement = keyWrapSupported
       ? await loadOrCreateAgreementKeys(createWebCryptoKeyWrap(), options.device)
       : undefined;
     if (agreement !== undefined) engineOptions.agreementKey = agreement.publicKey;
-    if (signer.publicKeyHex !== '') {
-      engineOptions.publicKey = signer.publicKeyHex;
-      const self = roster.get(options.deviceId);
-      if (self !== undefined && self.publicKey !== signer.publicKeyHex) {
-        roster.add({ ...self, publicKey: signer.publicKeyHex });
-        await saveRoster(options.device, roster);
-      }
-    }
-    // "一人一把锁"：把内容密钥按名单里每台设备的公钥各包一份，发布到共享目录。
-    //
-    // 这里**只准备钥匙**（发布 keyring 并打开自己那份）。
+    // "一人一把锁"：把内容密钥按名单里每台设备的协商公钥各包一份，发布到共享目录。
     const keyring =
       agreement === undefined
         ? undefined
@@ -274,25 +227,22 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
         await publishJoinRequest({
           backend: options.backend,
           deviceId: options.deviceId,
-          publicKey: signer.publicKeyHex,
           agreementKey: agreement.publicKey,
           joinProof,
           now,
-          ...(pendingRecoveryKey === undefined ? {} : { recoveryPrivateKey: pendingRecoveryKey }),
         });
       }
     }
 
     if (onOps !== undefined) engineOptions.onOps = onOps;
     if (options.graceMs !== undefined) engineOptions.graceMs = options.graceMs;
-    if (options.portsRef !== undefined) { options.portsRef.ports = engineOptions.ports; options.portsRef.signing = createAssetIndexSigningPorts(engineOptions.ports, signer.port, (deviceId) => roster.get(deviceId)?.publicKey); }
+    if (options.portsRef !== undefined) options.portsRef.ports = engineOptions.ports;
     const engine = new SyncEngine(engineOptions);
     return { engine, roster, restored, baseCursor, waiting: keyring !== undefined && keyring.mine === false, joinBlocked: agreement === undefined };
   };
   return {
-    async sync(recoveryPrivateKey?: string): Promise<SyncSummary> {
+    async sync(): Promise<SyncSummary> {
       const requestsBefore = requestsSoFar();
-      pendingRecoveryKey = recoveryPrivateKey;
       let imported = 0;
       const prepared = await prepare(async (ops) => {
         // 拉到的 op 必须先落进本地日志，再应用到内存状态
@@ -331,9 +281,6 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
       const state = engine.exportState();
       await store.save({ state, enqueuedSeq: stats.lastSeq });
 
-      // 对端清单里带着它们的公钥：收进名单并落盘，供以后验签
-      if (learnPublicKeys(roster, options.deviceId, state) > 0) await saveRoster(options.device, roster);
-
       const summary = summarize(result, enqueued, imported, requestsSoFar() - requestsBefore);
       if (joinBlocked === true) {
         summary.warnings.push(
@@ -352,7 +299,7 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
 
     async revoke(deviceId: string): Promise<boolean> {
       if (deviceId === options.deviceId) return false;
-      const roster = await loadTrustedRoster(options.device, { port: options.stampPort });
+      const roster = await loadRoster(options.device);
       const changed = roster.revoke(deviceId, now());
       if (changed) await saveRoster(options.device, roster);
       return changed;
@@ -388,9 +335,6 @@ export async function createSyncService(options: SyncServiceOptions): Promise<Sy
       return true;
     },
 
-    async createRecovery(): Promise<{ publicKey: string; privateKey: string }> {
-      return publishRecoveryKey(options.backend, now());
-    },
     async collect(dryRun = true) {
       const { engine } = await prepare();
       return engine.collect(dryRun);

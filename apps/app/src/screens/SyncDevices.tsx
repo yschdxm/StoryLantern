@@ -1,6 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { describeError } from '../data/error-text.ts';
-import { detectSigningAlgorithm } from '../data/sync/signer.ts';
 import { useT } from '../i18n/context.tsx';
 import type { SyncAdmin, SyncDevice } from './screen-props.ts';
 import { Banner, Button, ConfirmDialog, Field, ListRow, Sheet, SheetItem, TextInput } from '../ui/components.tsx';
@@ -39,14 +38,8 @@ export function SyncDevices({
   const [confirmCollect, setConfirmCollect] = useState(false);
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<string | undefined>(undefined);
-  /** 签名强度：老设备上 WebCrypto 没有 Ed25519，只能退到组内共享密钥（弱模式）。 */
-  const [signing, setSigning] = useState<'ed25519' | 'hmac-sha256' | undefined>(undefined);
   /** SAF 选择器结果：现在只做到"选中并记住"，界面必须说清。 */
   const [safNote, setSafNote] = useState<string | undefined>(undefined);
-  /** 刚生成的恢复密钥：只在这一次显示，关掉就没了（我们刻意不保存私钥）。 */
-  const [recovery, setRecovery] = useState<{ publicKey: string; privateKey: string } | undefined>(undefined);
-  /** 粘贴进来的恢复私钥：只在这一次调用里用，不落盘。 */
-  const [recoveryDraft, setRecoveryDraft] = useState('');
 
   const reload = async (): Promise<void> => {
     try {
@@ -58,7 +51,6 @@ export function SyncDevices({
 
   useEffect(() => {
     void reload();
-    void detectSigningAlgorithm().then(setSigning);
     // 只在挂载时拉一次：名单变化要么来自同步，要么来自本页的吊销操作
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -125,63 +117,6 @@ export function SyncDevices({
         </Field>
       )}
 
-      <div className="row">
-        <input
-          className="input"
-          value={recoveryDraft}
-          placeholder={t('sync.recovery.join.placeholder')}
-          onChange={(event) => setRecoveryDraft(event.target.value)}
-        />
-      </div>
-      <div className="row">
-        <Button
-          variant="ghost"
-          onClick={() => {
-            void sync
-              .joinWithRecovery(recoveryDraft)
-              .then((outcome) => setError(outcome.ok ? undefined : outcome.reason))
-              .catch((cause: unknown) => setError(describeError(cause)));
-          }}
-        >
-          {t('sync.recovery.join.action')}
-        </Button>
-      </div>
-      <p className="muted">{t('sync.recovery.join.hint')}</p>
-      <div className="row">
-        <Button
-          variant="ghost"
-          onClick={() => {
-            void sync
-              .roster?.stamp(recoveryDraft)
-              .then((outcome) => setError(outcome.ok ? outcome.message : outcome.error))
-              .catch((cause: unknown) => setError(describeError(cause)));
-          }}
-        >
-          {t('sync.roster.stamp.action')}
-        </Button>
-      </div>
-      <p className="muted">{t('sync.roster.stamp.hint')}</p>
-      <div className="row">
-        <Button
-          variant="ghost"
-          onClick={() => {
-            void sync
-              .createRecovery()
-              .then((pair) => setRecovery(pair))
-              .catch((cause: unknown) => setError(describeError(cause)));
-          }}
-        >
-          {t('sync.recovery.action')}
-        </Button>
-      </div>
-      <p className="muted">{t('sync.recovery.hint')}</p>
-
-      {signing !== undefined && (
-        <p className={signing === 'ed25519' ? 'muted' : 'notice notice--warn'}>
-          {signing === 'ed25519' ? t('sync.signing.strong') : t('sync.signing.weak')}
-        </p>
-      )}
-
       <h3 className="settings-group__title">{t('sync.devices')}</h3>
       <p className="muted">{t('sync.devices.hint')}</p>
 
@@ -193,11 +128,7 @@ export function SyncDevices({
             <ListRow
               key={device.deviceId}
               title={device.name}
-              subtitle={
-                device.publicKey === ''
-                  ? `${device.deviceId}\n${t('sync.devices.noKey')}`
-                  : `${device.deviceId}\n${t('sync.devices.fingerprint', { fp: device.publicKey.slice(0, 16) })}`
-              }
+              subtitle={device.deviceId}
               meta={[
                 device.self ? t('sync.devices.self') : '',
                 device.revoked ? t('sync.devices.revoked') : '',
@@ -298,15 +229,6 @@ export function SyncDevices({
             .catch((cause: unknown) => setError(describeError(cause)));
         }}
       />
-
-      <Sheet open={recovery !== undefined} title={t('sync.recovery.title')} onClose={() => setRecovery(undefined)}>
-        <p className="muted">{t('sync.recovery.warning')}</p>
-        <p className="muted">{t('sync.recovery.publicKey')}</p>
-        <p>{recovery?.publicKey ?? ''}</p>
-        <p className="muted">{t('sync.recovery.privateKey')}</p>
-        <p>{recovery?.privateKey ?? ''}</p>
-        <p className="muted">{t('sync.recovery.close')}</p>
-      </Sheet>
 
       <ConfirmDialog
         open={banning !== undefined}

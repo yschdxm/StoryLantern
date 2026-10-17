@@ -17,20 +17,13 @@ import {
   type Keyring,
 } from '../../../../../packages/sync-core/src/keyring.ts';
 import type { DeviceStore } from '../op-ports.ts';
-import {
-  signJoinWithRecovery,
-  verifyRecoverySignature,
-  type RecoveryFile,
-  type RecoveryProofPort,
-} from '../../../../../packages/sync-core/src/recovery.ts';
-import { createWebCryptoRecoveryProof } from './recovery-key.ts';
 
 /**
  * 加入流程（"输密码进来"这条路）。
  *
  * 两步：
  *  1. **写自己的加入请求**：我不在 keyring 里（说明还没人把钥匙包给我）时，
- *     用**密码派生的钥匙**写一份带两把公钥的请求到明文区 `join/<deviceId>.json`；
+ *     用**密码派生的钥匙**写一份带协商公钥的请求到明文区 `join/<deviceId>.json`；
  *  2. **接收别人的请求**：列出 `join/`，**先查黑名单**、再验密码证明；
  *     验过的就用它的协商公钥把**当前数据钥匙**包一份加进 keyring（**epoch 不变**）。
  *
@@ -47,33 +40,16 @@ export const JOIN_SEEN_KEY = 'sync.join.seen.v1';
 export interface PublishJoinInput {
   backend: SyncBackend;
   deviceId: string;
-  publicKey: string;
   agreementKey: string;
   joinProof: JoinProofPort;
-  /** 忘记口令时：用恢复私钥签一份恢复证明带在请求里（没有就走口令那条路）。 */
-  recoveryProof?: string;
-  /** 或者直接给私钥，这里自己签（界面粘的就是私钥，少一步）。 */
-  recoveryPrivateKey?: string;
   now?: () => number;
 }
 
 /** 写（或更新）自己的加入请求。 */
 export async function publishJoinRequest(input: PublishJoinInput): Promise<void> {
-  // 粘了私钥就在这儿签：证明绑定设备与时间，搬运与重放都不行
-  const signed =
-    input.recoveryPrivateKey === undefined || input.recoveryPrivateKey === ""
-      ? undefined
-      : await signJoinWithRecovery(createWebCryptoRecoveryProof(), {
-          privateKey: input.recoveryPrivateKey,
-          deviceId: input.deviceId,
-          at: input.now?.() ?? Date.now(),
-        });
-  const proof = input.recoveryProof ?? signed;
   const request = await createJoinRequest(input.joinProof, {
     deviceId: input.deviceId,
-    publicKey: input.publicKey,
     agreementKey: input.agreementKey,
-    ...(proof === undefined ? {} : { recoveryProof: proof }),
     ...(input.now === undefined ? {} : { at: input.now() }),
   });
   await input.backend.put(joinPath(input.deviceId), new TextEncoder().encode(serializeJoinRequest(request)));
@@ -89,9 +65,6 @@ export interface AcceptJoinInput {
   banned: ReadonlySet<string>;
   joinProof: JoinProofPort;
   selfId: string;
-  /** 恢复密钥实现 + 共享目录里公布的恢复公钥：给了就允许「没口令但有恢复证明」的设备加入。 */
-  recoveryProof?: RecoveryProofPort;
-  recoveryPublicKey?: string;
   now?: () => number;
 }
 
@@ -145,20 +118,6 @@ export async function acceptJoinRequests(input: AcceptJoinInput): Promise<Accept
   const seen = await loadSeen(input.device);
   let seenChanged = false;
 
-  // 恢复公钥公布在共享目录里（明文，公钥不是秘密）：谁都能验，但谁也拿不到私钥
-  const recoveryPort = input.recoveryProof;
-  const recoveryPublicKey = input.recoveryPublicKey ?? "";
-  const recoveryFile: RecoveryFile = { v: 1, publicKey: recoveryPublicKey, createdAt: 0 };
-  const recoveryVerifier =
-    recoveryPort === undefined || recoveryPublicKey === ""
-      ? undefined
-      : (item: { deviceId: string; at: number; recoveryProof?: string }) =>
-          verifyRecoverySignature(recoveryPort, recoveryFile, {
-            deviceId: item.deviceId,
-            at: item.at,
-            signature: item.recoveryProof ?? "",
-          });
-
   for (const entry of listing.entries) {
     if (!entry.path.startsWith(JOIN_PREFIX)) continue;
     let request;
@@ -177,7 +136,6 @@ export async function acceptJoinRequests(input: AcceptJoinInput): Promise<Accept
     const decision = await verifyJoinRequest(input.joinProof, request, {
       revoked: input.banned,
       knownSince: (deviceId) => seen[deviceId],
-      ...(recoveryVerifier === undefined ? {} : { verifyRecovery: recoveryVerifier }),
     });
     if (!decision.ok) {
       outcome.refused.push({ deviceId: request.deviceId, reason: decision.reason ?? '不接受' });

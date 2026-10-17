@@ -78,15 +78,15 @@ test('名单：坏数据不阻塞同步（当作还没有名单，重新发现�
 });
 
 test('名单：设备显示名能用 id 后缀兜底，不暴露完整长 id 之外的东西', () => {
-  const described = describeDevice({ deviceId: '01JABCDEFGH', publicKey: '', addedAt: 1 }, 'me');
+  const described = describeDevice({ deviceId: '01JABCDEFGH', addedAt: 1 }, 'me');
   assert.equal(described.name, '设备 EFGH');
   assert.equal(described.revoked, false);
 });
 
 test('黑名单：合并远端发现时保留，本机不会被自己禁掉', () => {
   const local = new DeviceRosterList([
-    { deviceId: 'self', publicKey: 'ps', addedAt: 1 },
-    { deviceId: 'gone', publicKey: 'pg', addedAt: 2 },
+    { deviceId: 'self', addedAt: 1 },
+    { deviceId: 'gone', addedAt: 2 },
   ]);
   local.ban('gone', 99);
 

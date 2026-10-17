@@ -142,12 +142,12 @@ async function startMockDav(options: MockDavOptions = {}): Promise<MockDav> {
 
 // ---------------------------------------------------------------- 同步装置
 
-function harness(url: string, deviceId: string, keys: DeviceKeyPair, roster: DeviceRosterList, blindKey: Uint8Array) {
+function harness(url: string, deviceId: string, keys: DeviceKeyPair, roster: DeviceRosterList, verifierKeys: ReadonlyMap<string, string>, blindKey: Uint8Array) {
   const ports: CryptoPorts = {
     digest: nodeDigest,
     compressor: nodeGzip,
     signer: createDeviceSigner(keys),
-    verifier: createRosterVerifier(roster.toVerifierMap()),
+    verifier: createRosterVerifier(verifierKeys),
     cipher: createAesGcmCipher({ key: new Uint8Array(32).fill(9) }),
   };
   return new SyncEngine({
@@ -216,12 +216,13 @@ test('两个设备通过真实 HTTP（WebDAV）同步并收敛', async () => {
     const keysA = generateDeviceKeyPair('device-a');
     const keysB = generateDeviceKeyPair('device-b');
     const records: DeviceRecord[] = [
-      { deviceId: 'device-a', publicKey: keysA.publicKeyPem, addedAt: 1 },
-      { deviceId: 'device-b', publicKey: keysB.publicKeyPem, addedAt: 2 },
+      { deviceId: 'device-a', addedAt: 1 },
+      { deviceId: 'device-b', addedAt: 2 },
     ];
     const roster = new DeviceRosterList(records);
-    const engineA = harness(dav.url, 'device-a', keysA, roster, blindKey);
-    const engineB = harness(dav.url, 'device-b', keysB, roster, blindKey);
+    const verifierKeys = new Map([['device-a', keysA.publicKeyPem], ['device-b', keysB.publicKeyPem]]);
+    const engineA = harness(dav.url, 'device-a', keysA, roster, verifierKeys, blindKey);
+    const engineB = harness(dav.url, 'device-b', keysB, roster, verifierKeys, blindKey);
     const stateA = new Materializer();
     const stateB = new Materializer();
 

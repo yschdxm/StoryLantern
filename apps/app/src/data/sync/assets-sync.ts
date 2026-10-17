@@ -16,7 +16,6 @@ import {
 } from '../../../../../packages/sync-core/src/asset-index.ts';
 import { createAssetStore } from '../../../../../packages/sync-core/src/asset.ts';
 import type { SyncBackend } from '../../../../../packages/sync-core/src/backend.ts';
-import type { SignerPort } from '../../../../../packages/sync-core/src/signing.ts';
 import { getAssetClient, hashOfAssetRef, type AssetClient } from '../asset-client.ts';
 import { describeError } from '../error-text.ts';
 import type { DeviceStore } from '../op-ports.ts';
@@ -40,38 +39,12 @@ export interface AssetSyncInput {
   backend: SyncBackend;
   /** 与 op 段相同的加密端口（内容密钥可用时由同步服务传入那一套）。 */
   ports: CryptoPorts;
-  /**
-   * 只用于**索引**的签名端口（可选）。
-   * 不提供时索引不签名（读取时按"无签名兼容"处理）；提供时索引对象签名/验签，
-   * 资产字节本身不签（内容哈希已校验）。
-   */
-  signing?: CryptoPorts;
   device: DeviceStore;
   deviceId: string;
   materializer: MaterializerLike;
   /** 测试注入；默认走 `getAssetClient()`（宿主或浏览器内存实现）。 */
   assetClient?: AssetClient;
   now?: () => number;
-}
-
-/**
- * 资产索引专用的签名端口。
- *
- * 为什么只给索引加签名：段/快照的信任模型不变（历史段本来就没签名，强加验签会把它们全拒掉）。
- * 索引是"明文 sha → 远端密文哈希"的**权威映射**，被篡改会把卡片指向错误字节；内容哈希只能挡
- * "内容与明文不符"，挡不住"索引把明文指向别的合法密文"。所以索引值得单独签名。
- */
-export function createAssetIndexSigningPorts(
-  base: CryptoPorts,
-  signer: SignerPort,
-  publicKeyOf: (deviceId: string) => string | undefined,
-): CryptoPorts {
-  return {
-    ...base,
-    signer: { deviceId: signer.deviceId, sign: (message) => signer.sign(message) },
-    // 弱模式没有设备公钥：SignerPort.verify('') 会退回组内密钥（见 signer.ts），照它的语义用
-    verifier: { verify: (deviceId, message, signature) => signer.verify(publicKeyOf(deviceId) ?? '', message, signature) },
-  };
 }
 
 export interface AssetSyncSummary {
@@ -127,13 +100,11 @@ async function sha256Hex(ports: CryptoPorts, bytes: Uint8Array): Promise<string>
 /**
  * 发现远端所有设备的最新索引（同设备只看最大 seq）。读失败的只告警，不影响其它设备。
  *
- * 签名策略（只针对索引，不动段/快照）：**有签名必须验过**（验不过 → 告警并跳过该索引，
- * 不采信其条目）；**无签名**（旧版本/弱模式）告警一次后兼容接受——否则升级会把所有旧索引拒掉。
+ * 索引**不签名**（与全仓一致的信任模型：共享口令 + AES-GCM，内容哈希兜底）。
+ * 旧版本可能留下带签名的索引：没有验签端口时按无签名读取（忽略 sig 字段），不会因此失联。
  */
 async function readLatestIndexes(input: AssetSyncInput, warnings: string[]): Promise<Map<string, PeerIndex>> {
   const latest = new Map<string, { seq: number; path: string; hash8: string }>();
-  const indexPorts = input.signing ?? input.ports;
-  let unsigned = 0;
   let listing: { entries: { path: string; size: number }[] };
   try {
     listing = await input.backend.list(ASSET_INDEX_PREFIX);
@@ -156,12 +127,10 @@ async function readLatestIndexes(input: AssetSyncInput, warnings: string[]): Pro
     try {
       const bytes = await input.backend.get(info.path);
       // 路径里的 hash8 是整份字节的摘要：对不上说明文件被换过（解码前先挡掉）
-      if (!(await sha256Hex(indexPorts, bytes)).startsWith(info.hash8)) {
+      if (!(await sha256Hex(input.ports, bytes)).startsWith(info.hash8)) {
         throw new Error(`索引文件名里的摘要与内容不符（${info.hash8}）`);
       }
-      // requireSignature 保持 false：无签名兼容（见上方策略）；有签名时 verifyEnvelope 必验，失败即抛
-      const decoded = await decodeAssetIndex(bytes, { ports: indexPorts, deviceId, seq: info.seq, requireSignature: false });
-      if (decoded.envelope.sig === undefined) unsigned += 1;
+      const decoded = await decodeAssetIndex(bytes, { ports: input.ports, deviceId, seq: info.seq });
       indexes.set(deviceId, {
         deviceId,
         seq: info.seq,
@@ -170,9 +139,6 @@ async function readLatestIndexes(input: AssetSyncInput, warnings: string[]): Pro
     } catch (cause) {
       warnings.push(`资产索引 ${info.path} 读取失败：${describeError(cause)}`);
     }
-  }
-  if (unsigned > 0) {
-    warnings.push(`${unsigned} 份远端资产索引没有签名（旧版本/弱模式），已按兼容模式采信；升级对端后自动改为强验签`);
   }
   return indexes;
 }
@@ -338,8 +304,7 @@ async function publishIndex(
   const now = input.now ?? (() => Date.now());
   const encoded = await encodeAssetIndex(
     { v: 1, deviceId: input.deviceId, updatedAt: now(), entries: sorted },
-    // 只有索引签名：signer 存在时 envelope 会签；不存在则维持"不签名"的兼容行为
-    { ports: input.signing ?? input.ports, seq, encrypt: input.ports.cipher !== undefined },
+    { ports: input.ports, seq, encrypt: input.ports.cipher !== undefined },
   );
   await input.backend.put(encoded.path, encoded.bytes);
   await input.device.set(SYNC_ASSET_INDEX_SEQ_KEY, String(seq));

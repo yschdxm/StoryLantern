@@ -25,7 +25,7 @@ pnpm --filter @storylantern/app exec vite preview --port 15199 --strictPort
 ## 1. 硬约束（违反即失败）
 
 - **运行时零第三方依赖**：界面只允许 React；`typescript`、`@playwright/test` 是仅有的 devDependency。不要 `pnpm add` 运行时包。
-- **单文件 ≤400 行**；`apps/app/src/main.tsx` 已约 399 行（贴着上限），**不许再变长**：要加页面先抽组件/路由分发。
+- **单文件 ≤400 行**；`apps/app/src/main.tsx` 384 行（删签名/恢复密钥后回落），仍不要往上堆：加页面先抽组件/路由分发。
 - 文本文件必须 UTF-8；不伪造：不用假数据/示例功能冒充实现，不在报告或提交信息里写没跑过的结论。
 - **术语**：英文 design token 统一称**设计变量（样式变量）**，不写"令牌"。
 - 中文优先；界面文案中英双语，中文为主。
@@ -53,7 +53,7 @@ pnpm --filter @storylantern/app exec vite preview --port 15199 --strictPort
   **caption 是给模型的入口，图可后补**（`VisualAsset.path` 可选；有图必须 `asset://<sha256>`）。
   图片上传已接线：`data/asset-client.ts`（Tauri 走宿主 `assets` 服务、内容寻址持久；**纯浏览器是内存实现，刷新即丢**，
   界面必须提示）。资产跨设备同步在 `data/sync/assets-sync.ts` + `packages/sync-core/src/asset-index.ts`（懒加载、sha 校验、
-  索引强模式签名）。设置 → 数据与备份 → **资产库自检**（`settings/AssetSelfTest.tsx` + `data/asset-selftest.ts`）
+  索引不签名）。设置 → 数据与备份 → **资产库自检**（`settings/AssetSelfTest.tsx` + `data/asset-selftest.ts`）
   可真机验证宿主 put/get；`.slbak` v2 备份包含整个资产库，恢复写回并校验 hash。
 - 规则/行为编辑：`screens/rules-edit/RulesSection.tsx` + `data/rules-form.ts`（角色卡 `rules`、物品 `behaviors`），
   条件语法检查只校验语法，语义按运行时变量求值。
@@ -63,11 +63,11 @@ pnpm --filter @storylantern/app exec vite preview --port 15199 --strictPort
   `estimateTokens` 在 `data/tokens.ts`（`eval/long-chat` 为保留录制回放冻结了一份 legacy 实现，产品代码零旧实现）。
 - 主流程 e2e：角色页新建→填名字/简介→保存→列表出现；新建会话→默认勾选成员→用户开场→进入聊天并出现输入框
   （`e2e/mobile.spec.ts`，用 `data-testid`，中英文都不挂）。
-- 已知限制：资产**索引签名**只在单测里用假签名器验证过（真实 Ed25519 跨设备握手未跑）；首次同步时对端公钥未学到会跳过其索引并告警，
-  下一轮恢复；弱模式只证明"组内"不证明"哪台设备"；`.slbak` 含资产所以会变大（base64 +33%）；规则条件的"语义"只在运行时求值
+- 已知限制：资产索引**不签名**（信任根是共享口令 + AES-GCM，内容靠落库前 sha256 校验）；设备签名/恢复密钥/名单盖章已整体删除
+  （真机 WebView 没有可用的非对称签名能力）；`.slbak` 含资产所以会变大（base64 +33%）；规则条件的"语义"只在运行时求值
   （编辑器另提供"试算"用示例变量验证）；L3 无独立 URL（设置分区）；详见 ADR-0011 与 `docs/SETTINGS-IA.md §8`。
-- 行数已贴上限，加东西先拆：`main.tsx`/`ChatScreen`/`SessionCreateScreen` 399，`repository.ts`/`sync/service.ts` 400，
-  `op-repository.ts` 399，`app-sync.ts` 389，`assets-sync.ts` 397。
+- 行数已贴上限，加东西先拆：`ChatScreen`/`SessionCreateScreen`/`op-repository.ts` 399，`repository.ts` 400；
+  `main.tsx` 384、`sync/service.ts` 344、`assets-sync.ts` 362、`app-sync.ts` 388。
 - **hash 路由必须对实体 id 编解码**（`router.ts` 的 `encodePart`/`decodePart`）：id 不保证是 ASCII，漏了会出现"找不到这张卡片"。
 
 ## 3. 代码边界

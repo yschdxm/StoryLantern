@@ -50,16 +50,8 @@ export {
   decideCollection,
   DeviceRosterList,
   parseRoster,
-  readRosterStamp,
-  rosterPayload,
-  assessRosterTrust,
-  stampRoster,
   safeThroughSeq,
   serializeRoster,
-  type RosterStamp,
-  type RosterStampPort,
-  type RosterTrust,
-  type RosterTrustResult,
   type AckSource,
   type CollectionDecision,
   type CollectionInput,
@@ -134,17 +126,6 @@ export { chunkOps, estimateBatchBytes } from './chunk.ts';
 export { collectTrash, type CollectInput, type CollectResult } from './gc.ts';
 
 export {
-  verifySigned,
-  signingPayload,
-  toHex,
-  fromHex,
-  type SignerPort,
-  type SigningAlgorithm,
-  type SignedEnvelope,
-  type VerifyOutcome,
-} from './signing.ts';
-
-export {
   createKeyring,
   openKeyring,
   parseKeyring,
@@ -176,14 +157,3 @@ export {
   type EnsureKeyringResult,
   type RotateKeyringInput,
 } from './keyring-store.ts';
-
-export {
-  RECOVERY_FILE,
-  recoveryPayload,
-  signJoinWithRecovery,
-  verifyRecoverySignature,
-  parseRecoveryFile,
-  serializeRecoveryFile,
-  type RecoveryProofPort,
-  type RecoveryFile,
-} from './recovery.ts';

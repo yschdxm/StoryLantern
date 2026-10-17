@@ -45,7 +45,7 @@ test('建库：名单外的旧对端不许被当成收件人（否则会硬失�
   // 名单里只有本机；那份"旧对端"的公钥（另造一对合法的协商密钥）不在名单里
   const ghost = await keyWrap.generateAgreementKeys();
   const roster = new DeviceRosterList([
-    { deviceId: 'me', publicKey: generateDeviceKeyPair('me').publicKeyPem, addedAt: 1 },
+    { deviceId: 'me', addedAt: 1 },
   ]);
 
   const result = await ensureKeyring({
@@ -74,8 +74,8 @@ test('对照：名单里**在**的对端仍必须被包进去（别把正常的�
   const peer = await keyWrap.generateAgreementKeys();
   const store = new Map<string, Uint8Array>();
   const roster = new DeviceRosterList([
-    { deviceId: 'me', publicKey: generateDeviceKeyPair('me').publicKeyPem, addedAt: 1 },
-    { deviceId: 'peer', publicKey: generateDeviceKeyPair('peer').publicKeyPem, addedAt: 2 },
+    { deviceId: 'me', addedAt: 1 },
+    { deviceId: 'peer', addedAt: 2 },
   ]);
 
   await ensureKeyring({

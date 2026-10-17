@@ -18,12 +18,10 @@ export const PAIRING_SCHEME = 'storylantern://pair';
 
 export interface PairingInvite {
   v: 1;
-  /** 发起方设备 id（已配对设备用它互相识别签名）。 */
+  /** 发起方设备 id（已配对设备用它互相识别）。 */
   deviceId: string;
   /** 展示用名称（例如"我的手机"）。 */
   name: string;
-  /** Ed25519 公钥 PEM：对方靠它验签。 */
-  publicKey: string;
   /** 端到端加密主密钥（32 字节，base64url）——只在二维码里出现。 */
   profileKey: string;
   createdAt: number;
@@ -41,7 +39,6 @@ const DEFAULT_TTL_MS = 10 * 60 * 1000;
 export interface CreateInviteInput {
   deviceId: string;
   name: string;
-  publicKey: string;
   profileKey: Uint8Array;
   now?: number;
   ttlMs?: number;
@@ -55,7 +52,6 @@ export function createPairingInvite(input: CreateInviteInput): PairingInvite {
     v: 1,
     deviceId: input.deviceId,
     name: input.name,
-    publicKey: input.publicKey,
     profileKey: toBase64Url(input.profileKey),
     createdAt: now,
     expiresAt: now + (input.ttlMs ?? DEFAULT_TTL_MS),
@@ -63,7 +59,7 @@ export function createPairingInvite(input: CreateInviteInput): PairingInvite {
   };
 }
 
-/** 编码成可放进二维码的 URI。公钥 PEM 有多行，因此整段用 base64url 承载。 */
+/** 编码成可放进二维码的 URI。整段用 base64url 承载，避免特殊字符。 */
 export function encodePairingInvite(invite: PairingInvite): string {
   const payload = JSON.stringify(invite);
   return `${PAIRING_SCHEME}?v=1&p=${toBase64Url(utf8(payload))}`;
@@ -87,7 +83,7 @@ export function decodePairingInvite(uri: string, options: { now?: number } = {})
   }
 
   if (invite === null || typeof invite !== 'object') return { ok: false, error: '配对内容不是对象' };
-  for (const field of ['deviceId', 'name', 'publicKey', 'profileKey'] as const) {
+  for (const field of ['deviceId', 'name', 'profileKey'] as const) {
     if (typeof invite[field] !== 'string' || invite[field] === '') return { ok: false, error: `缺少字段 ${field}` };
   }
   if (typeof invite.expiresAt !== 'number' || typeof invite.createdAt !== 'number') {
@@ -101,7 +97,6 @@ export function decodePairingInvite(uri: string, options: { now?: number } = {})
     return { ok: false, error: '主密钥编码非法' };
   }
   if (keyLength !== 32) return { ok: false, error: `主密钥长度应为 32 字节，实际 ${keyLength}` };
-  if (!invite.publicKey.includes('BEGIN PUBLIC KEY')) return { ok: false, error: '公钥格式不是 PEM' };
 
   const now = options.now ?? Date.now();
   if (invite.expiresAt <= now) return { ok: false, error: '配对二维码已过期，请重新生成' };
@@ -115,16 +110,14 @@ export function profileKeyOf(invite: PairingInvite): Uint8Array {
 }
 
 export function inviteToDeviceRecord(invite: PairingInvite, options: { at?: number; name?: string } = {}): DeviceRecord {
-  const record: DeviceRecord = {
+  return {
     deviceId: invite.deviceId,
-    publicKey: invite.publicKey,
     addedAt: options.at ?? Date.now(),
     name: options.name ?? invite.name,
   };
-  return record;
 }
 
-/** 把邀请里的设备登记进名单（幂等：重复配对只更新名称/公钥，不重复添加）。 */
+/** 把邀请里的设备登记进名单（幂等：重复配对只更新名称，不重复添加）。 */
 export function pairFromInvite(roster: DeviceRosterList, invite: PairingInvite, options: { at?: number } = {}): DeviceRecord {
   const record = inviteToDeviceRecord(invite, options);
   roster.add(record);

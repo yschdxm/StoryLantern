@@ -46,8 +46,8 @@ const hosted = {
 };
 
 const roster = new DeviceRosterList([
-  { deviceId: 'device-a', publicKey: '', addedAt: 0, name: '本机' },
-  { deviceId: 'device-b', publicKey: '', addedAt: 0, name: '手机' },
+  { deviceId: 'device-a', addedAt: 0, name: '本机' },
+  { deviceId: 'device-b', addedAt: 0, name: '手机' },
 ]);
 
 test('GC：默认只分析——列出候选但一次都不删', async () => {
@@ -123,8 +123,8 @@ test('GC：还有设备没并入时，一个都不回收（宁可多占空间）
 test('GC：已退役设备超过宽限期后可以回收（离线期间的数据不再保留）', async () => {
   const target = backend([]);
   const withRevoked = new DeviceRosterList([
-    { deviceId: 'device-a', publicKey: '', addedAt: 0 },
-    { deviceId: 'device-b', publicKey: '', addedAt: 0, revokedAt: 5 },
+    { deviceId: 'device-a', addedAt: 0 },
+    { deviceId: 'device-b', addedAt: 0, revokedAt: 5 },
   ]);
   const result = await collectTrash({
     backend: target,

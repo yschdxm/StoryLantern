@@ -1,6 +1,7 @@
-import { createCipheriv, createDecipheriv, createHash, createHmac, createPrivateKey, createPublicKey, generateKeyPairSync, randomBytes, sign, verify } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { gzipSync, gunzipSync } from 'node:zlib';
 import type { Compressor, Digest, SealedPayload, SegmentCipher, SegmentSigner, SignatureVerifier } from './ports.ts';
+import { toHex } from './bytes.ts';
 
 export const nodeDigest: Digest = {
   sha256(data) {
@@ -22,6 +23,13 @@ export const nodeGzip: Compressor = {
   },
 };
 
+/**
+ * 协议层的**可选**签名端口在 Node 里的测试实现。
+ *
+ * 注意：app 不注入签名实现（真机 WebView 没有非对称签名能力，且我们的信任模型建立在
+ * "共享口令 + AES-GCM"上）。这里用 HMAC-SHA256 做**对称**签名替身，只为让段/信封的
+ * 签名分支能在 Node 里被测试；`publicKeyPem` 是对称密钥的十六进制，不是可发布公钥。
+ */
 export interface DeviceKeyPair {
   deviceId: string;
   privateKeyPem: string;
@@ -29,34 +37,31 @@ export interface DeviceKeyPair {
 }
 
 export function generateDeviceKeyPair(deviceId: string): DeviceKeyPair {
-  const { privateKey, publicKey } = generateKeyPairSync('ed25519');
-  return {
-    deviceId,
-    privateKeyPem: privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(),
-    publicKeyPem: publicKey.export({ type: 'spki', format: 'pem' }).toString(),
-  };
+  const secret = toHex(new Uint8Array(randomBytes(32)));
+  return { deviceId, privateKeyPem: secret, publicKeyPem: secret };
 }
 
 export function createDeviceSigner(device: DeviceKeyPair): SegmentSigner {
-  const key = createPrivateKey(device.privateKeyPem);
+  const key = Buffer.from(device.privateKeyPem, 'hex');
   return {
     deviceId: device.deviceId,
     sign(data) {
-      return sign(null, data, key);
+      return createHmac('sha256', key).update(data).digest();
     },
   };
 }
 
-/** 设备名单：deviceId -> 公钥 PEM。名单外的设备一律拒绝。 */
+/** 设备名单：deviceId -> 对称密钥十六进制。名单外的设备一律拒绝。 */
 export type DeviceRoster = ReadonlyMap<string, string>;
 
 export function createRosterVerifier(roster: DeviceRoster): SignatureVerifier {
   return {
     verify(deviceId, data, signature) {
-      const pem = roster.get(deviceId);
-      if (!pem) return false;
+      const keyHex = roster.get(deviceId);
+      if (!keyHex) return false;
       try {
-        return verify(null, data, createPublicKey(pem), signature);
+        const expected = createHmac('sha256', Buffer.from(keyHex, 'hex')).update(data).digest();
+        return expected.length === signature.length && timingSafeEqual(expected, Buffer.from(signature));
       } catch {
         return false;
       }

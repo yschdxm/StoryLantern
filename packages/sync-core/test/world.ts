@@ -51,9 +51,11 @@ export function createWorld(options: WorldOptions = {}): World {
   const records: DeviceRecord[] = deviceIds.map((deviceId, index) => {
     const keys = generateDeviceKeyPair(deviceId);
     keysByDevice.set(deviceId, keys);
-    return { deviceId, publicKey: keys.publicKeyPem, addedAt: BASE_TIME + index };
+    return { deviceId, addedAt: BASE_TIME + index };
   });
   const roster = new DeviceRosterList(records);
+  // 协议层的可选签名端口只用于测试：用对称密钥模拟（app 不注入签名实现）。
+  const verifierKeys = new Map([...keysByDevice.entries()].map(([deviceId, keys]) => [deviceId, keys.publicKeyPem] as const));
 
   const peers = new Map<string, Peer>();
   for (const deviceId of deviceIds) {
@@ -65,7 +67,7 @@ export function createWorld(options: WorldOptions = {}): World {
       digest: nodeDigest,
       compressor: nodeGzip,
       signer: createDeviceSigner(keys),
-      verifier: createRosterVerifier(roster.toVerifierMap()),
+      verifier: createRosterVerifier(verifierKeys),
       cipher,
     };
 

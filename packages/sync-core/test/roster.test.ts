@@ -4,18 +4,16 @@ import { decideCollection, DeviceRosterList, parseRoster, safeThroughSeq, serial
 
 const DAY = 24 * 3600 * 1000;
 
-test('设备名单：登记、退役、只把活跃设备喂给验签器', () => {
+test('设备名单：登记、退役；只有活跃设备参与 GC 判据', () => {
   const roster = new DeviceRosterList([
-    { deviceId: 'a', publicKey: 'pem-a', addedAt: 0 },
-    { deviceId: 'b', publicKey: 'pem-b', addedAt: 0, name: '手机' },
+    { deviceId: 'a', addedAt: 0 },
+    { deviceId: 'b', addedAt: 0, name: '手机' },
   ]);
   assert.deepEqual(roster.activeIds(), ['a', 'b']);
-  assert.equal(roster.toVerifierMap().get('b'), 'pem-b');
 
   assert.equal(roster.revoke('b', 1000), true);
   assert.equal(roster.revoke('b', 2000), false, '重复退役应是无操作');
   assert.deepEqual(roster.activeIds(), ['a']);
-  assert.equal(roster.toVerifierMap().has('b'), false);
 });
 
 test('safeThrough：取所有活跃设备声明的最小值；没声明按 0 处理（保守）', () => {
@@ -67,32 +65,36 @@ test('GC 决策对每个候选都给出可读理由（UI 要能解释"为什么�
   assert.match(decision.reason, /safeThrough=4/);
 });
 
-test('名单可落盘并恢复（含退役状态）；没有公钥的设备允许存在但不参与验签', () => {
-  // 共享口令（自动发现）模式下没有公钥可记。名单仍然必须落盘——
-  // 否则吊销状态一重启就丢，GC 的判据跟着错。
+test('名单可落盘并恢复（含退役状态）；旧文件的已删除字段被忽略', () => {
   const roster = new DeviceRosterList([
-    { deviceId: 'a', publicKey: 'pem-a', addedAt: 0 },
-    { deviceId: 'b', publicKey: '', addedAt: 0, name: '手机' },
+    { deviceId: 'a', addedAt: 0 },
+    { deviceId: 'b', addedAt: 0, name: '手机' },
   ]);
   roster.revoke('b', 1000);
 
   const restored = parseRoster(serializeRoster(roster));
   assert.deepEqual(restored.activeIds(), ['a']);
   assert.equal(restored.get('b')?.revokedAt, 1000);
-  assert.equal(restored.get('b')?.publicKey, '', '空公钥原样保留，不能因此拒绝整份名单');
-  assert.equal(restored.toVerifierMap().has('b'), false, '退役设备不进验签表');
-  assert.equal(restored.toVerifierMap().get('a'), 'pem-a');
 
-  // 公钥字段类型不对仍然整体拒绝（那是格式错误，不是"还没配对"）
-  assert.throws(() => parseRoster(JSON.stringify({ v: 1, devices: [{ deviceId: 'c', publicKey: 5, addedAt: 0 }] })));
-  // 缺 deviceId 也不行
-  assert.throws(() => parseRoster(JSON.stringify({ v: 1, devices: [{ publicKey: 'x', addedAt: 0 }] })));
+  // 旧版本写过 publicKey / stamp：读的时候忽略，不报错
+  const legacy = parseRoster(
+    JSON.stringify({
+      v: 1,
+      devices: [{ deviceId: 'c', publicKey: 'old-key', addedAt: 1 }],
+      stamp: { v: 1, managementPublicKey: 'x', signature: 'y', at: 1 },
+    }),
+  );
+  assert.deepEqual(legacy.list().map((record) => record.deviceId), ['c']);
+
+  // 缺 deviceId / addedAt 仍然整体拒绝（那是格式错误，不是"还没配对"）
+  assert.throws(() => parseRoster(JSON.stringify({ v: 1, devices: [{ addedAt: 0 }] })));
+  assert.throws(() => parseRoster(JSON.stringify({ v: 1, devices: [{ deviceId: 'c' }] })));
 });
 
 test('黑名单：永久禁用的设备不算活跃，可解除，且重复禁用是幂等的', () => {
   const roster = new DeviceRosterList([
-    { deviceId: 'a', publicKey: 'pa', addedAt: 1 },
-    { deviceId: 'b', publicKey: 'pb', addedAt: 1 },
+    { deviceId: 'a', addedAt: 1 },
+    { deviceId: 'b', addedAt: 1 },
   ]);
 
   assert.deepEqual(roster.activeIds().sort(), ['a', 'b']);
@@ -110,8 +112,8 @@ test('黑名单：永久禁用的设备不算活跃，可解除，且重复禁�
 
 test('黑名单：临时吊销（revokedAt）与永久禁用（bannedAt）是两件事，可以并存', () => {
   const roster = new DeviceRosterList([
-    { deviceId: 'a', publicKey: 'pa', addedAt: 1 },
-    { deviceId: 'b', publicKey: 'pb', addedAt: 1 },
+    { deviceId: 'a', addedAt: 1 },
+    { deviceId: 'b', addedAt: 1 },
   ]);
   roster.revoke('b', 50);
   roster.ban('b', 60);

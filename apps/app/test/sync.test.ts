@@ -312,11 +312,11 @@ test('同步：世界书与条目也会跟着过去（两设备读到的书完�
 });
 
 /**
- * 公钥互换：每台设备把自己的签名公钥发布在设备清单里，对端读到并存进名单。
+ * 设备名单互换：每台设备把"我在组内"发布在设备清单里，对端读到并存进名单。
  *
- * 这是"确知这段是谁写的"的前提——拿不到对方公钥，强模式就只能拒绝（有测试盯着这条）。
+ * 信任根是共享口令（加入证明）与 keyring 包钥；名单只负责 GC 判据与吊销。
  */
-test('同步：两台设备互换签名公钥（各自名单里都能看到对方的公钥）', async () => {
+test('同步：两台设备互换设备名单（各自名单里都能看到对方）', async () => {
   const backend = createMemoryBackend();
   const alice = await createDevice('alice', backend, 'shared-secret');
   const bob = await createDevice('bob', backend, 'shared-secret');
@@ -324,20 +324,21 @@ test('同步：两台设备互换签名公钥（各自名单里都能看到对�
   await alice.repository.characters.save({ name: '星野' });
   await alice.sync();
   await bob.sync();
-  // 第二轮：双方各自发布一次带公钥的清单，再从对方那里读回来
+  // 第二轮：双方各自发布一次清单，再从对方那里读回来
   await alice.sync();
   await bob.sync();
   await alice.sync();
 
   const aliceSees = await alice.service.devices();
   const bobSees = await bob.service.devices();
-  const bobInAlice = aliceSees.find((device: { deviceId: string }) => device.deviceId === 'bob');
-  const aliceInBob = bobSees.find((device: { deviceId: string }) => device.deviceId === 'alice');
-  assert.ok(bobInAlice !== undefined, "alice 的名单里应当有 bob");
-  assert.ok(aliceInBob !== undefined, "bob 的名单里应当有 alice");
-  assert.equal(bobInAlice.publicKey.length > 0, true, "alice 应当收到 bob 的公钥");
-  assert.equal(aliceInBob.publicKey.length > 0, true, "bob 应当收到 alice 的公钥");
-  assert.notEqual(bobInAlice.publicKey, aliceInBob.publicKey, "两台设备的公钥必须不同");
+  assert.ok(
+    aliceSees.some((device) => device.deviceId === 'bob'),
+    'alice 的名单里应当有 bob',
+  );
+  assert.ok(
+    bobSees.some((device) => device.deviceId === 'alice'),
+    'bob 的名单里应当有 alice',
+  );
 });
 
 /**

@@ -83,13 +83,12 @@ test('加入流程：验过密码证明就把当前数据钥匙包给新设备�
   const created = await createKeyring(keyWrap, [{ deviceId: 'host', publicKey: host.publicKey }], 1);
   await backend.put(KEYRING_FILE, new TextEncoder().encode(JSON.stringify(created.keyring)));
 
-  // 新设备：写加入请求（带两把公钥 + 密码证明）
+  // 新设备：写加入请求（带协商公钥 + 密码证明）
   const joiner = await keyWrap.generateAgreementKeys();
   const joinDevice = deviceStore();
   await publishJoinRequest({
     backend,
     deviceId: 'joiner',
-    publicKey: 'pub-joiner',
     agreementKey: joiner.publicKey,
     joinProof: proofPort(secret),
   });
@@ -138,7 +137,6 @@ test('加入流程：黑名单优先——被永久禁用的设备即使知道�
   await publishJoinRequest({
     backend,
     deviceId: 'banned-device',
-    publicKey: 'pub-banned',
     agreementKey: bannedKeys.publicKey,
     joinProof: proofPort(secret),
   });
@@ -172,7 +170,6 @@ test('加入流程：口令不对的请求不认（证明解不开）', async ()
   await publishJoinRequest({
     backend,
     deviceId: 'stranger',
-    publicKey: 'pub-stranger',
     agreementKey: other.publicKey,
     joinProof: proofPort('someone-elses-secret'),
   });
@@ -203,7 +200,6 @@ test('加入流程：处理过的请求记在本机（避免重复包钥匙）',
   await publishJoinRequest({
     backend,
     deviceId: 'joiner',
-    publicKey: 'pub-joiner',
     agreementKey: joiner.publicKey,
     joinProof: proofPort('shared-secret'),
     now: () => 5000,

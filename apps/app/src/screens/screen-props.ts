@@ -62,12 +62,8 @@ export interface SyncAdmin {
   devices(): Promise<SyncDevice[]>;
   /** 吊销某台设备：它离线期间的新数据将不再被保留（界面必须先警告）。 */
   revoke(deviceId: string): Promise<boolean>;
-  /** 永久禁用（黑名单）：拒绝它的签名；要连读也断还得换代。 */
+  /** 永久禁用（黑名单）：不认它的加入请求；要连读也断还得换代。 */
   ban(deviceId: string): Promise<boolean>;
-  /** 生成恢复密钥（公钥发布到共享目录；私钥只返回这一次，请离线保存）。 */
-  createRecovery(): Promise<{ publicKey: string; privateKey: string }>;
-  /** 忘记同步口令时：用离线保存的恢复私钥签一份证明去加入（仍在等待接纳时 ok = false）。 */
-  joinWithRecovery(privateKey: string): Promise<{ ok: boolean; reason?: string }>;
   /**
    * 回收分析（默认只分析、不动手）。
    *
@@ -97,14 +93,6 @@ export interface SyncAdmin {
     | { ok: true; name: string; total: number; applied: number; duplicates: number }
     | { ok: false; error: string }
   >;
-  /**
-   * 名单盖章（管理密钥背书）：看当前信任状态、用恢复密钥给本机名单盖章。
-   * 盖章保护的是**本机名单文件**（增删设备、改吊销状态都能被发现）。
-   */
-  roster?: {
-    status(): Promise<string>;
-    stamp(privateKeyHex: string): Promise<{ ok: true; message: string } | { ok: false; error: string }>;
-  };
 }
 
 export interface SyncDevice {
@@ -119,8 +107,6 @@ export interface SyncDevice {
   banned: boolean;
   /** 加入时间（毫秒）。 */
   addedAt: number;
-  /** 本机签名公钥（十六进制）；空串 = 还没公布（老版本或弱模式）。 */
-  publicKey: string;
 }
 
 export interface OpLogAdmin {

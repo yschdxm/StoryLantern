@@ -10,7 +10,7 @@ import {
 } from '../src/join.ts';
 
 /**
- * 加入请求：**密码是门，签名是身份，黑名单优先**。
+ * 加入请求：**密码是门，黑名单优先**。
  *
  * 用假端口跑（真密码学在 app 侧接到"密码派生的钥匙"上），把三条规则钉住：
  *  1. 只有知道口令的（能解开证明的）请求才算数；
@@ -38,7 +38,7 @@ function fakePort(secret: string): JoinProofPort {
   };
 }
 
-const device = { deviceId: 'bob', publicKey: 'pub-bob', agreementKey: 'agree-bob' };
+const device = { deviceId: 'bob', agreementKey: 'agree-bob' };
 
 test('加入路径：明文区、按设备命名', () => {
   assert.equal(joinPath('bob'), 'join/bob.json');
@@ -59,10 +59,10 @@ test('加入请求：知道口令就能通过，不知道的口令解不开', as
   assert.match(rejected.reason ?? '', /解不开|与请求内容不符/);
 });
 
-test('加入请求：证明与内容绑定——把证明搬到别的公钥上必须失败', async () => {
+test('加入请求：证明与内容绑定——把证明搬到别的协商公钥上必须失败', async () => {
   const port = fakePort('shared-secret');
   const request = await createJoinRequest(port, { ...device, at: 1000 });
-  const tampered = { ...request, publicKey: 'pub-attacker' };
+  const tampered = { ...request, agreementKey: 'agree-attacker' };
   const outcome = await verifyJoinRequest(port, tampered, { revoked: new Set() });
   assert.equal(outcome.ok, false);
   assert.match(outcome.reason ?? '', /与请求内容不符/);
@@ -86,19 +86,22 @@ test('重复的旧请求不重复处理（幂等），新请求照常处理', as
   assert.equal((await verifyJoinRequest(port, newer, { revoked: new Set(), knownSince })).ok, true);
 });
 
-test('加入请求的读写：缺字段要说清缺哪个', async () => {
+test('加入请求的读写：缺字段要说清缺哪个；旧文件里的已删除字段被忽略', async () => {
   const port = fakePort('shared-secret');
   const request = await createJoinRequest(port, { ...device, at: 1000 });
   assert.deepEqual(parseJoinRequest(serializeJoinRequest(request)), request);
   assert.throws(() => parseJoinRequest('{}'), /版本不认识/);
-  assert.throws(() => parseJoinRequest('{"v":1,"deviceId":"a"}'), /缺少 publicKey/);
+  assert.throws(() => parseJoinRequest('{"v":1,"deviceId":"a"}'), /缺少 agreementKey/);
   assert.throws(() => parseJoinRequest('不是 json'), /不是合法 JSON/);
+
+  const legacy = parseJoinRequest(
+    JSON.stringify({ v: 1, deviceId: 'bob', publicKey: 'old-key', agreementKey: 'agree-bob', proof: 'x', at: 1 }),
+  );
+  assert.equal(legacy.agreementKey, 'agree-bob');
+  assert.equal('publicKey' in legacy, false);
 });
 
 test('不给协商公钥就等于"别人没法把钥匙包给你"：直接拒绝生成', async () => {
   const port = fakePort('shared-secret');
   await assert.rejects(() => createJoinRequest(port, { ...device, agreementKey: '' }), /协商公钥/);
-  // 空签名公钥是**合法**的：WebView 不支持 Ed25519 的设备处于弱签名模式，没有公钥可带
-  const weak = await createJoinRequest(port, { ...device, publicKey: '' });
-  assert.equal(weak.publicKey, '');
 });

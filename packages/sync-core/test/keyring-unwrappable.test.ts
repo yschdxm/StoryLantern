@@ -51,9 +51,9 @@ test('建库：包不了的对端被跳过并列出来，别的对端照常包�
   };
   const store = new Map<string, Uint8Array>();
   const roster = new DeviceRosterList([
-    { deviceId: 'me', publicKey: generateDeviceKeyPair('me').publicKeyPem, addedAt: 1 },
-    { deviceId: 'new-peer', publicKey: generateDeviceKeyPair('new-peer').publicKeyPem, addedAt: 2 },
-    { deviceId: 'old-peer', publicKey: generateDeviceKeyPair('old-peer').publicKeyPem, addedAt: 3 },
+    { deviceId: 'me', addedAt: 1 },
+    { deviceId: 'new-peer', addedAt: 2 },
+    { deviceId: 'old-peer', addedAt: 3 },
   ]);
 
   const result = await ensureKeyring({
@@ -81,8 +81,8 @@ test('对照：端口没实现 canWrapFor 时视为"都能包"，一个都不许
   const peer = await keyWrap.generateAgreementKeys();
   const store = new Map<string, Uint8Array>();
   const roster = new DeviceRosterList([
-    { deviceId: 'me', publicKey: generateDeviceKeyPair('me').publicKeyPem, addedAt: 1 },
-    { deviceId: 'peer', publicKey: generateDeviceKeyPair('peer').publicKeyPem, addedAt: 2 },
+    { deviceId: 'me', addedAt: 1 },
+    { deviceId: 'peer', addedAt: 2 },
   ]);
 
   const result = await ensureKeyring({

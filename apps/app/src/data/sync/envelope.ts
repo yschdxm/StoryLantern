@@ -1,5 +1,5 @@
 import type { KeyWrapPort } from '../../../../../packages/sync-core/src/keyring.ts';
-import { toHex } from '../../../../../packages/sync-core/src/signing.ts';
+import { toHex } from '../../../../../packages/oplog/src/bytes.ts';
 import type { DeviceStore } from '../op-ports.ts';
 
 /**
