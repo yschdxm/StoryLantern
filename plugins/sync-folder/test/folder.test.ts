@@ -8,12 +8,8 @@ import { Materializer } from '../../../packages/oplog/src/materialize.ts';
 import { messageAppend, type Op } from '../../../packages/oplog/src/op.ts';
 import {
   createAesGcmCipher,
-  createDeviceSigner,
-  createRosterVerifier,
-  generateDeviceKeyPair,
   nodeDigest,
   nodeGzip,
-  type DeviceKeyPair,
 } from '../../../packages/oplog/src/node-adapters.ts';
 import type { CryptoPorts } from '../../../packages/oplog/src/ports.ts';
 import { SyncEngine } from '../../../packages/sync-core/src/engine.ts';
@@ -26,13 +22,11 @@ interface DeviceHarness {
   materializer: Materializer;
 }
 
-function harness(root: string, deviceId: string, keys: DeviceKeyPair, roster: DeviceRosterList, verifierKeys: ReadonlyMap<string, string>, blindKey: Uint8Array): DeviceHarness {
+function harness(root: string, deviceId: string, roster: DeviceRosterList, blindKey: Uint8Array): DeviceHarness {
   const cipher = createAesGcmCipher({ key: new Uint8Array(32).fill(9) });
   const ports: CryptoPorts = {
     digest: nodeDigest,
     compressor: nodeGzip,
-    signer: createDeviceSigner(keys),
-    verifier: createRosterVerifier(verifierKeys),
     cipher,
   };
   const clock = new HlcClock({ now: () => 1_700_000_000_000 });
@@ -47,17 +41,14 @@ test('文件夹后端：两个设备共用同一目录（网盘/NAS 场景）即
   const root = await mkdtemp(path.join(tmpdir(), 'storylantern-sync-'));
   try {
     const blindKey = new Uint8Array(32).fill(7);
-    const keysA = generateDeviceKeyPair('device-a');
-    const keysB = generateDeviceKeyPair('device-b');
     const records: DeviceRecord[] = [
       { deviceId: 'device-a', addedAt: 1 },
       { deviceId: 'device-b', addedAt: 2 },
     ];
     const roster = new DeviceRosterList(records);
-    const verifierKeys = new Map([['device-a', keysA.publicKeyPem], ['device-b', keysB.publicKeyPem]]);
 
-    const a = harness(root, 'device-a', keysA, roster, verifierKeys, blindKey);
-    const b = harness(root, 'device-b', keysB, roster, verifierKeys, blindKey);
+    const a = harness(root, 'device-a', roster, blindKey);
+    const b = harness(root, 'device-b', roster, blindKey);
 
     const opA: Op = messageAppend(
       { deviceId: 'device-a', clock: new HlcClock({ now: () => 1_700_000_000_000 }) },

@@ -2,10 +2,10 @@ import { concatBytes, fromBase64, fromUtf8, toBase64, toHex, utf8 } from '../../
 import type { CryptoPorts } from '../../oplog/src/ports.ts';
 
 /**
- * 统一信封：manifest 与 snapshot 用的是同一套"压缩 + 可选加密 + 可选签名"。
+ * 统一信封：manifest、snapshot、资产索引共用同一套"压缩 + 可选加密"。
  *
- * 为什么必须签名：这两类文件都是**哑存储可以任意改写**的元数据（不是 op 本身），
- * 读取方一旦信任伪造内容，物化状态就会被污染。签名让"只有名单内设备能写"成为可验证事实。
+ * **不提供签名**（2026-10 已整体删除）：内容完整性由 AES-GCM（加密时）与内容哈希保证；
+ * 信任模型见同步文档——能解开共享目录里的密文就说明在组内。
  *
  * 为什么加密要带 AAD：把密文从 A 会话搬到 B 会话（或从 manifest 搬到 snapshot）后解密必须失败，
  * 否则存储方可以做一个"张冠李戴"攻击。
@@ -20,6 +20,7 @@ import type { CryptoPorts } from '../../oplog/src/ports.ts';
  * 现状 1.00× / 639 ms，B′（先 gzip→再 seal→二进制拼帧）10.01× / 51 ms。
  *
  * 兼容：**双读**（读到 v2 就按 v2 解，读到 v1 就按 v1 解，靠第一行是不是 `{"v":2,...}` 判断）。
+ * 旧文件里可能残留已删除的 `sig` 字段：解析时天然忽略，不影响读取。
  * 但旧构建读不了 v2 —— 与段格式同一条注意事项：加新设备前先升级。
  */
 export interface Envelope {
@@ -31,7 +32,6 @@ export interface Envelope {
   nonce?: string;
   /** v1 专用：base64 的密文。 */
   ct?: string;
-  sig?: string;
   /** v2 专用：gzip 的算法名（仅用于自描述与排查）。 */
   compression?: string;
   /** v2 专用：密文帧里 nonce 的字节数。 */
@@ -48,8 +48,6 @@ export interface EncodeEnvelopeOptions {
   encrypt?: boolean;
   /** 加密的附加认证数据。 */
   aad: string;
-  /** 返回要签名的规范元组；不提供则不签名。 */
-  sign?: (contentHash: string) => string;
   /** 写哪种格式：**默认 2**；1 只用于"造老文件验证双读"与迁移期。 */
   format?: 1 | 2;
 }
@@ -58,16 +56,11 @@ export async function encodeEnvelope(inner: string, options: EncodeEnvelopeOptio
   const { ports } = options;
   const format = options.format ?? 2;
   const cipher = options.encrypt === true && ports.cipher !== undefined ? ports.cipher : undefined;
-  const contentHash = toHex(await ports.digest.sha256(utf8(inner)));
 
   // ---- v2：先 gzip、再加密、二进制拼帧（不再套 base64） ----
   if (format >= 2) {
     const header: Envelope = { v: 2, cipher: cipher?.algorithm ?? 'none', compression: ports.compressor.algorithm };
     if (cipher) header.nonceLen = ENVELOPE_V2_NONCE_BYTES;
-    // 签名在**明文头部**里：它是公开的，被改只会让验签失败（伪造不了），这也与 v1 的暴露面一致。
-    if (options.sign && ports.signer) {
-      header.sig = toBase64(await ports.signer.sign(utf8(options.sign(contentHash))));
-    }
 
     const compressed = await ports.compressor.compress(utf8(inner));
     let frame: Uint8Array;
@@ -89,10 +82,6 @@ export async function encodeEnvelope(inner: string, options: EncodeEnvelopeOptio
     envelope.ct = toBase64(sealed.ciphertext);
   } else {
     envelope.payload = inner;
-  }
-
-  if (options.sign && ports.signer) {
-    envelope.sig = toBase64(await ports.signer.sign(utf8(options.sign(contentHash))));
   }
 
   return ports.compressor.compress(utf8(JSON.stringify(envelope)));
@@ -178,28 +167,5 @@ async function decompressOrThrow(ports: CryptoPorts, data: Uint8Array): Promise<
     return await ports.compressor.decompress(data);
   } catch (error) {
     throw new Error(`信封解压失败：${error instanceof Error ? error.message : String(error)}`);
-  }
-}
-
-export interface VerifyEnvelopeOptions {
-  ports: CryptoPorts;
-  contentHash: string;
-  /** 签名覆盖的规范元组（由调用方按各自的语义拼）。 */
-  payload: string;
-  signerDeviceId: string;
-  /** 默认 true：没有签名即拒绝。 */
-  requireSignature?: boolean;
-}
-
-export async function verifyEnvelope(envelope: Envelope, options: VerifyEnvelopeOptions): Promise<void> {
-  const { ports } = options;
-  if (!ports.verifier) return;
-  if (!envelope.sig) {
-    if (options.requireSignature !== false) throw new Error('内容缺少签名，拒绝接受');
-    return;
-  }
-  const ok = await ports.verifier.verify(options.signerDeviceId, utf8(options.payload), fromBase64(envelope.sig));
-  if (!ok) {
-    throw new Error(`签名无效（设备 ${options.signerDeviceId} 不在名单内或内容被篡改）`);
   }
 }

@@ -1,17 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fromHex, toHex } from '../src/bytes.ts';
+import { crc32Hex } from '../src/crc32.ts';
 import { HlcClock } from '../src/hlc.ts';
 import { messageAppend, type Op } from '../src/op.ts';
-import {
-  createAesGcmCipher,
-  createDeviceSigner,
-  createRosterVerifier,
-  generateDeviceKeyPair,
-  nodeDigest,
-  nodeGzip,
-  type DeviceKeyPair,
-} from '../src/node-adapters.ts';
+import { createAesGcmCipher, nodeDigest, nodeGzip } from '../src/node-adapters.ts';
 import type { CryptoPorts, SegmentCipher } from '../src/ports.ts';
 import {
   packSegment,
@@ -25,23 +18,10 @@ import {
   type SegmentErrorCode,
 } from '../src/segment.ts';
 
-interface TestDevice {
-  keys: DeviceKeyPair;
-  roster: Map<string, string>;
-}
-
-function makeDevice(deviceId: string, roster: Map<string, string>): TestDevice {
-  const keys = generateDeviceKeyPair(deviceId);
-  roster.set(deviceId, keys.publicKeyPem);
-  return { keys, roster };
-}
-
-function portsFor(device: TestDevice, cipher?: SegmentCipher): CryptoPorts {
+function portsFor(cipher?: SegmentCipher): CryptoPorts {
   return {
     digest: nodeDigest,
     compressor: nodeGzip,
-    signer: createDeviceSigner(device.keys),
-    verifier: createRosterVerifier(device.roster),
     ...(cipher === undefined ? {} : { cipher }),
   };
 }
@@ -70,9 +50,7 @@ async function expectCode(promise: Promise<unknown>, code: SegmentErrorCode): Pr
 }
 
 test('打包 → 解包：内容一致、文件名含序号与字节摘要', async () => {
-  const roster = new Map<string, string>();
-  const device = makeDevice('01DEV-A', roster);
-  const ports = portsFor(device);
+  const ports = portsFor();
   const ops = makeOps(3, '01DEV-A');
 
   const packed = await packSegment({ ops, deviceId: '01DEV-A', seq: 7, blindSessionId: 'a'.repeat(32), ports });
@@ -89,9 +67,7 @@ test('打包 → 解包：内容一致、文件名含序号与字节摘要', asy
 });
 
 test('不解压即可读到 trailer 与设备身份（廉价预检）', async () => {
-  const roster = new Map<string, string>();
-  const device = makeDevice('01DEV-A', roster);
-  const ports = portsFor(device);
+  const ports = portsFor();
   const packed = await packSegment({ ops: makeOps(2, '01DEV-A'), deviceId: '01DEV-A', seq: 1, blindSessionId: 'b'.repeat(32), ports });
 
   const peeked = peekSegment(packed.bytes);
@@ -101,9 +77,7 @@ test('不解压即可读到 trailer 与设备身份（廉价预检）', async ()
 });
 
 test('半上传 / 传输损坏：crc 不符即整体拒绝', async () => {
-  const roster = new Map<string, string>();
-  const device = makeDevice('01DEV-A', roster);
-  const ports = portsFor(device);
+  const ports = portsFor();
   const packed = await packSegment({ ops: makeOps(5, '01DEV-A'), deviceId: '01DEV-A', seq: 2, blindSessionId: 'c'.repeat(32), ports });
 
   const corrupted = Uint8Array.from(packed.bytes);
@@ -118,9 +92,7 @@ test('半上传 / 传输损坏：crc 不符即整体拒绝', async () => {
 });
 
 test('张冠李戴：文件名摘要与实收字节不符时拒绝', async () => {
-  const roster = new Map<string, string>();
-  const device = makeDevice('01DEV-A', roster);
-  const ports = portsFor(device);
+  const ports = portsFor();
   const packed = await packSegment({ ops: makeOps(2, '01DEV-A'), deviceId: '01DEV-A', seq: 3, blindSessionId: 'd'.repeat(32), ports });
 
   await expectCode(
@@ -129,59 +101,46 @@ test('张冠李戴：文件名摘要与实收字节不符时拒绝', async () =>
   );
 });
 
-test('名单外设备 / 无签名的段一律拒绝（哑存储上可信度的唯一来源）', async () => {
-  const roster = new Map<string, string>();
-  const device = makeDevice('01DEV-A', roster);
-  const attackerPorts: CryptoPorts = { digest: nodeDigest, compressor: nodeGzip };
-  const ops = makeOps(2, '01DEV-A');
+test('段内容被替换：contentHash 与实际明文不符即拒绝', async () => {
+  const ports = portsFor();
+  const packed = await packSegment({ ops: makeOps(2, '01DEV-A'), deviceId: '01DEV-A', seq: 6, blindSessionId: 'f'.repeat(32), ports });
 
-  // 攻击者能重算 crc/哈希/文件名，但没有私钥
-  const forged = await packSegment({ ops, deviceId: '01DEV-A', seq: 4, blindSessionId: 'e'.repeat(32), ports: attackerPorts });
-  await expectCode(
-    unpackSegment(forged.bytes, { ports: portsFor(device), fileName: forged.name }),
-    'signature',
-  );
-
-  // 合法签名的段，但验证方名单里没有这台设备
-  const packed = await packSegment({ ops, deviceId: '01DEV-A', seq: 5, blindSessionId: 'e'.repeat(32), ports: portsFor(device) });
-  const emptyRoster: CryptoPorts = {
-    digest: nodeDigest,
-    compressor: nodeGzip,
-    verifier: createRosterVerifier(new Map()),
-  };
-  await expectCode(unpackSegment(packed.bytes, { ports: emptyRoster, fileName: packed.name }), 'signature');
+  // 手动拆 gzip 明文 → 改正文 → 重新压缩，并同步更新 crc32/blobHash/文件名；但 contentHash 保持旧值
+  const newlineAt = packed.bytes.length - 1;
+  let trailerStart = newlineAt;
+  while (trailerStart >= 0 && packed.bytes[trailerStart] !== 0x0a) trailerStart -= 1;
+  const gzBlob = packed.bytes.subarray(0, trailerStart);
+  const trailerText = new TextDecoder().decode(packed.bytes.subarray(trailerStart + 1));
+  const trailer = JSON.parse(trailerText) as { crc32: string; blobHash: string; contentHash: string };
+  const plain = await nodeGzip.decompress(gzBlob);
+  const text = new TextDecoder().decode(plain).replace('旅人推开酒馆的门', '被篡改的内容');
+  const tamperedGz = await nodeGzip.compress(new TextEncoder().encode(text));
+  const blobHash = toHex(await nodeDigest.sha256(tamperedGz));
+  const forgedTrailer = JSON.stringify({ ...trailer, crc32: crc32Hex(tamperedGz), blobHash });
+  const forged = new Uint8Array([...tamperedGz, 0x0a, ...new TextEncoder().encode(forgedTrailer)]);
+  await expectCode(unpackSegment(forged, { ports, fileName: segmentFileName(6, blobHash) }), 'hash-mismatch');
 });
 
-test('段内容被替换：攻击者只能做到"自洽"，无法伪签名', async () => {
-  const roster = new Map<string, string>();
-  const device = makeDevice('01DEV-A', roster);
-  const ports = portsFor(device);
+test('兼容：旧段 trailer 里残留的 sig 字段被忽略，内容照常读出', async () => {
+  const ports = portsFor();
   const ops = makeOps(2, '01DEV-A');
+  const packed = await packSegment({ ops, deviceId: '01DEV-A', seq: 10, blindSessionId: '3'.repeat(32), ports });
 
-  const legit = await packSegment({ ops, deviceId: '01DEV-A', seq: 6, blindSessionId: 'f'.repeat(32), ports });
-
-  // 攻击者解压 → 改正文 → 重新打包（crc/哈希/文件名都能算对），但没有私钥
-  const tamperedOps = ops.map((op) => ({
-    ...op,
-    payload: { ...(op.payload as Record<string, unknown>), content: '被篡改的内容' },
-  }));
-  const forged = await packSegment({
-    ops: tamperedOps,
-    deviceId: '01DEV-A',
-    seq: 6,
-    blindSessionId: 'f'.repeat(32),
-    ports: { digest: nodeDigest, compressor: nodeGzip },
-  });
-
-  assert.notEqual(forged.blobHash, legit.blobHash);
-  await expectCode(unpackSegment(forged.bytes, { ports, fileName: forged.name }), 'signature');
+  let trailerStart = packed.bytes.length - 1;
+  while (trailerStart >= 0 && packed.bytes[trailerStart] !== 0x0a) trailerStart -= 1;
+  const trailer = JSON.parse(new TextDecoder().decode(packed.bytes.subarray(trailerStart + 1))) as Record<string, unknown>;
+  const legacy = new Uint8Array([
+    ...packed.bytes.subarray(0, trailerStart),
+    0x0a,
+    ...new TextEncoder().encode(JSON.stringify({ ...trailer, sig: 'b2xkLXNpZ25hdHVyZQ==' })),
+  ]);
+  const unpacked = await unpackSegment(legacy, { ports, fileName: packed.name });
+  assert.equal(unpacked.ops.length, 2, '旧文件的签名字段不影响读取');
 });
 
 test('端到端加密：正确密钥可读，错误密钥明确失败（绝不返回部分明文）', async () => {
-  const roster = new Map<string, string>();
-  const device = makeDevice('01DEV-A', roster);
   const cipher = createAesGcmCipher({ key: fromHex('a1'.repeat(32)) });
-  const ports = portsFor(device, cipher);
+  const ports = portsFor(cipher);
 
   const ops = makeOps(3, '01DEV-A');
   const packed = await packSegment({
@@ -202,16 +161,11 @@ test('端到端加密：正确密钥可读，错误密钥明确失败（绝不�
   assert.equal(unpacked.ops.length, 3);
 
   const wrongKey = createAesGcmCipher({ key: fromHex('b2'.repeat(32)) });
-  await expectCode(
-    unpackSegment(packed.bytes, { ports: portsFor(device, wrongKey), fileName: packed.name }),
-    'decrypt',
-  );
+  await expectCode(unpackSegment(packed.bytes, { ports: portsFor(wrongKey), fileName: packed.name }), 'decrypt');
 });
 
 test('段的体积有上界：压缩有效，且分段阈值可判定', async () => {
-  const roster = new Map<string, string>();
-  const device = makeDevice('01DEV-A', roster);
-  const ports = portsFor(device);
+  const ports = portsFor();
   const ops = makeOps(800, '01DEV-A');
 
   const rawBytes = new TextEncoder().encode(ops.map((op) => JSON.stringify(op)).join('\n'));

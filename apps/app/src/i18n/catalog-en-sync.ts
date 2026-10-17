@@ -109,7 +109,7 @@ export const enSync: AppMessages = {
   'settings.sync.saf.noteOff': 'When unticked, sync uses the path above (the app-private folder).',
   'sync.devices.ban': 'Ban permanently',
   'sync.devices.ban.title': 'Ban this device permanently?',
-  'sync.devices.ban.message': 'Device "{{name}}" will be banned: its signatures and join requests are refused, even with the sync password. To stop it from decrypting new content as well, rotate the data key (only remaining devices get the new one). Content it already holds cannot be recalled.',
+  'sync.devices.ban.message': 'Device "{{name}}" will be banned: its join requests are refused, even with the sync password. To stop it from decrypting new content as well, the data key is rotated immediately (only remaining devices get the new one). Content it already holds cannot be recalled.',
   'sync.devices.banned': 'banned',
   'sync.devices.bannedNote': 'Banned and the data key was rotated: it cannot get the new key, so it cannot read new content. Content it already holds cannot be recalled.',
   'sync.devices.banFailed': 'Nothing was written (maybe this device or the target is not in the roster).',

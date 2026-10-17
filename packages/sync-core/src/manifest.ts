@@ -1,6 +1,6 @@
 import { fromUtf8, toHex, utf8 } from '../../oplog/src/bytes.ts';
 import type { CryptoPorts } from '../../oplog/src/ports.ts';
-import { decodeEnvelope, encodeEnvelope, verifyEnvelope } from './envelope.ts';
+import { decodeEnvelope, encodeEnvelope } from './envelope.ts';
 import { manifestFileName } from './paths.ts';
 
 export interface SessionRef {
@@ -31,13 +31,6 @@ export interface Manifest {
   /** 本设备声明"我已并入 deviceId 的第几号段"，GC 判定依赖它。 */
   ack: Record<string, number>;
   /**
-   * 旧字段：更早的协议在设备清单里发布"签名公钥"。
-   *
-   * app 不再注入签名实现（真机 WebView 没有可用的非对称签名，信任模型改为
-   * "共享口令 + AES-GCM"），因此**不再写入**；读到旧清单时忽略即可。
-   */
-  publicKey?: string;
-  /**
    * 本机的 P-256 协商公钥（十六进制）：**收自己那份内容密钥**要用它。
    */
   agreementKey?: string;
@@ -56,11 +49,6 @@ export interface EncodeManifestOptions {
   format?: 1 | 2;
 }
 
-/** 签名覆盖的元组：绑定设备、序号与内容哈希。 */
-export function manifestSignaturePayload(manifest: Pick<Manifest, 'deviceId' | 'seq'>, contentHash: string): string {
-  return ['manifest', manifest.deviceId, String(manifest.seq), contentHash].join('|');
-}
-
 export async function encodeManifest(manifest: Manifest, options: EncodeManifestOptions): Promise<EncodedManifest> {
   const { ports } = options;
   const inner = JSON.stringify(manifest);
@@ -69,7 +57,6 @@ export async function encodeManifest(manifest: Manifest, options: EncodeManifest
     ports,
     encrypt: options.encrypt === true,
     aad: `manifest|${manifest.deviceId}`,
-    sign: (contentHash) => manifestSignaturePayload(manifest, contentHash),
     ...(options.format === undefined ? {} : { format: options.format }),
   });
 
@@ -81,16 +68,16 @@ export interface DecodeManifestOptions {
   ports: CryptoPorts;
   /** 只接受该设备的 manifest（同时用作加密 AAD）。 */
   expectDeviceId: string;
-  requireSignature?: boolean;
 }
 
 export async function decodeManifest(bytes: Uint8Array, options: DecodeManifestOptions): Promise<Manifest> {
   const { ports, expectDeviceId } = options;
-  const { inner, envelope, contentHash } = await decodeEnvelope(bytes, {
+  const { inner } = await decodeEnvelope(bytes, {
     ports,
     aad: `manifest|${expectDeviceId}`,
   });
 
+  // 旧清单里可能有已删除的 publicKey/sig 字段：JSON 解析天然忽略，不报错。
   const manifest = JSON.parse(inner) as Manifest;
   if (typeof manifest.deviceId !== 'string' || typeof manifest.seq !== 'number') {
     throw new Error('manifest 缺少 deviceId/seq');
@@ -98,14 +85,6 @@ export async function decodeManifest(bytes: Uint8Array, options: DecodeManifestO
   if (manifest.deviceId !== expectDeviceId) {
     throw new Error(`manifest 归属设备 ${manifest.deviceId} 与预期 ${expectDeviceId} 不符`);
   }
-
-  await verifyEnvelope(envelope, {
-    ports,
-    contentHash,
-    payload: manifestSignaturePayload(manifest, contentHash),
-    signerDeviceId: manifest.deviceId,
-    ...(options.requireSignature === undefined ? {} : { requireSignature: options.requireSignature }),
-  });
 
   manifest.sessions ??= {};
   manifest.ack ??= {};

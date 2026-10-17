@@ -1,6 +1,6 @@
 import { HlcClock } from '../../oplog/src/hlc.ts';
 import { Materializer } from '../../oplog/src/materialize.ts';
-import { createAesGcmCipher, createDeviceSigner, createRosterVerifier, generateDeviceKeyPair, nodeDigest, nodeGzip, type DeviceKeyPair } from '../../oplog/src/node-adapters.ts';
+import { createAesGcmCipher, nodeDigest, nodeGzip } from '../../oplog/src/node-adapters.ts';
 import type { Op } from '../../oplog/src/op.ts';
 import type { CryptoPorts } from '../../oplog/src/ports.ts';
 import { createMemoryBackend, type MemoryBackend, type MemoryBackendOptions } from '../../../plugins/sync-memory/src/index.ts';
@@ -9,7 +9,6 @@ import { DeviceRosterList, type DeviceRecord } from '../src/roster.ts';
 
 export interface Peer {
   deviceId: string;
-  keys: DeviceKeyPair;
   engine: SyncEngine;
   materializer: Materializer;
   clock: HlcClock;
@@ -47,27 +46,17 @@ export function createWorld(options: WorldOptions = {}): World {
   const cipher = createAesGcmCipher({ key: new Uint8Array(32).fill(9) });
   const backend = createMemoryBackend(options.backend ?? {});
 
-  const keysByDevice = new Map<string, DeviceKeyPair>();
-  const records: DeviceRecord[] = deviceIds.map((deviceId, index) => {
-    const keys = generateDeviceKeyPair(deviceId);
-    keysByDevice.set(deviceId, keys);
-    return { deviceId, addedAt: BASE_TIME + index };
-  });
+  const records: DeviceRecord[] = deviceIds.map((deviceId, index) => ({ deviceId, addedAt: BASE_TIME + index }));
   const roster = new DeviceRosterList(records);
-  // 协议层的可选签名端口只用于测试：用对称密钥模拟（app 不注入签名实现）。
-  const verifierKeys = new Map([...keysByDevice.entries()].map(([deviceId, keys]) => [deviceId, keys.publicKeyPem] as const));
 
   const peers = new Map<string, Peer>();
   for (const deviceId of deviceIds) {
-    const keys = keysByDevice.get(deviceId) as DeviceKeyPair;
     let wall = BASE_TIME + (options.clockOffsets?.[deviceId] ?? 0);
     const clock = new HlcClock({ now: () => wall });
 
     const ports: CryptoPorts = {
       digest: nodeDigest,
       compressor: nodeGzip,
-      signer: createDeviceSigner(keys),
-      verifier: createRosterVerifier(verifierKeys),
       cipher,
     };
 
@@ -86,7 +75,6 @@ export function createWorld(options: WorldOptions = {}): World {
 
     peers.set(deviceId, {
       deviceId,
-      keys,
       engine,
       materializer: new Materializer(),
       clock,

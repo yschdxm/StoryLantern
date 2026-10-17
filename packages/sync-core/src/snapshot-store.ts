@@ -1,7 +1,7 @@
 import { toHex } from '../../oplog/src/bytes.ts';
 import type { CryptoPorts } from '../../oplog/src/ports.ts';
 import { validateSessionSnapshot, type SessionSnapshot } from '../../oplog/src/snapshot.ts';
-import { decodeEnvelope, encodeEnvelope, verifyEnvelope } from './envelope.ts';
+import { decodeEnvelope, encodeEnvelope } from './envelope.ts';
 import { parseInnerJson } from './manifest.ts';
 import { snapshotPath } from './paths.ts';
 
@@ -9,14 +9,6 @@ export interface EncodedSnapshot {
   path: string;
   bytes: Uint8Array;
   hash: string;
-}
-
-/** 签名覆盖的元组：绑定设备、会话与生成时刻。 */
-export function snapshotSignaturePayload(
-  snapshot: Pick<SessionSnapshot, 'deviceId' | 'blindSessionId' | 'createdAt'>,
-  contentHash: string,
-): string {
-  return ['snapshot', snapshot.deviceId, snapshot.blindSessionId, String(snapshot.createdAt), contentHash].join('|');
 }
 
 export async function encodeSessionSnapshot(
@@ -29,7 +21,6 @@ export async function encodeSessionSnapshot(
     encrypt: options.encrypt === true,
     // AAD 绑定到会话：把密文搬到另一个会话目录后解密必然失败。
     aad: `snapshot|${snapshot.blindSessionId}`,
-    sign: (contentHash) => snapshotSignaturePayload(snapshot, contentHash),
     ...(options.format === undefined ? {} : { format: options.format }),
   });
   const hash = toHex(await options.ports.digest.sha256(bytes));
@@ -39,16 +30,16 @@ export async function encodeSessionSnapshot(
 export interface DecodeSnapshotOptions {
   ports: CryptoPorts;
   expect: { blindSessionId: string; deviceId?: string };
-  requireSignature?: boolean;
 }
 
 export async function decodeSessionSnapshot(bytes: Uint8Array, options: DecodeSnapshotOptions): Promise<SessionSnapshot> {
   const { ports, expect } = options;
-  const { inner, envelope, contentHash } = await decodeEnvelope(bytes, {
+  const { inner } = await decodeEnvelope(bytes, {
     ports,
     aad: `snapshot|${expect.blindSessionId}`,
   });
 
+  // 旧快照里可能有已删除的签名字段：validateSessionSnapshot 不看未知字段，直接忽略。
   const snapshot = validateSessionSnapshot(parseInnerJson(inner, 'snapshot'));
   if (snapshot.blindSessionId !== expect.blindSessionId) {
     throw new Error(`快照归属会话 ${snapshot.blindSessionId} 与预期 ${expect.blindSessionId} 不符`);
@@ -56,14 +47,6 @@ export async function decodeSessionSnapshot(bytes: Uint8Array, options: DecodeSn
   if (expect.deviceId !== undefined && snapshot.deviceId !== expect.deviceId) {
     throw new Error(`快照归属设备 ${snapshot.deviceId} 与预期 ${expect.deviceId} 不符`);
   }
-
-  await verifyEnvelope(envelope, {
-    ports,
-    contentHash,
-    payload: snapshotSignaturePayload(snapshot, contentHash),
-    signerDeviceId: snapshot.deviceId,
-    ...(options.requireSignature === undefined ? {} : { requireSignature: options.requireSignature }),
-  });
 
   return snapshot;
 }

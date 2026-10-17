@@ -4,7 +4,7 @@
  * 设计约束（见 DEVELOPMENT.md §8）：
  *  - 远端不存在"共享可变状态"：每台设备只写自己的命名空间，且文件名含内容摘要；
  *  - 发现只读 manifest，**从不遍历 logs/ 目录树**；
- *  - 段自带校验与签名，任何一步失败都整体拒绝；
+ *  - 段自带校验，任何一步失败都整体拒绝；
  *  - 远端回滚/缺段只告警，绝不回退本地；
  *  - GC 默认保守：名单内全部活跃设备确认 + 宽限期 + 先进 trash。
  */
@@ -85,13 +85,11 @@ export {
 export {
   decodeEnvelope,
   encodeEnvelope,
-  verifyEnvelope,
   type DecodedEnvelope,
   type Envelope,
   type EncodeEnvelopeOptions,
-  type VerifyEnvelopeOptions,
 } from './envelope.ts';
-export { decodeSessionSnapshot, encodeSessionSnapshot, snapshotSignaturePayload } from './snapshot-store.ts';
+export { decodeSessionSnapshot, encodeSessionSnapshot } from './snapshot-store.ts';
 export {
   ASSET_ALG_AES_GCM,
   ASSET_ALG_NONE,
@@ -104,7 +102,6 @@ export {
   assetIndexAad,
   assetIndexFileName,
   assetIndexPath,
-  assetIndexSignaturePayload,
   decodeAssetIndex,
   encodeAssetIndex,
   isSafeAssetIndexDeviceId,

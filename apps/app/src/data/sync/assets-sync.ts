@@ -101,7 +101,7 @@ async function sha256Hex(ports: CryptoPorts, bytes: Uint8Array): Promise<string>
  * 发现远端所有设备的最新索引（同设备只看最大 seq）。读失败的只告警，不影响其它设备。
  *
  * 索引**不签名**（与全仓一致的信任模型：共享口令 + AES-GCM，内容哈希兜底）。
- * 旧版本可能留下带签名的索引：没有验签端口时按无签名读取（忽略 sig 字段），不会因此失联。
+ * 旧版本可能留下带签名的索引：读取时忽略 sig 字段，不会因此失联。
  */
 async function readLatestIndexes(input: AssetSyncInput, warnings: string[]): Promise<Map<string, PeerIndex>> {
   const latest = new Map<string, { seq: number; path: string; hash8: string }>();
@@ -130,7 +130,7 @@ async function readLatestIndexes(input: AssetSyncInput, warnings: string[]): Pro
       if (!(await sha256Hex(input.ports, bytes)).startsWith(info.hash8)) {
         throw new Error(`索引文件名里的摘要与内容不符（${info.hash8}）`);
       }
-      const decoded = await decodeAssetIndex(bytes, { ports: input.ports, deviceId, seq: info.seq });
+      const decoded = await decodeAssetIndex(bytes, { ports: input.ports, deviceId });
       indexes.set(deviceId, {
         deviceId,
         seq: info.seq,

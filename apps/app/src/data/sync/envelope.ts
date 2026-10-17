@@ -99,7 +99,7 @@ export function createWebCryptoKeyWrap(): KeyWrapPort {
       const pair = await generatePair();
       const publicKey = new Uint8Array(await subtle.exportKey('raw', pair.publicKey));
       const privateKey = new Uint8Array(await subtle.exportKey('pkcs8', pair.privateKey));
-      // 公钥要以十六进制发布；私钥留给本机存（与签名私钥一样的取舍：明文存本地，写进文档）
+      // 公钥要以十六进制发布；私钥留给本机存（明文存本地，写进文档）
       return { publicKey: toHex(publicKey), privateKey: toHex(privateKey) };
     },
 
@@ -187,7 +187,7 @@ export const AGREEMENT_KEY_KEY = 'sync.agree.key.v1';
  * 取（或第一次生成）本机的协商密钥对。
  *
  * 公私钥一起存：解包时 HKDF 的 salt 绑了双方公钥，而浏览器里**不能**从私钥导出公钥。
- * 与签名私钥一样是明文存本地（类似 0600 的 SSH 私钥），这条取舍写进文档，不假装更安全。
+ * 私钥是明文存本地（类似 0600 的 SSH 私钥），这条取舍写进文档，不假装更安全。
  *
  * **只认 P-256**：存着旧曲线（X25519）的密钥时一律重新生成 —— 旧曲线实现已删除，
  * 留着它只会让本机永远解不开钥匙包（真机上表现为同步反复重跑）。即使本机"有能力"用 X25519 也不复用，

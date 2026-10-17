@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { HlcClock } from '../src/hlc.ts';
 import { encodeOp, messageAppend } from '../src/op.ts';
-import { nodeDigest, nodeGzip, createAesGcmCipher, createDeviceSigner, generateDeviceKeyPair, createRosterVerifier } from '../src/node-adapters.ts';
+import { nodeDigest, nodeGzip, createAesGcmCipher } from '../src/node-adapters.ts';
 import { packSegment, unpackSegment, peekSegment, SEGMENT_FORMAT_VERSION } from '../src/segment.ts';
 
 /**
@@ -70,25 +70,9 @@ test('v1 老段仍然读得出来（迁移期必须双读）', async () => {
   assert.equal((unpacked.ops[7]?.payload as { content: string }).content, (ops[7]?.payload as { content: string }).content);
 });
 
-test('v2：没有密钥时拒绝（先解密后验签），且错误是"解密"这一类', async () => {
+test('v2：没有密钥时拒绝（先解密后校验），且错误是"解密"这一类', async () => {
   const ops = makeOps(5);
   const packed = await packSegment({ ops, deviceId: 'device-v2', seq: 1, blindSessionId: 'b'.repeat(32), ports, encrypt: true });
   const wrong = { digest: nodeDigest, compressor: nodeGzip, cipher: createAesGcmCipher({ key: new Uint8Array(32).fill(9) }) };
   await assert.rejects(unpackSegment(packed.bytes, { ports: wrong, fileName: packed.name }), /decrypt|解密/);
 });
-
-test('v2：签名覆盖段头与内容哈希，换签名者就验不过', async () => {
-  const signer = createDeviceSigner(generateDeviceKeyPair('device-v2'));
-  const other = createDeviceKeyPairForTest();
-  const ops = makeOps(5);
-  const packed = await packSegment({ ops, deviceId: 'device-v2', seq: 1, blindSessionId: 'b'.repeat(32), ports: { ...ports, signer }, encrypt: true });
-  const verify = createRosterVerifier(new Map([['device-v2', other.publicKeyPem]]));
-  await assert.rejects(
-    unpackSegment(packed.bytes, { ports: { ...ports, verifier: verify }, fileName: packed.name }),
-    /signature|签名/,
-  );
-});
-
-function createDeviceKeyPairForTest() {
-  return generateDeviceKeyPair('someone-else');
-}

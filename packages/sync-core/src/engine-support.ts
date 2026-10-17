@@ -100,10 +100,6 @@ export async function pullChanges(ctx: PullContext, materializer: Materializer):
 
     ctx.state.manifestCursors[owner] = manifest.seq;
     ctx.state.peerAck[owner] = manifest.ack;
-    // 对端公布的签名公钥：以后验签要靠它（强模式拿不到公钥就只能拒绝）
-    if (manifest.publicKey !== undefined && manifest.publicKey !== '') {
-      ctx.state.peerPublicKeys[owner] = manifest.publicKey;
-    }
     if (manifest.agreementKey !== undefined && manifest.agreementKey !== '') {
       ctx.state.peerAgreementKeys[owner] = manifest.agreementKey;
     }

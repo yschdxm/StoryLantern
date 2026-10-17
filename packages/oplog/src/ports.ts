@@ -4,7 +4,7 @@
  */
 
 export interface Digest {
-  /** 内容摘要（段名与签名都基于它）。 */
+  /** 内容摘要（段名与完整性校验都基于它）。 */
   sha256(data: Uint8Array): Uint8Array | Promise<Uint8Array>;
   /** 盲化路径片段用。 */
   hmacSha256(key: Uint8Array, data: Uint8Array): Uint8Array | Promise<Uint8Array>;
@@ -14,20 +14,6 @@ export interface Compressor {
   readonly algorithm: string;
   compress(data: Uint8Array): Uint8Array | Promise<Uint8Array>;
   decompress(data: Uint8Array): Uint8Array | Promise<Uint8Array>;
-}
-
-/** 段级签名者：每台设备一把私钥，签名覆盖段的规范元组。 */
-export interface SegmentSigner {
-  readonly deviceId: string;
-  sign(data: Uint8Array): Uint8Array | Promise<Uint8Array>;
-}
-
-/**
- * 段级验签器：只接受「设备名单」内的公钥。
- * 这一条是哑存储能被信任的前提——存储方即使有写权限，也伪造不出别的设备的内容。
- */
-export interface SignatureVerifier {
-  verify(deviceId: string, data: Uint8Array, signature: Uint8Array): boolean | Promise<boolean>;
 }
 
 export interface SealedPayload {
@@ -48,7 +34,5 @@ export interface SegmentCipher {
 export interface CryptoPorts {
   digest: Digest;
   compressor: Compressor;
-  signer?: SegmentSigner;
-  verifier?: SignatureVerifier;
   cipher?: SegmentCipher;
 }

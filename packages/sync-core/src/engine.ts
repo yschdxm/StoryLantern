@@ -38,11 +38,6 @@ export interface SyncEngineOptions {
   snapshotThreshold?: number;
   /** 懒加载：返回 false 的会话本轮不拉（例如用户还没打开过的会话）。 */
   shouldPull?: (blindSessionId: string) => boolean;
-  /**
-   * 本机签名公钥（十六进制）。发布在设备清单里，供对端**验签**。
-   * 不给就等于"暂时不参与验签"：别人收到你的段会因拿不到公钥而拒绝（强模式下的正确行为）。
-   */
-  publicKey?: string;
   /** 本机协商公钥（P-256，十六进制）；发布在设备清单里，别人用它把内容密钥包给本机。 */
   agreementKey?: string;
   /**
@@ -287,13 +282,10 @@ export class SyncEngine {
 
   async #publishManifest(warnings: string[]): Promise<void> {
     const { deviceId, ports } = this.#options;
-    const publicKey = this.#options.publicKey;
     const agreementKey = this.#options.agreementKey;
     const manifest: Manifest = {
       v: 1,
       deviceId,
-      // 有公钥就发布：对端要拿它验签
-      ...(publicKey === undefined || publicKey === '' ? {} : { publicKey }),
       ...(agreementKey === undefined || agreementKey === '' ? {} : { agreementKey }),
       seq: this.#state.manifestSeq,
       epoch: 0,

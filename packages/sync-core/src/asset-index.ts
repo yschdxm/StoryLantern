@@ -8,15 +8,14 @@
  * 每台设备只写自己的索引（与 manifest 同一条约束：一个路径只有一个写者）：
  *   assets/index/<deviceId>-<seq:8>-<hash8>.json.gz
  *
- * 信封复用 `envelope.ts`（gzip + 可选加密 + 可选签名）：
+ * 信封复用 `envelope.ts`（gzip + 可选加密），**不提供签名**：
  *  - AAD 绑定 `asset-index|<deviceId>`：把密文搬到别的设备命名空间后解密必然失败；
- *  - 签名覆盖 `asset-index|<deviceId>|<seq>|<contentHash>`：内容与序号都被钉住；
- *  - 无签名/旧 v1 信封仍可读（与截图/段一致的双读策略），由 `requireSignature` 控制是否强拒。
+ *  - 旧 v1 信封与旧文件里的 `sig` 字段仍可读（双读策略；未知字段解析时忽略）。
  */
 
 import { toHex } from '../../oplog/src/bytes.ts';
 import type { CryptoPorts } from '../../oplog/src/ports.ts';
-import { encodeEnvelope, decodeEnvelope, verifyEnvelope, type Envelope } from './envelope.ts';
+import { encodeEnvelope, decodeEnvelope, type Envelope } from './envelope.ts';
 
 export const ASSET_INDEX_PREFIX = 'assets/index/';
 
@@ -76,11 +75,6 @@ export function assetIndexAad(deviceId: string): string {
   return `asset-index|${deviceId}`;
 }
 
-/** 签名覆盖的规范元组：设备 + 序号 + 内容摘要，三项都被钉死。 */
-export function assetIndexSignaturePayload(deviceId: string, seq: number, contentHash: string): string {
-  return ['asset-index', deviceId, String(seq), contentHash].join('|');
-}
-
 /** 严格校验（索引是哑存储可改的元数据，读入绝不接受"看起来能用"）。 */
 export function validateAssetIndex(value: unknown): AssetIndex {
   if (!isRecord(value)) throw new Error('资产索引不是对象');
@@ -126,7 +120,6 @@ export async function encodeAssetIndex(
     ports: options.ports,
     encrypt: options.encrypt === true,
     aad: assetIndexAad(normalized.deviceId),
-    sign: (contentHash) => assetIndexSignaturePayload(normalized.deviceId, options.seq, contentHash),
   });
   const hash = toHex(await options.ports.digest.sha256(bytes));
   return { path: assetIndexPath(normalized.deviceId, options.seq, hash), bytes, hash };
@@ -141,13 +134,12 @@ export interface DecodedAssetIndex {
 /**
  * 解码一份索引。
  *
- * 必须知道它**应该属于哪台设备/哪个序号**（调用方从路径反解）：
- * AAD 与签名都绑定这两项；对不上就拒绝，避免把 A 设备的索引当成 B 的。
- * `requireSignature` 默认 false：旧索引/无密钥环境没有签名也要能读（与 envelope 的双读策略一致）。
+ * 必须知道它**应该属于哪台设备**（调用方从路径反解）：AAD 绑定这一项，对不上就拒绝，
+ * 避免把 A 设备的索引当成 B 的。
  */
 export async function decodeAssetIndex(
   bytes: Uint8Array,
-  options: { ports: CryptoPorts; deviceId: string; seq: number; requireSignature?: boolean },
+  options: { ports: CryptoPorts; deviceId: string },
 ): Promise<DecodedAssetIndex> {
   const decoded = await decodeEnvelope(bytes, { ports: options.ports, aad: assetIndexAad(options.deviceId) });
   let parsed: unknown;
@@ -160,12 +152,5 @@ export async function decodeAssetIndex(
   if (index.deviceId !== options.deviceId) {
     throw new Error(`资产索引归属设备 ${index.deviceId} 与路径上的 ${options.deviceId} 不符`);
   }
-  await verifyEnvelope(decoded.envelope, {
-    ports: options.ports,
-    contentHash: decoded.contentHash,
-    payload: assetIndexSignaturePayload(index.deviceId, options.seq, decoded.contentHash),
-    signerDeviceId: index.deviceId,
-    requireSignature: options.requireSignature === true,
-  });
   return { index, contentHash: decoded.contentHash, envelope: decoded.envelope };
 }

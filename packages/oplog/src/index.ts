@@ -281,8 +281,6 @@ export type {
   Digest,
   SealedPayload,
   SegmentCipher,
-  SegmentSigner,
-  SignatureVerifier,
 } from './ports.ts';
 export {
   estimateOpBytes,
@@ -295,7 +293,6 @@ export {
   SEGMENT_POLICY,
   SegmentError,
   shouldFlush,
-  signaturePayload,
   unpackSegment,
   type PackSegmentInput,
   type PackedSegment,
@@ -307,12 +304,7 @@ export {
 } from './segment.ts';
 export {
   createAesGcmCipher,
-  createDeviceSigner,
-  createRosterVerifier,
-  generateDeviceKeyPair,
   nodeDigest,
   nodeGzip,
   type AesGcmOptions,
-  type DeviceKeyPair,
-  type DeviceRoster,
 } from './node-adapters.ts';

@@ -59,13 +59,8 @@ export interface LocalSyncState {
   /** 对端 manifest 里的 ack：owner -> { deviceId: seq }。 */
   peerAck: Record<string, Record<string, number>>;
   /**
-   * 对端的签名公钥（deviceId -> 十六进制）。
-   *
-   * 从它的设备清单里读出来（清单是加密的，所以放这儿安全）。落进状态是为了**跨重启保留**：
-   * 验签发生在收段的时候，那时不一定刚好有清单在手边。
+   * 对端的 P-256 协商公钥（deviceId -> 十六进制）：把内容密钥包给它时要用。
    */
-  peerPublicKeys: Record<string, string>;
-  /** 对端的 P-256 协商公钥（deviceId -> 十六进制）：把内容密钥包给它时要用。 */
   peerAgreementKeys: Record<string, string>;
 }
 
@@ -83,7 +78,6 @@ export function emptyState(): LocalSyncState {
     manifestPaths: [],
     ack: {},
     peerAck: {},
-    peerPublicKeys: {},
     peerAgreementKeys: {},
   };
 }

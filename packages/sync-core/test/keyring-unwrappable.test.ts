@@ -5,7 +5,6 @@ import { KEYRING_FILE, parseKeyring } from '../src/keyring.ts';
 import { DeviceRosterList } from '../src/roster.ts';
 import type { SyncBackend } from '../src/backend.ts';
 import { createWebCryptoKeyWrap } from '../../../apps/app/src/data/sync/envelope.ts';
-import { generateDeviceKeyPair } from '../../oplog/src/node-adapters.ts';
 
 /**
  * 曲线换代（X25519 → P-256）之后的"建库跳过"。

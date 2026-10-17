@@ -6,7 +6,7 @@ import type { MessageRecord, SessionRecord } from './state-types.ts';
  * 它**只是优化**，不是事实源：
  *  - 快照丢了、坏了、版本不兼容，都可以由 segments 重新重放出来；
  *  - 存在的意义是"换机/首次同步"不必下载几个月的历史段；
- *  - 因此它必须自带签名（否则哑存储可以塞一个伪造快照污染读取方的物化状态）。
+ *  - 完整性由 AES-GCM（加密时）与内容哈希保证，不提供签名（已删除）。
  *
  * 水位语义：`watermarks[owner] = N` 表示"owner 设备的第 1..N 号段已被本快照覆盖"，
  * 读取方据此直接跳过这些段，只拉尾巴。
@@ -20,7 +20,7 @@ export interface SessionSnapshot {
    * `validateSessionSnapshot` 对非 1/2 一律抛错，所以版本不同即安全。
    */
   v: 1 | 2;
-  /** 生成这份快照的设备（签名归属）。 */
+  /** 生成这份快照的设备。 */
   deviceId: string;
   /** 该会话的盲化 id（与路径一致）。 */
   blindSessionId: string;

@@ -109,7 +109,7 @@ export const zhSync: AppMessages = {
   'settings.sync.saf.noteOff': '未勾选时同步走上面的路径框（应用私有目录）。',
   'sync.devices.ban': '永久禁用（拉黑）',
   'sync.devices.ban.title': '永久禁用这台设备？',
-  'sync.devices.ban.message': '设备「{{name}}」将被永久禁用：它的签名与加入请求一律被拒绝——知道同步口令也没用。要让它的密钥连新内容也解不开，还需要换代（新数据钥匙只发给留下的设备）。已经在它手里的旧内容收不回。',
+  'sync.devices.ban.message': '设备「{{name}}」将被永久禁用：它的加入请求一律被拒绝——知道同步口令也进不来。要让它的密钥连新内容也解不开，还需要换代（新数据钥匙只发给留下的设备，本机会立即换代）。已经在它手里的旧内容收不回。',
   'sync.devices.banned': '已永久禁用',
   'sync.devices.bannedNote': '已永久禁用并已换代：它拿不到新的数据钥匙，读不到以后的新内容；已经在它手里的旧内容收不回。',
   'sync.devices.banFailed': '没有写入禁用状态（可能本机或该设备不在名单里）。',

@@ -7,7 +7,7 @@ import type { CryptoPorts } from '../../../../../packages/oplog/src/index.ts';
  * 端口契约本来就写成 `T | Promise<T>`，正是为了这个。
  *
  * 端口的机密性与完整性来自 AEAD（AES-GCM）：哑存储方即使能改文件，也伪造不出内容。
- * app **不注入**签名端口（真机 WebView 没有可用的非对称签名；信任根是共享口令）。
+ * app **不提供**签名（真机 WebView 没有可用的非对称签名；信任根是共享口令）。
  */
 
 export interface SyncKeyMaterial {

@@ -1,7 +1,7 @@
-import { concatBytes, toBase64, toHex, utf8 } from './bytes.ts';
+import { concatBytes, toHex, utf8 } from './bytes.ts';
 import { crc32Hex } from './crc32.ts';
 import type { CryptoPorts } from './ports.ts';
-import { SegmentError, signaturePayload, type SegmentHeader, type SegmentTrailer } from './segment.ts';
+import { SegmentError, type SegmentHeader, type SegmentTrailer } from './segment.ts';
 
 /**
  * 段格式 v2 的编解码：**先压缩、再加密**，密文用二进制拼帧（不再套 base64）。
@@ -11,7 +11,7 @@ import { SegmentError, signaturePayload, type SegmentHeader, type SegmentTrailer
  * → 现状是"零压缩 + 五套方案里最慢的那个"。v2 实测 9-24×、打包快约 4.7 倍、解包快约 18 倍。
  *
  * 这个文件从 segment.ts 里拆出来，一半是为了单一职责，一半是因为 segment.ts 已经贴着 400 行上限。
- * 与 segment.ts 之间是**类型 + SegmentError + signaturePayload 的互引**（ESM 循环引用，纯运行时使用，
+ * 与 segment.ts 之间是**类型 + SegmentError 的互引**（ESM 循环引用，纯运行时使用，
  * 初始化顺序无碍）；拆分的边界是"整份明文的加解密与拼帧"，段头构造、校验顺序、v1 老路径都留在 segment.ts。
  */
 
@@ -21,7 +21,7 @@ import { SegmentError, signaturePayload, type SegmentHeader, type SegmentTrailer
  * v1 把 header 放在 gzip **里面**、密文只包正文，所以能用 headerLine 当 AAD；
  * v2 把整个 `headerLine + "\n" + opsText` 一起压缩后加密，**加密时还没有 header 可引用**，
  * 因此 AAD 用一个固定的格式串：它绑定"这是 v2 段"，防的是跨格式张冠李戴。
- * header 的完整性另有保障——contentHash 覆盖整份明文、签名覆盖 header 规范元组。
+ * header 的完整性另有保障——contentHash 覆盖整份明文。
  */
 export const SEGMENT_V2_AAD = 'SFSEG2';
 /** v2 密文帧里的 nonce 长度（AES-GCM 用 12；写进 trailer，读方不必猜）。 */
@@ -45,13 +45,12 @@ export interface PackSegmentBodyV2Input {
   encrypt: boolean;
 }
 
-/** 写：gzip(明文) → seal → `[nonceLen][nonce][密文]`；顺带算出 trailer（含内容哈希与签名）。 */
+/** 写：gzip(明文) → seal → `[nonceLen][nonce][密文]`；顺带算出 trailer（含内容哈希）。 */
 export async function packSegmentBodyV2(input: PackSegmentBodyV2Input): Promise<{ blob: Uint8Array; trailer: SegmentTrailer }> {
   const { header, plain, ports } = input;
   const cipher = input.encrypt ? ports.cipher : undefined;
 
   const contentHash = toHex(await ports.digest.sha256(plain));
-  const signature = ports.signer ? await ports.signer.sign(utf8(signaturePayload(header, contentHash))) : undefined;
 
   const compressed = await ports.compressor.compress(plain);
   let blob: Uint8Array;
@@ -72,12 +71,11 @@ export async function packSegmentBodyV2(input: PackSegmentBodyV2Input): Promise<
     crc32: crc32Hex(blob),
     blobHash,
     contentHash,
-    ...(signature === undefined ? {} : { sig: toBase64(signature) }),
   };
   return { blob, trailer };
 }
 
-/** 读：从 blob 取出明文（需要时先解密、再解压）。校验（crc/哈希/签名/条数）由 segment.ts 负责。 */
+/** 读：从 blob 取出明文（需要时先解密、再解压）。校验（crc/哈希/条数）由 segment.ts 负责。 */
 export async function openSegmentBodyV2(blob: Uint8Array, trailer: SegmentTrailer, ports: CryptoPorts): Promise<Uint8Array> {
   if (trailer.cipher === undefined || trailer.cipher === 'none') return decompressOrThrow(ports.compressor, blob);
 

@@ -179,7 +179,6 @@ test('两设备：A 上传 + 发布索引，B 拉 op 后按索引下载并通过
   const decoded = await decodeAssetIndex(await backend.get(paths[0] as string), {
     ports: PORTS,
     deviceId: 'dev-a',
-    seq: 1,
   });
   const entry = decoded.index.entries[0];
   assert.ok(entry !== undefined);

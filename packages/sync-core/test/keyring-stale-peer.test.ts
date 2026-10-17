@@ -5,7 +5,6 @@ import { KEYRING_FILE, parseKeyring } from '../src/keyring.ts';
 import { DeviceRosterList } from '../src/roster.ts';
 import type { SyncBackend } from '../src/backend.ts';
 import { createWebCryptoKeyWrap } from '../../../apps/app/src/data/sync/envelope.ts';
-import { generateDeviceKeyPair } from '../../oplog/src/node-adapters.ts';
 
 /**
  * 回归：**名单里没有的对端，不许出现在收件人里**。

@@ -46,7 +46,6 @@ export interface SegmentTrailer {
   crc32: string;
   blobHash: string;
   contentHash: string;
-  sig?: string;
 }
 
 export type SegmentErrorCode =
@@ -56,7 +55,6 @@ export type SegmentErrorCode =
   | 'hash-mismatch'
   | 'name-mismatch'
   | 'count-mismatch'
-  | 'signature'
   | 'decrypt'
   | 'compression'
   | 'op-codec';
@@ -153,34 +151,17 @@ export async function packSegment(input: PackSegmentInput): Promise<PackedSegmen
     }
 
     const contentHash = toHex(await ports.digest.sha256(utf8(headerLine + "\n" + body)));
-    const signature = ports.signer ? await ports.signer.sign(utf8(signaturePayload(header, contentHash))) : undefined;
     blob = await ports.compressor.compress(utf8(headerLine + "\n" + body));
     trailer = {
       count: header.count,
       crc32: crc32Hex(blob),
       blobHash: toHex(await ports.digest.sha256(blob)),
       contentHash,
-      ...(signature === undefined ? {} : { sig: toBase64(signature) }),
     };
   }
 
   const bytes = concatBytes(blob, new Uint8Array([NEWLINE]), utf8(JSON.stringify(trailer)));
   return { name: segmentFileName(input.seq, trailer.blobHash), bytes, header, trailer, blobHash: trailer.blobHash };
-}
-
-/** 签名覆盖的规范元组：不含 blobHash，避免"签名内容反过来依赖签名本身"的循环。 */
-export function signaturePayload(header: SegmentHeader, contentHash: string): string {
-  return [
-    header.magic,
-    String(header.v),
-    header.deviceId,
-    String(header.seq),
-    header.blindSessionId,
-    String(header.epoch),
-    String(header.count),
-    header.cipher,
-    contentHash,
-  ].join('|');
 }
 
 export function segmentFileName(seq: number, blobHash: string): string {
@@ -197,8 +178,6 @@ export interface UnpackExpectations {
   deviceId?: string;
   seq?: number;
   blindSessionId?: string;
-  /** 只接受名单内设备的签名（哑存储上这是"可信"的唯一来源）。 */
-  requireSignature?: boolean;
 }
 
 export interface UnpackedSegment {
@@ -262,8 +241,9 @@ function parseJson<T>(text: string, label: string): T {
  *  2. crc32 与 blobHash 与实收字节一致（传输完整性）；
  *  3. 文件名中的摘要与实收字节一致（防止张冠李戴）；
  *  4. contentHash 与解压后的内容一致（防止内容被替换）；
- *  5. 签名有效且设备在名单内（防止伪造）；
- *  6. 之后才解密、解析 op、核对条数。
+ *  5. 之后才解密、解析 op、核对条数。
+ *
+ * 旧段文件里可能存在已删除的 `sig` 字段：JSON 解析时天然忽略，不影响读取。
  */
 export async function unpackSegment(
   bytes: Uint8Array,
@@ -331,23 +311,6 @@ export async function unpackSegment(
   const contentHash = toHex(await ports.digest.sha256(utf8(`${headerLine}\n${body}`)));
   if (trailer.contentHash !== contentHash) {
     throw new SegmentError('hash-mismatch', 'contentHash 不符（段内容被替换或损坏）');
-  }
-
-  if (ports.verifier) {
-    if (!trailer.sig) {
-      if (expectations.requireSignature !== false) {
-        throw new SegmentError('signature', '段缺少签名，拒绝接受');
-      }
-    } else {
-      const ok = await ports.verifier.verify(
-        header.deviceId,
-        utf8(signaturePayload(header, contentHash)),
-        fromBase64(trailer.sig),
-      );
-      if (!ok) {
-        throw new SegmentError('signature', `来自设备 ${header.deviceId} 的签名无效（未知设备或内容被篡改）`);
-      }
-    }
   }
 
   let opsText = body;
