@@ -9,6 +9,7 @@
  */
 
 import type { CardBase, CardRef, StateValue } from './types-base.ts';
+import type { CardRule } from './types-character.ts';
 
 // ---------------------------------------------------------------- 场景簿
 
@@ -112,19 +113,15 @@ export interface ItemCard extends CardBase {
   /** 效果描述（供 LLM 理解用途）。 */
   function: string;
   /** 物品行为规则（会低语的魔剑），与角色规则共用同一套结构。 */
-  behaviors?: readonly CardRuleLike[];
+  behaviors?: readonly CardRule[];
   value?: ItemValue;
   rarity?: ItemRarity;
   usability?: ItemUsability;
   durability?: ItemDurability;
 }
 
-/** 物品规则的最小形状：复用角色规则的字段，但避免 `cards` 内部循环 import。 */
-export interface CardRuleLike {
-  id: string;
-  enabled: boolean;
-  priority: number;
-}
+/** @deprecated 旧名：物品行为现在就是 `CardRule`（与角色规则同一套结构）。 */
+export type CardRuleLike = CardRule;
 
 // ---------------------------------------------------------------- 典籍
 

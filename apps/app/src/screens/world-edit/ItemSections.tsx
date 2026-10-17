@@ -173,7 +173,6 @@ export function ItemSections({
           />
         </Field>
       ))}
-      <p className="world-note">{t('world.editor.item.behaviorsUnsupported')}</p>
     </section>
   );
 }

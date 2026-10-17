@@ -101,7 +101,7 @@ test('卡片 → 草稿 → 卡片：表单外的字段原样保留', () => {
   const existingItem: ItemCard = {
     ...item,
     meta: { ...item.meta, author: '制作者' },
-    behaviors: [{ id: 'b1', enabled: true, priority: 1 }],
+    behaviors: [{ id: 'b1', enabled: true, priority: 1, when: { event: 'before_reply' }, actions: [{ type: 'constraint', text: '会低语' }] }],
     visuals: [{ id: 'v2', type: 'detail', path: `asset://${'c'.repeat(64)}`, caption: '剑格纹样' }],
   };
   const itemAgain = buildCard(existingItem, draftOfCard(existingItem)) as ItemCard;

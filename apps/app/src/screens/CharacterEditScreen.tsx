@@ -11,15 +11,19 @@ import {
   type SetCharacterDraftField,
 } from '../data/character-compat.ts';
 import {
+  attachRulesToCard,
   attachVisuals,
   draftOfCard,
+  ruleDraftsOf,
   stateSchemaOfDrafts,
   stateVariableDraftsOf,
   type StateVariableDraft,
   visualDraftsOf,
 } from './character-edit/form-state.tsx';
 import type { VisualDraft } from '../data/visuals-form.ts';
+import type { RuleDraft } from '../data/rules-form.ts';
 import { VisualsSection } from './visuals-edit/VisualsSection.tsx';
+import { RulesSection } from './rules-edit/RulesSection.tsx';
 import { describeError } from '../data/error-text.ts';
 import { useT } from '../i18n/context.tsx';
 import type { Translator } from '../i18n/locale.ts';
@@ -66,6 +70,7 @@ export function CharacterEditScreen({ store, characterId, onDone }: CharacterEdi
   const [examples, setExamples] = useState<ExampleDialogue[]>([]);
   const [variables, setVariables] = useState<StateVariableDraft[]>([]);
   const [visuals, setVisuals] = useState<VisualDraft[]>([]);
+  const [rules, setRules] = useState<RuleDraft[]>([]);
   const [enabled, setEnabled] = useState(true);
   const [initialEnabled, setInitialEnabled] = useState(true);
   const [loading, setLoading] = useState(characterId !== 'new');
@@ -88,6 +93,7 @@ export function CharacterEditScreen({ store, characterId, onDone }: CharacterEdi
       setExamples([]);
       setVariables([]);
       setVisuals([]);
+      setRules([]);
       setEnabled(true);
       setInitialEnabled(true);
       setLoadError(undefined);
@@ -115,6 +121,7 @@ export function CharacterEditScreen({ store, characterId, onDone }: CharacterEdi
         setExamples(card.examples === undefined ? [] : [...card.examples]);
         setVariables(stateVariableDraftsOf(card.state));
         setVisuals(visualDraftsOf(card));
+        setRules(ruleDraftsOf(card));
         setEnabled(cardEnabled);
         setInitialEnabled(cardEnabled);
       })
@@ -144,7 +151,8 @@ export function CharacterEditScreen({ store, characterId, onDone }: CharacterEdi
       const state = stateSchemaOfDrafts(variables);
       const withLists: CharacterCard = { ...base, examples };
       const withVisuals = attachVisuals(withLists, visuals);
-      const card: CharacterCard = state === undefined ? withoutState(withVisuals) : { ...withVisuals, state };
+      const withRules = attachRulesToCard(withVisuals, rules);
+      const card: CharacterCard = state === undefined ? withoutState(withRules) : { ...withRules, state };
       const validation = validateCard(card);
       setIssues(validation.issues);
       if (!validation.ok) return;
@@ -211,6 +219,7 @@ export function CharacterEditScreen({ store, characterId, onDone }: CharacterEdi
         <ExamplesSection examples={examples} onChange={setExamples} />
         <StateSection variables={variables} onChange={setVariables} />
         <AdvancedSection draft={draft} set={set} enabled={enabled} onEnabledChange={setEnabled} />
+        <RulesSection rules={rules} onChange={setRules} titleKey="rules.title" />
 
         {!isNew && (
           <div className="form__danger">

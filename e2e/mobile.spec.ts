@@ -148,6 +148,32 @@ test('世界页：第三个标签进入世界资源，类型筛选与新建入�
   expect(errors, `世界页不应抛未捕获异常：${errors.join(' | ')}`).toHaveLength(0);
 });
 
+test('世界卡编辑器路由：缩窄到场景新建页且无未捕获异常', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  await page.goto('/#/worldcard/scene/new');
+  // 编辑器外壳（form-screen）应渲染；空表单不算错误
+  await expect(page.locator('.form-screen')).toBeVisible();
+  await expect(page.locator('form, .form')).toHaveCount(1);
+  expect(errors, `世界卡编辑器不应抛未捕获异常：${errors.join(' | ')}`).toHaveLength(0);
+});
+
+test('导入页与新建会话页：路由可达且不抛异常（浏览器无宿主时诚实降级）', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+
+  await page.goto('/#/import');
+  await expect(page.locator('body')).toContainText(/\S/);
+  await expect(page).toHaveURL(/#\/import$/);
+
+  await page.goto('/#/session/new');
+  // 浏览器最小实现没有卡片仓储/会话创建能力：页面必须显示可读提示，而不是白屏
+  await expect(page.locator('main')).toBeVisible();
+  const text = await page.locator('main').innerText();
+  expect(text.length).toBeGreaterThan(0);
+  expect(errors, `导入/新建会话页不应抛未捕获异常：${errors.join(' | ')}`).toHaveLength(0);
+});
+
 test('没有宿主 IPC 时界面诚实降级（不报错、不假装已连接）', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));

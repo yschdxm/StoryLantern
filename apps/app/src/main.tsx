@@ -314,7 +314,14 @@ function Root(): ReturnType<typeof AppShell> {
         }
       >
         {route.name === 'sessions' && <SessionsScreen store={store} router={router} host={host} chat={chat} />}
-        {route.name === 'sessionNew' && <SessionCreateScreen store={store} router={router} />}
+        {route.name === 'sessionNew' && (
+          <SessionCreateScreen
+            store={store}
+            router={router}
+            chat={chat}
+            {...(boot.runtime === undefined ? {} : { assemble: boot.runtime.assemble })}
+          />
+        )}
         {route.name === 'characters' && <CharactersScreen store={store} router={router} host={host} chat={chat} />}
         {route.name === 'world' && <WorldScreen store={store} router={router} />}
         {route.name === 'worldCard' && (

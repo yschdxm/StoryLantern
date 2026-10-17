@@ -7,6 +7,7 @@ import type { Router, WorldKind } from '../app/router.ts';
 import type { CardDocument, WorldPackManifest } from '../../../../packages/cards/src/index.ts';
 import { Banner, Button, EmptyState, Icon, LoadingState, Sheet, SheetItem } from '../ui/components.tsx';
 import { SettingsRow } from '../ui/SettingsRow.tsx';
+import { PackEditSheet } from './world-edit/PackEditSheet.tsx';
 
 export interface WorldScreenProps {
   store: AppStore;
@@ -53,6 +54,8 @@ export function WorldScreen({ store, router }: WorldScreenProps): ReactNode {
   const t = useT();
   const initial = router.current();
   const [filter, setFilter] = useState<WorldFilter>(initial.name === 'world' && initial.kind !== undefined ? initial.kind : 'all');
+  /** 全部卡片（含角色）：世界包的卡片多选要能选任何类型，列表本身只展示三类世界资源。 */
+  const [allCards, setAllCards] = useState<CardDocument[]>([]);
   const [cards, setCards] = useState<CardDocument[]>([]);
   const [packs, setPacks] = useState<WorldPackManifest[]>([]);
   const [enabled, setEnabled] = useState<ReadonlyMap<string, boolean>>(new Map());
@@ -62,7 +65,8 @@ export function WorldScreen({ store, router }: WorldScreenProps): ReactNode {
   const [packError, setPackError] = useState<string | undefined>(undefined);
   const [reload, setReload] = useState(0);
   const [newOpen, setNewOpen] = useState(false);
-  const [packId, setPackId] = useState<string | undefined>(undefined);
+  /** `{}` = 新建世界包；`{ pack }` = 编辑；`undefined` = 关闭。 */
+  const [packEditor, setPackEditor] = useState<{ pack?: WorldPackManifest } | undefined>(undefined);
 
   useEffect(() => {
     let alive = true;
@@ -90,6 +94,7 @@ export function WorldScreen({ store, router }: WorldScreenProps): ReactNode {
     void Promise.all([cardsStore.list(), cardsStore.library(), packsPromise])
       .then(([loadedCards, library, loadedPacks]) => {
         if (!alive) return;
+        setAllCards(loadedCards);
         setCards(loadedCards.filter((card) => worldKindOf(card) !== undefined));
         setPacks(loadedPacks);
         setEnabled(new Map(library.map((entry) => [entry.id, entry.enabled] as const)));
@@ -113,8 +118,7 @@ export function WorldScreen({ store, router }: WorldScreenProps): ReactNode {
   const filteredPacks = filter === 'all' || filter === 'pack' ? packs : [];
   const total = filteredCards.length + filteredPacks.length;
   const hasAny = cards.length > 0 || packs.length > 0;
-  const pack = packs.find((item) => item.id === packId);
-  const cardNames = new Map(cards.map((card) => [card.meta.id, card.meta.name] as const));
+  const cardsMissing = store.repository.cards === undefined;
 
   const openNew = (kind: WorldKind): void => {
     setNewOpen(false);
@@ -155,6 +159,16 @@ export function WorldScreen({ store, router }: WorldScreenProps): ReactNode {
         ))}
       </div>
 
+      {filter === 'pack' && packsAvailable && !cardsMissing && (
+        <div className="row">
+          {/* 一屏一个主按钮：FAB 仍是"新建卡片"，新建世界包用筛选区里的次级按钮 */}
+          <Button variant="ghost" onClick={() => setPackEditor({})}>
+            <Icon name="plus" size={18} />
+            {t('pack.new')}
+          </Button>
+        </div>
+      )}
+
       {total === 0 ? (
         <div className="settings-group" data-testid="world-list">
           <EmptyState
@@ -183,7 +197,7 @@ export function WorldScreen({ store, router }: WorldScreenProps): ReactNode {
               key={`pack-${item.id}`}
               label={item.name}
               value={t('world.subtitle.pack', { count: item.card_ids.length })}
-              onPress={() => setPackId(item.id)}
+              onPress={() => setPackEditor({ pack: item })}
               testId={`world-pack-${item.id}`}
             />
           ))}
@@ -201,18 +215,14 @@ export function WorldScreen({ store, router }: WorldScreenProps): ReactNode {
         <SheetItem label={t('world.new.lore')} onClick={() => openNew('lore')} />
       </Sheet>
 
-      <Sheet open={pack !== undefined} title={pack?.name ?? t('world.pack.title')} onClose={() => setPackId(undefined)}>
-        {pack !== undefined && pack.card_ids.length === 0 && <p className="muted">{t('world.pack.empty')}</p>}
-        {pack?.card_ids.map((id) => (
-          <SheetItem
-            key={id}
-            icon="book"
-            label={cardNames.get(id) ?? t('world.pack.unknownCard', { id })}
-            disabled
-            onClick={() => undefined}
-          />
-        ))}
-      </Sheet>
+      <PackEditSheet
+        store={store}
+        open={packEditor !== undefined}
+        pack={packEditor?.pack}
+        cards={allCards}
+        onClose={() => setPackEditor(undefined)}
+        onChanged={() => setReload((value) => value + 1)}
+      />
     </>
   );
 }

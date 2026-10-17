@@ -25,7 +25,7 @@ pnpm --filter @storylantern/app exec vite preview --port 15199 --strictPort
 ## 1. 硬约束（违反即失败）
 
 - **运行时零第三方依赖**：界面只允许 React；`typescript`、`@playwright/test` 是仅有的 devDependency。不要 `pnpm add` 运行时包。
-- **单文件 ≤400 行**；`apps/app/src/main.tsx` 已约 392 行（贴着上限），**不许再变长**：要加页面先抽组件/路由分发。
+- **单文件 ≤400 行**；`apps/app/src/main.tsx` 已约 399 行（贴着上限），**不许再变长**：要加页面先抽组件/路由分发。
 - 文本文件必须 UTF-8；不伪造：不用假数据/示例功能冒充实现，不在报告或提交信息里写没跑过的结论。
 - **术语**：英文 design token 统一称**设计变量（样式变量）**，不写"令牌"。
 - 中文优先；界面文案中英双语，中文为主。
@@ -52,8 +52,12 @@ pnpm --filter @storylantern/app exec vite preview --port 15199 --strictPort
 - 视觉设定：四类卡共用 `screens/visuals-edit/VisualsSection.tsx` + `data/visuals-form.ts`；
   **caption 是给模型的入口，图可后补**（`VisualAsset.path` 可选；有图必须 `asset://<sha256>`）。
   图片上传/资产同步**尚未接线**，界面只能手填 asset 引用——不要在文档里说已支持上传。
-- 已知限制：物品 `behaviors` 与角色 `rules` 仍无编辑 UI（数据与求值器已就绪）；世界包编辑器未做（只读清单）；
-  L3 无独立 URL（设置分区）；详见 ADR-0011 与 `docs/SETTINGS-IA.md §8`。
+- 规则/行为编辑：`screens/rules-edit/RulesSection.tsx` + `data/rules-form.ts`（角色卡 `rules`、物品 `behaviors`），
+  条件语法检查只校验语法，语义按运行时变量求值。
+- 世界包编辑：`screens/world-edit/PackEditSheet.tsx` + `pack-form.ts`（Sheet 内联，不新增路由）。
+- 智能开场：`data/auto-opening.ts`（装配走 buildChatRequestV2，15s 超时；失败降级 `self` 并如实提示）。
+- 已知限制：图片上传/资产同步未接线；新屏幕的 e2e 只覆盖路由可达与无异常；L3 无独立 URL（设置分区）；
+  详见 ADR-0011 与 `docs/SETTINGS-IA.md §8`。
 - **hash 路由必须对实体 id 编解码**（`router.ts` 的 `encodePart`/`decodePart`）：id 不保证是 ASCII，漏了会出现"找不到这张卡片"。
 
 ## 3. 代码边界
@@ -150,6 +154,8 @@ adb -s <serial> logcat -d -t 400 | grep -E "FATAL EXCEPTION|ANR in"   # 必须�
 | 文案里的 `**` 原样显示 | Markdown 不解析 |
 | e2e 用中文文案选择器 → en CI 挂 | 用 id/结构选择器 |
 | 用 PowerShell `>` 重定向抓 adb 截图 → PNG 损坏 | `screencap` + `adb pull` |
+| 单入口 SPA 产物涨到 833 KB（超 800 KB 门禁） | Vite 8 走 Rolldown，`manualChunks` 不生效；用 `build.rolldownOptions.output.advancedChunks` 按 vendor/protocol/cards 拆包 |
+| 非 ASCII 实体 id 进 hash 后查不到卡片 | `routeToHash` 编、`parseRoute` 解（encodePart/decodePart），并加往返测试 |
 
 ## 10. 汇报格式
 

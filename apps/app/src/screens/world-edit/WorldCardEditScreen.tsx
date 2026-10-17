@@ -11,6 +11,7 @@ import { ItemSections } from './ItemSections.tsx';
 import { LoreSections } from './LoreSections.tsx';
 import { SceneSections } from './SceneSections.tsx';
 import { VisualsSection } from '../visuals-edit/VisualsSection.tsx';
+import { RulesSection } from '../rules-edit/RulesSection.tsx';
 import {
   buildCard,
   draftOfCard,
@@ -229,6 +230,15 @@ export function WorldCardEditScreen({ store, kind, cardId, onDone }: WorldCardEd
         <VisualsSection drafts={draft.visuals} onChange={(next) => setDraft((current) => ({ ...current, visuals: next }))} />
         {draft.kind === 'scene' && <SceneSections draft={draft} update={updateScene} references={references} />}
         {draft.kind === 'item' && <ItemSections draft={draft} update={updateItem} />}
+        {draft.kind === 'item' && (
+          <RulesSection
+            rules={draft.behaviors}
+            onChange={(next) =>
+              setDraft((current) => (current.kind === 'item' ? { ...current, behaviors: next } : current))
+            }
+            titleKey="rules.behaviorsTitle"
+          />
+        )}
         {draft.kind === 'lore' && <LoreSections draft={draft} update={updateLore} />}
 
         {!isNew && (

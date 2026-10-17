@@ -1590,3 +1590,102 @@ button.chip { min-height: 36px; }
   padding-top: var(--space-3);
   border-top: 1px solid var(--border);
 }
+
+/* ------------------------------------------------------------------ 世界包编辑 */
+/* 卡片多选：数量不可控，限高滚动；每行触控目标由 .switch 保证 */
+.pack-cards {
+  max-height: 30vh;
+  margin-bottom: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.pack-card {
+  align-items: flex-start;
+}
+
+.pack-card__name {
+  display: block;
+  font-size: var(--text-md);
+}
+
+.pack-card__type {
+  display: block;
+  color: var(--dim);
+  font-size: var(--text-sm);
+}
+
+/* ------------------------------------------------------------------ 规则 / 行为规则 */
+.rule-row {
+  margin-bottom: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.rule-row__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.rule-row__main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  min-height: var(--tap-min);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.rule-row__id {
+  overflow-wrap: anywhere;
+  font-size: var(--text-sm);
+}
+
+.rule-row__meta {
+  color: var(--dim);
+  font-size: var(--text-sm);
+}
+
+/* 启用/事件/优先级常显：列表行本身就带当前值 */
+.rule-row__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.rule-row__controls > .field {
+  flex: 1 1 8rem;
+  margin-bottom: 0;
+}
+
+.rule-row__body {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}
+
+.rule-action {
+  margin-bottom: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.rule-check {
+  margin-bottom: var(--space-3);
+}

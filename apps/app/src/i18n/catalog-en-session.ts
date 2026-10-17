@@ -64,8 +64,12 @@ export const enSession: AppMessages = {
   'session.create.opening.self': 'User opening',
   'session.create.opening.self.hint': 'The chat starts empty; you speak first.',
   'session.create.opening.auto': 'Smart opening',
-  'session.create.opening.auto.unavailable': 'Model-generated openings are not implemented yet',
+  'session.create.opening.auto.needModel': 'Configure a model under Settings → Model first; smart openings need it.',
+  'session.create.opening.auto.hint': 'The model writes the first opening from the members, premise, scene and resource pool. If it fails, the chat still starts empty.',
+  'session.create.opening.generating': 'Generating opening…',
+  'session.create.opening.failed': 'Opening generation failed: {{message}}. The chat was created and starts empty; you can speak first, or check Settings → Model and retry.',
 
   'session.create.submit': 'Start chat',
   'session.create.submitBusy': 'Creating…',
+  'session.create.enterChat': 'Open chat',
 };

@@ -18,6 +18,7 @@ import {
   type CharacterCardDraft,
 } from '../../data/character-compat.ts';
 import { draftsToVisuals, visualsToDrafts, type VisualDraft } from '../../data/visuals-form.ts';
+import { attachRules, draftsToRules, rulesToDrafts, type RuleDraft } from '../../data/rules-form.ts';
 
 /** 状态变量表格的一行（默认值在界面上是文本，保存时按 type 解析）。 */
 export interface StateVariableDraft {
@@ -45,6 +46,16 @@ export function attachVisuals(card: CharacterCard, drafts: readonly VisualDraft[
     return rest;
   }
   return { ...card, visuals };
+}
+
+/** 角色规则 → 草稿（条件按行展开、动作保留 raw）。 */
+export function ruleDraftsOf(card: CharacterCard): RuleDraft[] {
+  return rulesToDrafts(card.rules);
+}
+
+/** 把规则草稿挂回卡片；全部删除时移除 `rules` 字段。 */
+export function attachRulesToCard(card: CharacterCard, drafts: readonly RuleDraft[]): CharacterCard {
+  return attachRules(card, draftsToRules(drafts));
 }
 
 /** 卡片 → 编辑器草稿（示例对话 / 状态变量由调用方另取）。 */

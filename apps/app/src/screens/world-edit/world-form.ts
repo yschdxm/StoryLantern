@@ -15,6 +15,7 @@ import {
 } from '../../../../../packages/cards/src/index.ts';
 import { ulid } from '../../../../../packages/oplog/src/index.ts';
 import { draftsToVisuals, visualsToDrafts, type VisualDraft } from '../../data/visuals-form.ts';
+import { draftsToRules, rulesToDrafts, type RuleDraft } from '../../data/rules-form.ts';
 import type { WorldKind } from '../../app/router.ts';
 
 export type WorldCard = SceneCard | ItemCard | LoreCard;
@@ -64,6 +65,8 @@ export interface ItemDraft extends DraftCommon {
   functionText: string; // → item.function
   rarity: ItemRarity | '';
   value: ItemValueDraft; usability: ItemUsabilityDraft; durability: ItemDurabilityDraft; appearance: FieldTextMap;
+  /** 物品行为规则（与角色规则同一套结构；空动作/空规则保存时丢弃）。 */
+  behaviors: RuleDraft[];
 }
 
 export interface LoreDraft extends DraftCommon {
@@ -143,7 +146,7 @@ export function emptyWorldDraft(kind: WorldKind): WorldCardDraft {
     return { ...common, kind: 'scene', type: 'physical', sceneDescription: '', appearance: pickFields(undefined, SCENE_APPEARANCE_FIELDS), atmosphere: pickFields(undefined, ATMOSPHERE_FIELDS), connections: [], occupants: [], props: [], events: '', defaultState: [], isEntry: false };
   }
   if (kind === 'item') {
-    return { ...common, kind: 'item', type: 'other', descriptionText: '', functionText: '', rarity: '', value: { currency: '', amount: '', tradable: 'unset' }, usability: { condition: '', maxUses: '' }, durability: { max: '', repairable: 'unset', breakEffect: '' }, appearance: pickFields(undefined, ITEM_APPEARANCE_FIELDS) };
+    return { ...common, kind: 'item', type: 'other', descriptionText: '', functionText: '', rarity: '', value: { currency: '', amount: '', tradable: 'unset' }, usability: { condition: '', maxUses: '' }, durability: { max: '', repairable: 'unset', breakEffect: '' }, appearance: pickFields(undefined, ITEM_APPEARANCE_FIELDS), behaviors: [] };
   }
   return { ...common, kind: 'lore', loreKind: 'other', content: '', summary: '', keys: '', secondaryKeys: '', logic: 'any', trigger: { constant: false, priority: '5', probability: '100', recursive: true, depth: '', conditions: '' }, enabled: true };
 }
@@ -195,6 +198,7 @@ export function draftOfCard(card: WorldCard): WorldCardDraft {
         breakEffect: durability?.break_effect ?? '',
       },
       appearance: pickFields(card.appearance, ITEM_APPEARANCE_FIELDS),
+      behaviors: rulesToDrafts(card.behaviors),
     };
   }
   const trigger = card.trigger;
@@ -327,12 +331,14 @@ function buildItem(existing: ItemCard | undefined, draft: ItemDraft): ItemCard {
     ['break_effect', optionalText(draft.durability.breakEffect), 'string'],
     ['repairable', draft.durability.repairable === 'unset' ? undefined : draft.durability.repairable === 'yes', 'boolean'],
   ]);
+  const behaviors = draftsToRules(draft.behaviors);
   return applyOwned<ItemCard>(existing, {
     ...commonOwned(existing, draft), card_type: 'item', type: draft.type,
     description: draft.descriptionText.trim(), function: draft.functionText.trim(),
     rarity: draft.rarity === '' ? undefined : draft.rarity,
     appearance: buildAppearance(existing?.appearance, draft.appearance),
     value: buildItemValue(draft.value), usability, durability,
+    behaviors: behaviors.length === 0 ? undefined : behaviors,
   });
 }
 

@@ -34,6 +34,21 @@ export default defineConfig({
     // （实测多出约 2.6 MB，而且等于把源码随包发出去）。开发服务器本来就有自己的 sourcemap，
     // 调试不受影响；`scripts/check-bundle.mjs` 现在会拦住"产物里出现 .map"。
     sourcemap: false,
+    // 拆包：单入口 SPA 会把所有页面+协议层打进一个 800KB+ 的 index chunk。
+    // Vite 8 走 Rolldown，分组用 `advancedChunks`（`manualChunks` 不再生效）。
+    // 拆成 vendor / 协议层 / 卡片与同步 几块，既让每个产物都远低于体积门禁，
+    // 也让"哪个改动把包撑大了"一眼能看出来（`scripts/check-bundle.mjs` 按文件卡上限）。
+    rolldownOptions: {
+      output: {
+        advancedChunks: {
+          groups: [
+            { name: 'vendor', test: /node_modules[\\/]/ },
+            { name: 'protocol', test: /packages[\\/](oplog|sync-core|importer)[\\/]/ },
+            { name: 'cards', test: /packages[\\/](cards|lore)[\\/]/ },
+          ],
+        },
+      },
+    },
   },
   server: {
     port: PORT,

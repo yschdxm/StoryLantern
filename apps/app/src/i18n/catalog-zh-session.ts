@@ -65,8 +65,12 @@ export const zhSession: AppMessages = {
   'session.create.opening.self': '用户开场',
   'session.create.opening.self.hint': '会话从空白开始，你先说第一句。',
   'session.create.opening.auto': '智能开场',
-  'session.create.opening.auto.unavailable': '模型生成开场尚未实现',
+  'session.create.opening.auto.needModel': '先到「设置 → 模型」配置模型，之后才能生成开场。',
+  'session.create.opening.auto.hint': '由模型根据成员、处境、场景与资源池生成第一段开场；失败会从空白开始，不阻塞建会话。',
+  'session.create.opening.generating': '正在生成开场…',
+  'session.create.opening.failed': '开场生成失败：{{message}}。已创建会话并从空白开始；你可以直接说第一句，或到「设置 → 模型」检查配置后重试。',
 
   'session.create.submit': '开始会话',
   'session.create.submitBusy': '创建中…',
+  'session.create.enterChat': '进入会话',
 };
