@@ -47,8 +47,9 @@ test('Ctrl/Cmd+K 命令面板：打开、过滤、跳转、Esc 关闭', async ({
   const input = page.locator('.palette__input');
   await expect(input).toBeFocused();
 
-  // 输入过滤：只剩"设置"这一项（不比对文字编码，只数条目数，避免终端/字体带来的假失败）
-  await input.fill('设置');
+  // 输入过滤：按 **id**（与界面语言无关）过滤到设置页这一项。
+  // 以前这里用的是中文「设置」，本地（zh）能过、CI（en locale）过滤出 0 项 → 回车无效 → 面板不关。
+  await input.fill('set');
   const items = page.locator('.palette__item');
   await expect(items).toHaveCount(1);
 
