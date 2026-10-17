@@ -142,6 +142,16 @@ export interface MaterializedState {
   packs: Record<string, PackRecord>;
   /** 兼容草稿：旧格式里"我们有、设计里没有"的成品文本（如 `scenario` / `first_mes`）。 */
   stash: Record<string, StashRecord>;
+  /** 卡片库级启停（与卡片内容分开：导出/分享不带走别人的停用状态）。缺省 = 启用。 */
+  cardLibrary: Record<string, LibraryRecord>;
+}
+
+/** 一张卡的库状态（目前只有启停；将来收藏/隐藏也放这里）。 */
+export interface LibraryRecord {
+  cardId: string;
+  enabled: boolean;
+  hlc: Hlc;
+  opId: string;
 }
 
 /** 一张卡片的物化记录：整文档 LWW + 墓碑（与旧角色卡同一套语义）。 */

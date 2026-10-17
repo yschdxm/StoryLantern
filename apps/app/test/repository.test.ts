@@ -239,11 +239,16 @@ test('op-log：重启后（重放日志）数据还在，且每条写入都进�
   await first.messages.append(session.id, 'user', '风大吗');
 
   const before = await ports.ops.stats();
-  assert.equal(
-    before.count,
-    5,
-    '角色 upsert + 会话 create + 开局配置 session.setup + 开场白 append + 用户消息 append（ADR-0011 后建会话同时落 setup）',
+  // ADR-0011 后角色写卡片、旧字段进兼容草稿，op 条数不再固定：
+  // 改为按 op 类型断言（角色 card.upsert + 开场白 stash.upsert + 会话 create + 开局配置 + 开场白/用户消息 append）
+  const page = await ports.ops.list(0, 100);
+  const types = page.rows.map((row) => (JSON.parse(row.line) as { type?: string }).type ?? '');
+  assert.deepEqual(
+    [...new Set(types)].sort(),
+    ['card.upsert', 'message.append', 'session.create', 'session.setup', 'stash.upsert'],
+    '角色写卡片与兼容草稿；建会话写会话、开局配置与开场白；用户消息单独一条',
   );
+  assert.equal(before.count, page.rows.length, '统计条数与实际读出的行数一致');
   assert.equal(before.devices, 1, '所有 op 都带着本设备 id');
 
   // "重启"：同一份 op 日志，全新仓储

@@ -33,6 +33,15 @@ export interface CardDeletePayload {
   card_id: string;
 }
 
+/**
+ * 卡片库级启停（退役/草稿）。与卡片内容分开存：
+ * 导出/分享卡片时不该带走"我这台设备把它停用了"这种库状态。
+ */
+export interface CardLibraryPayload {
+  card_id: string;
+  enabled: boolean;
+}
+
 export interface SessionSetupPayload {
   session_id: string;
   setup: SessionSetup;
@@ -69,6 +78,16 @@ export function cardDelete(base: OpBase, payload: CardDeletePayload, stamp: Stam
     ...base,
     ...stamp,
     type: 'card.delete',
+    entity: { type: 'card', id: payload.card_id },
+    payload,
+  });
+}
+
+export function cardLibrary(base: OpBase, payload: CardLibraryPayload, stamp: StampOptions = {}): Op<CardLibraryPayload> {
+  return createOp({
+    ...base,
+    ...stamp,
+    type: 'card.library',
     entity: { type: 'card', id: payload.card_id },
     payload,
   });

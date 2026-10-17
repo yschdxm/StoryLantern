@@ -111,7 +111,12 @@ function parseExamples(id: string, text: string): { examples: ExampleDialogue[];
   if (paired.every((message) => message === undefined)) {
     return { examples: [{ id: `${id}-example-1`, messages: lines.map((content) => ({ role: 'assistant' as const, content })) }] };
   }
-  return { examples: [], unparsed: text };
+  // 混合形态：结构不可靠，但**内容不能丢**。给模型的那份按"每行一条 assistant 示例"落进卡片，
+  // 原文另外进 stash（保留可读的原始格式，供用户之后拆成结构化示例）。
+  return {
+    examples: [{ id: `${id}-example-1`, tags: ['legacy-unparsed'], messages: lines.map((content) => ({ role: 'assistant' as const, content })) }],
+    unparsed: text,
+  };
 }
 
 // ---------------------------------------------------------------- 实体映射

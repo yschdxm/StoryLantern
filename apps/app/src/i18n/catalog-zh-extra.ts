@@ -36,4 +36,11 @@ export const zhExtra: AppMessages = {
   'chat.trace.block.summary': '相关摘要',
   'chat.trace.rulesOmitted': '跳过了 {count} 条带条件的规则（条件求值器尚未实现，不假装生效）',
   'chat.trace.loreDropped': '{count} 条典籍没有注入（概率未命中或超出预算）',
+  // 卡片激活（ADR-0011 补充）：未参与本次请求的原因
+  'chat.trace.inactive': '未参与本次请求的卡片（{count}）',
+  'chat.trace.inactive.library-disabled': '库级停用（退役/草稿）',
+  'chat.trace.inactive.override-off': '本会话里被关掉',
+  'chat.trace.inactive.not-in-session': '不在场 / 不是当前场景',
+  'chat.trace.inactive.no-instance': '没有对应的物品实例',
+  'chat.trace.inactive.not-mounted': '不在本局资源池（未挂载的包/卡）',
 };

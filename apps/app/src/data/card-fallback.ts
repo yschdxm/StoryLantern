@@ -117,3 +117,8 @@ export function setupOfLegacySession(session: Session, premise = ''): SessionSet
     origin: 'card',
   };
 }
+
+/** 空开局配置：用于"还没有 setup"的计算（例如激活判定），不代表真实会话。 */
+export function emptySetup(): SessionSetup {
+  return { characters: [], premise: '', opening_mode: 'self', origin: 'card' };
+}

@@ -274,9 +274,14 @@ test('迁移：示例对话每行都有角色前缀时落成结构化 examples�
   mixed.applyAll(mixedResult.ops);
   const mixedCard = liveCard(mixed.state, 'char-1')?.card as CharacterCard | undefined;
   assert.ok(mixedCard !== undefined);
-  assert.equal(mixedCard.examples, undefined, '结构不可靠时不编');
+  // 结构不可靠时不猜说话人，但**内容不能丢**：给模型的那份按每行一条 assistant 示例落进卡片
+  assert.equal(mixedCard.examples?.[0]?.tags?.[0], 'legacy-unparsed');
+  assert.deepEqual(
+    mixedCard.examples?.[0]?.messages.map((message) => message.content),
+    ['{{user}}: 你好', '没有前缀的一行'],
+  );
   const examplesStash = liveStash(mixed.state).find((record) => record.entry.source === 'legacy:character.exampleDialogue');
-  assert.equal(examplesStash?.entry.text, '{{user}}: 你好\n没有前缀的一行', '原文进 stash，不丢数据');
+  assert.equal(examplesStash?.entry.text, '{{user}}: 你好\n没有前缀的一行', '原文另外进 stash，保留可读格式');
 });
 
 test('迁移：已存在的实体不会重复生成（含墓碑）', () => {

@@ -72,6 +72,7 @@ export { listMemories, memoriesFor } from './memory-projection.ts';
 // ---- 卡片模型（ADR-0011）：新写入走这几类 op ----
 export {
   cardDelete,
+  cardLibrary,
   cardUpsert,
   packDelete,
   packUpsert,
@@ -80,6 +81,7 @@ export {
   stashDelete,
   stashUpsert,
   type CardDeletePayload,
+  type CardLibraryPayload,
   type CardUpsertPayload,
   type OpBase,
   type PackDeletePayload,
@@ -90,6 +92,7 @@ export {
 } from './card-ops.ts';
 export {
   applyCardModelOp,
+  isCardLibraryEnabled,
   isCardModelOp,
   liveCard,
   liveStash,

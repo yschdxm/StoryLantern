@@ -11,6 +11,7 @@
 import type { Op } from './op.ts';
 import type {
   CardDeletePayload,
+  CardLibraryPayload,
   CardUpsertPayload,
   PackDeletePayload,
   PackUpsertPayload,
@@ -190,13 +191,41 @@ export function liveStash(state: MaterializedState): StashRecord[] {
     .sort((a, b) => a.createdHlc.t - b.createdHlc.t || a.id.localeCompare(b.id));
 }
 
+// ---------------------------------------------------------------- 卡片库启停
+
+/**
+ * 库级启停：与卡片内容分开存（导出/分享卡片不带别人的停用状态）。
+ * 用独立的 HLC 比较，因此"停用 op 先到、卡片后到"也不会丢。
+ */
+export function applyCardLibrary(state: MaterializedState, op: Op): void {
+  const payload = op.payload as CardLibraryPayload;
+  if (typeof payload.card_id !== 'string' || payload.card_id === '') return;
+  const existing = state.cardLibrary[payload.card_id];
+  const newer =
+    existing === undefined ||
+    laterThanRecord(op, { updatedHlc: existing.hlc, opId: existing.opId });
+  if (!newer) return;
+  state.cardLibrary[payload.card_id] = {
+    cardId: payload.card_id,
+    enabled: payload.enabled !== false,
+    hlc: cloneHlc(op.hlc),
+    opId: op.opId,
+  };
+}
+
+/** 这张卡是否在库里启用（没记录 = 启用，与"缺省视为启用"一致）。 */
+export function isCardLibraryEnabled(state: MaterializedState, cardId: string): boolean {
+  return state.cardLibrary[cardId]?.enabled ?? true;
+}
+
 // ---------------------------------------------------------------- 卡片模型 op 的统一入口
 
-/** 卡片模型那 8 类 op：由 `Materializer` 统一交给 `applyCardModelOp` 处理。 */
+/** 卡片模型那 9 类 op：由 `Materializer` 统一交给 `applyCardModelOp` 处理。 */
 export function isCardModelOp(type: Op['type']): boolean {
   return (
     type === 'card.upsert' ||
     type === 'card.delete' ||
+    type === 'card.library' ||
     type === 'session.setup' ||
     type === 'runtime.patch' ||
     type === 'pack.upsert' ||
@@ -213,6 +242,9 @@ export function applyCardModelOp(state: MaterializedState, op: Op): void {
       return;
     case 'card.delete':
       applyCardDelete(state, op);
+      return;
+    case 'card.library':
+      applyCardLibrary(state, op);
       return;
     case 'session.setup':
       applySessionSetup(state, op);

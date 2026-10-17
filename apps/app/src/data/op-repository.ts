@@ -1,21 +1,30 @@
 import {
   HlcClock,
   Materializer,
-  characterDelete,
-  characterUpsert,
+  cardDelete,
+  cardUpsert,
   checkpointOp,
   decodeOp,
   encodeOp,
   listCards,
+  liveCard,
   messageAppend,
   sessionCreate,
   sessionDelete,
   sessionSetup,
+  stashUpsert,
   stateDigest,
   ulid,
   type Op,
   type Snapshot,
 } from '../../../../packages/oplog/src/index.ts';
+import {
+  cardFromCharacterDraft,
+  compatibleCharacter,
+  compatibleCharacters,
+  stashEntriesFromDraft,
+  withSessionCharacterName,
+} from './character-compat.ts';
 import { createCardStores, type CardModelStores } from './card-store.ts';
 import { migrateLegacyIntoLog } from './migrate-cards.ts';
 import { pickOpening } from './greeting.ts';
@@ -30,7 +39,7 @@ import { loadOps, migrateLegacyOnce } from './op-load.ts';
 import type { DeviceStore } from './op-ports.ts';
 import { buildSnapshot, clearSnapshot as clearStoredSnapshot, prepareSnapshot } from './op-snapshot.ts';
 import type { LegacyDump, OpLogPort, OpLogRepositoryOptions, OpLogStats } from './op-types.ts';
-import { characterView, lorebookView, messageView, sessionView } from './op-views.ts';
+import { lorebookView, messageView, sessionView } from './op-views.ts';
 import {
   DataError,
   type CharacterStore,
@@ -146,53 +155,29 @@ export function createOpLogRepository(options: OpLogRepositoryOptions): OpLogRep
 
   // ---------------------------------------------------------------- 读取（全部派生自物化状态）
 
+  // 过渡兼容视图：角色的事实源是卡片（ADR-0011），旧 `characters` 只做投影 + 旧字段兜底
   const characters: CharacterStore = {
-    list: () => withReady(async () => materializer.characters().map(characterView)),
+    list: () => withReady(async () => compatibleCharacters(materializer.state)),
 
-    get: (id) =>
-      withReady(async () => {
-        const record = materializer.state.characters[id];
-        if (record === undefined || record.deleted !== undefined) return undefined;
-        return characterView(record);
-      }),
+    get: (id) => withReady(async () => compatibleCharacter(materializer.state, id)),
 
     save: (draft: CharacterDraft) =>
       withReady(async () => {
-        const name = (draft.name ?? '').trim();
-        if (name === '') throw new DataError('invalid-argument', '角色名不能为空');
-        if (name.length > 60) throw new DataError('invalid-argument', '角色名过长（最多 60 字）');
-        const id = draft.id ?? ulid();
-        if (draft.id !== undefined) {
-          const existing = materializer.state.characters[draft.id];
-          if (existing === undefined || existing.deleted !== undefined) {
-            throw new DataError('invalid-argument', '找不到该角色');
-          }
-        }
-        await appendAndApply([
-          characterUpsert(base(), {
-            characterId: id,
-            name,
-            description: (draft.description ?? '').trim(),
-            personality: (draft.personality ?? '').trim(),
-            scenario: (draft.scenario ?? '').trim(),
-            firstMessage: (draft.firstMessage ?? '').trim(),
-            exampleDialogue: (draft.exampleDialogue ?? '').trim(),
-            // 以前没写进 op：物化是整体覆盖，于是每次保存都会把它们抹掉（界面能编辑、能"保存成功"，读回来却是空）
-            systemPrompt: (draft.systemPrompt ?? '').trim(),
-            alternateGreetings: (draft.alternateGreetings ?? []).map((item) => item.trim()).filter((item) => item !== ''),
-          }),
-        ]);
-        const record = materializer.state.characters[id];
-        if (record === undefined) throw new DataError('store-error', '写入后读不到该角色');
-        return characterView(record);
+        const card = cardFromCharacterDraft(materializer.state, draft);
+        const ops: Op[] = [cardUpsert(base(), { card })];
+        // 卡片没有 scenario / 开场白：旧字段转成兼容草稿（迁移也是这么做的），一次保存不丢数据
+        for (const entry of stashEntriesFromDraft(card.meta.id, draft, now())) ops.push(stashUpsert(base(), { entry }));
+        await appendAndApply(ops);
+        const view = compatibleCharacter(materializer.state, card.meta.id);
+        if (view === undefined) throw new DataError('store-error', '写入后读不到该角色');
+        return view;
       }),
 
     remove: (id) =>
       withReady(async () => {
-        const existing = materializer.state.characters[id];
-        if (existing === undefined || existing.deleted !== undefined) return false;
+        if (liveCard(materializer.state, id) === undefined) return false;
         // 级联：角色没了，它的会话也一起墓碑（消息随会话失效，不必逐条写 op）
-        const ops: Op[] = [characterDelete(base(), { characterId: id })];
+        const ops: Op[] = [cardDelete(base(), { card_id: id })];
         for (const session of materializer.sessions()) {
           if (session.characterId === id) ops.push(sessionDelete(base(), { sessionId: session.id }));
         }
@@ -208,34 +193,37 @@ export function createOpLogRepository(options: OpLogRepositoryOptions): OpLogRep
           .sessions()
           .map((record) => sessionView(materializer, record.id))
           .filter((session): session is Session => session !== undefined)
+          .map((session) => withSessionCharacterName(materializer.state, session))
           .sort((a, b) => b.updatedAt - a.updatedAt || b.id.localeCompare(a.id)),
       ),
 
     create: (characterId, title, greetingIndex) =>
       withReady(async () => {
-        const character = materializer.state.characters[characterId];
-        if (character === undefined || character.deleted !== undefined) {
-          throw new DataError('invalid-argument', `角色 ${characterId} 不存在`);
-        }
+        const character = compatibleCharacter(materializer.state, characterId);
+        if (character === undefined) throw new DataError('invalid-argument', `角色 ${characterId} 不存在`);
         const clean = (title ?? '').trim();
         if (clean !== '' && clean.length > 120) throw new DataError('invalid-argument', '会话名过长');
+        // 开场属于会话（ADR-0011）：卡里没有开场，有兼容草稿就用草稿（规则与内存实现共用 pickOpening）
+        const opening = pickOpening(character, greetingIndex);
         const id = ulid();
         const ops: Op[] = [
           sessionCreate(base(), { sessionId: id, title: clean === '' ? character.name : clean, characterId }),
+          sessionSetup(base(), { session_id: id, setup: {
+            characters: [characterId],
+            premise: character.scenario,
+            ...(opening === undefined
+              ? { opening_mode: 'self' as const }
+              : { opening_mode: 'designated' as const, opening_speaker: characterId }),
+            origin: 'card',
+          } }),
         ];
-        // 开局配置（ADR-0011）：旧角色卡的 scenario 就是"这一局处境"的旧写法，迁移期直接当 premise
-        ops.push(sessionSetup(base(), { session_id: id, setup: { characters: [characterId], premise: character.scenario ?? '', opening_mode: 'designated', opening_speaker: characterId, origin: 'card' } }));
-        // 开场白随会话一起落地：界面上"新建会话"就该看到那句话选哪一条由 greetingIndex 决定（-1 = 不插入），规则与内存实现共用 pickOpening
-        const opening = pickOpening(character, greetingIndex);
         if (opening !== undefined) {
-          ops.push(
-                        messageAppend(base(), { sessionId: id, messageId: ulid(), author: 'character', content: opening, }),
-          );
+          ops.push(messageAppend(base(), { sessionId: id, messageId: ulid(), author: 'character', content: opening }));
         }
         await appendAndApply(ops);
         const view = sessionView(materializer, id);
         if (view === undefined) throw new DataError('store-error', '创建会话后读不到它');
-        return view;
+        return withSessionCharacterName(materializer.state, view);
       }),
     rename: (id, title) =>
       withReady(async () => {
@@ -293,7 +281,7 @@ export function createOpLogRepository(options: OpLogRepositoryOptions): OpLogRep
       const result = materializer.applyAll(ops);
       return {
         ops: result.applied + result.duplicates,
-        characters: materializer.characters().length,
+        characters: compatibleCharacters(materializer.state).length,
         sessions: materializer.sessions().length,
         messages: liveMessageCount(),
       };
@@ -372,7 +360,7 @@ export function createOpLogRepository(options: OpLogRepositoryOptions): OpLogRep
     async counts() {
       await ready;
       return {
-        characters: materializer.characters().length,
+        characters: compatibleCharacters(materializer.state).length,
         sessions: materializer.sessions().length,
         messages: liveMessageCount(),
         cards: listCards(materializer.state).length,
@@ -390,7 +378,7 @@ export function createOpLogRepository(options: OpLogRepositoryOptions): OpLogRep
         pageSize: 0,
         sqliteVersion: `${stats.devices} 台设备`,
         writable: true,
-        characters: materializer.characters().length,
+        characters: compatibleCharacters(materializer.state).length,
         sessions: materializer.sessions().length,
         messages: liveMessageCount(),
       };

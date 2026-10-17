@@ -53,6 +53,7 @@ export function freezeSnapshot(snapshot: Snapshot): string {
     ),
     packs: Object.fromEntries(sortedEntries(state.packs)),
     stash: Object.fromEntries(sortedEntries(state.stash)),
+    cardLibrary: Object.fromEntries(sortedEntries(state.cardLibrary)),
     appliedOpIds: [...snapshot.appliedOpIds].sort(),
   });
 }

@@ -103,11 +103,12 @@ export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings, t
       },
     });
     // 卡片模型（ADR-0011）：装配输入是"开局配置 + 本会话卡片 + 运行时"，不再是角色的 6 个文本字段
+    const activeWorkspace = workspace ?? (await loadWorkspace(store.repository, fresh, sessionId));
     const request = buildChatRequestV2(
       buildChatOptionsV2({
         state: fresh,
         sessionId,
-        workspace: workspace ?? (await loadWorkspace(store.repository, fresh, sessionId)),
+        workspace: activeWorkspace,
         summaries: allSummaries,
         ...(preselected === undefined ? {} : { preselectedSummaries: preselected }),
         ...(assemble === undefined ? {} : { assemble }),
@@ -115,7 +116,7 @@ export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings, t
     );
     // 注入痕迹：用户随时能看到"这次模型多看了哪几条设定"（可解释性的最小一步）
     setInjectedLore(request.lore);
-    setTrace({ trace: request.trace, startedAt: Date.now(), attempts: [] });
+    setTrace({ trace: request.trace, startedAt: Date.now(), attempts: [], inactiveCards: activeWorkspace.inactive });
     const startedAt = Date.now();
     let firstDeltaAt: number | undefined;
 

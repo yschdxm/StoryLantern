@@ -1,138 +1,207 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import {
+  validateCard,
+  type CardIssue,
+  type CharacterCard,
+  type ExampleDialogue,
+} from '../../../../packages/cards/src/index.ts';
+import {
+  applyDraftToCard,
+  type CharacterCardDraft,
+  type SetCharacterDraftField,
+} from '../data/character-compat.ts';
+import {
+  draftOfCard,
+  stateSchemaOfDrafts,
+  stateVariableDraftsOf,
+  type StateVariableDraft,
+} from './character-edit/form-state.tsx';
 import { describeError } from '../data/error-text.ts';
-import type { ScreenProps } from './screen-props.ts';
-import { useAppState } from './screen-props.ts';
 import { useT } from '../i18n/context.tsx';
-import { Button, ConfirmDialog, Field, TextArea, TextInput } from '../ui/components.tsx';
+import type { Translator } from '../i18n/locale.ts';
+import type { ScreenProps } from './screen-props.ts';
+import { Banner, Button, ConfirmDialog, LoadingState } from '../ui/components.tsx';
+import { BasicSection, IdentitySection, PersonaSection } from './character-edit/ProfileSections.tsx';
+import { AdvancedSection, StateSection } from './character-edit/AdvancedSections.tsx';
+import { ExamplesSection, SpeechSection } from './character-edit/VoiceSections.tsx';
 
 export interface CharacterEditScreenProps extends ScreenProps {
   characterId: string | 'new';
   onDone: (characterId: string) => void;
 }
 
+/** 校验问题的一条：`路径：人话原因`（路径为空 = 整张卡）。 */
+function issueLine(t: Translator, issue: CardIssue): string {
+  return t('character.editor.issue', {
+    path: issue.path === '' ? t('character.editor.root') : issue.path,
+    message: issue.message,
+  });
+}
+
+/** 清空状态变量：行被全部删掉时不能把旧 state 留在卡里。 */
+function withoutState(card: CharacterCard): CharacterCard {
+  if (card.state === undefined) return card;
+  const { state: _state, ...rest } = card;
+  return rest;
+}
+
 /**
- * 角色编辑器。
+ * 角色编辑器（卡片模型 ADR-0011）。
  *
- * 两条刻意的取舍：
- *  1. **只有"名字"必填**——新用户第一次打开要能立刻跑通"建角色 → 聊天"，而不是先填六个表单；
- *  2. **主操作固定在表单底部**（拇指区），顶栏只留标题/返回/菜单，
- *     这样不必把表单状态提升到外壳去渲染顶栏按钮。
+ * 与旧版的三点不同：
+ *  1. **按分区编辑结构化字段**，不再是一块 JSON / 六个大文本框；
+ *  2. 保存写的是**卡片**（`repository.cards.save`），旧字段（scenario/开场白）交给兼容草稿；
+ *  3. 保存前跑 `validateCard`：error 逐条列出且不保存，warning 只提示。
+ *
+ * 库级启停（`setEnabled`）也在保存时一并落地：停用的卡保留内容，但不参与会话。
  */
 export function CharacterEditScreen({ store, characterId, onDone }: CharacterEditScreenProps): ReactNode {
   const t = useT();
-  const state = useAppState(store);
-  const existing = characterId === 'new' ? undefined : state.characters.find((item) => item.id === characterId);
-
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [personality, setPersonality] = useState('');
-  const [scenario, setScenario] = useState('');
-  const [firstMessage, setFirstMessage] = useState('');
-  const [exampleDialogue, setExampleDialogue] = useState('');
-  const [systemPrompt, setSystemPrompt] = useState('');
-  /** 备选开场白在界面上是一行一条，保存时过滤空行。 */
-  const [greetings, setGreetings] = useState('');
-  const [error, setError] = useState<string | undefined>(undefined);
-  const [loadedId, setLoadedId] = useState<string | undefined>(undefined);
+  const [existing, setExisting] = useState<CharacterCard | undefined>(undefined);
+  const [draft, setDraft] = useState<CharacterCardDraft>({ name: '' });
+  const [examples, setExamples] = useState<ExampleDialogue[]>([]);
+  const [variables, setVariables] = useState<StateVariableDraft[]>([]);
+  const [enabled, setEnabled] = useState(true);
+  const [initialEnabled, setInitialEnabled] = useState(true);
+  const [loading, setLoading] = useState(characterId !== 'new');
+  const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState<string | undefined>(undefined);
+  const [saveError, setSaveError] = useState<string | undefined>(undefined);
+  const [issues, setIssues] = useState<CardIssue[]>([]);
   const [pendingDelete, setPendingDelete] = useState(false);
 
-  // 角色是异步读出来的：到达后填充一次；用 loadedId 防止覆盖用户正在输入的内容
+  // 打开编辑器：读卡片 + 库启停状态。异步到达后只填充一次，不覆盖正在输入的内容。
   useEffect(() => {
-    if (existing === undefined || loadedId === existing.id) return;
-    setName(existing.name);
-    setDescription(existing.description);
-    setPersonality(existing.personality);
-    setScenario(existing.scenario);
-    setFirstMessage(existing.firstMessage);
-    setExampleDialogue(existing.exampleDialogue);
-    setSystemPrompt(existing.systemPrompt);
-    setGreetings(existing.alternateGreetings.join('\n'));
-    setLoadedId(existing.id);
-  }, [existing, loadedId]);
+    let alive = true;
+    setIssues([]);
+    setSaveError(undefined);
+    setPendingDelete(false);
+    if (characterId === 'new') {
+      // 同一组件实例可能从"编辑 A"切到"新建"：显式清空，别把上一个角色的表单带过来
+      setExisting(undefined);
+      setDraft({ name: '' });
+      setExamples([]);
+      setVariables([]);
+      setEnabled(true);
+      setInitialEnabled(true);
+      setLoadError(undefined);
+      setLoading(false);
+      return;
+    }
+    const cards = store.repository.cards;
+    if (cards === undefined) {
+      setLoadError(t('character.editor.noCards'));
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    setLoadError(undefined);
+    void Promise.all([cards.get(characterId), cards.library()])
+      .then(([card, library]) => {
+        if (!alive) return;
+        if (card === undefined || card.card_type !== 'character') {
+          setLoadError(t('character.editor.notFound'));
+          return;
+        }
+        const cardEnabled = library.find((entry) => entry.id === card.meta.id)?.enabled ?? true;
+        setExisting(card);
+        setDraft(draftOfCard(card));
+        setExamples(card.examples === undefined ? [] : [...card.examples]);
+        setVariables(stateVariableDraftsOf(card.state));
+        setEnabled(cardEnabled);
+        setInitialEnabled(cardEnabled);
+      })
+      .catch((cause: unknown) => {
+        if (alive) setLoadError(describeError(cause));
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [characterId, store, t]);
 
-  const isNew = characterId === 'new';
-  const busy = state.busy === 'saveCharacter';
+  const set: SetCharacterDraftField = (key, value) => setDraft((current) => ({ ...current, [key]: value }));
 
   const save = async (): Promise<void> => {
-    setError(undefined);
+    const cards = store.repository.cards;
+    if (cards === undefined) {
+      setSaveError(t('character.editor.noCards'));
+      return;
+    }
+    setSaving(true);
+    setSaveError(undefined);
     try {
-      const saved = await store.actions.saveCharacter({
-        ...(isNew ? {} : { id: characterId }),
-        name,
-        description,
-        personality,
-        scenario,
-        firstMessage,
-        exampleDialogue,
-        systemPrompt,
-        alternateGreetings: greetings.split('\n').map((line) => line.trim()).filter((line) => line !== ''),
-      });
-      onDone(saved.id);
+      const base = applyDraftToCard(existing, draft);
+      const state = stateSchemaOfDrafts(variables);
+      const withLists: CharacterCard = { ...base, examples };
+      const card: CharacterCard = state === undefined ? withoutState(withLists) : { ...withLists, state };
+      const validation = validateCard(card);
+      setIssues(validation.issues);
+      if (!validation.ok) return;
+      const saved = await cards.save(card);
+      // 库级启停与卡片内容分开存；保存时一并落地，避免"编辑完还要回列表再停一次"
+      if (enabled !== initialEnabled) await cards.setEnabled(saved.meta.id, enabled);
+      // 写的是卡片仓储（不是旧的 saveCharacter action）：列表状态要显式刷新，否则回列表还是旧数据
+      await store.actions.refreshCharacters();
+      onDone(saved.meta.id);
     } catch (cause) {
-      setError(describeError(cause));
+      setSaveError(t('character.editor.saveFailed', { message: describeError(cause) }));
+    } finally {
+      setSaving(false);
     }
   };
+
+  if (loading) return <LoadingState label={t('character.editor.loading')} />;
+  if (loadError !== undefined) {
+    return (
+      <div className="form-screen">
+        <div className="form">
+          <Banner tone="error">{loadError}</Banner>
+        </div>
+      </div>
+    );
+  }
+
+  const errors = issues.filter((issue) => issue.severity === 'error');
+  const warnings = issues.filter((issue) => issue.severity === 'warning');
+  const isNew = existing === undefined;
 
   return (
     <div className="form-screen">
       <div className="form">
-        {error !== undefined && <p className="notice notice--warn">{error}</p>}
-        <Field label={t('character.name')} hint={t('character.name.hint')}>
-          <TextInput value={name} onChange={setName} placeholder={t('character.name.placeholder')} autoFocus={isNew} />
-        </Field>
-        <Field label={t('character.description')} hint={t('character.description.hint')}>
-          <TextArea
-            value={description}
-            onChange={setDescription}
-            rows={4}
-            placeholder={t('character.description.placeholder')}
-          />
-        </Field>
-        <Field label={t('character.personality')} hint={t('character.personality.hint')}>
-          <TextArea
-            value={personality}
-            onChange={setPersonality}
-            rows={3}
-            placeholder={t('character.personality.placeholder')}
-          />
-        </Field>
-        <Field label={t('character.scenario')} hint={t('character.scenario.hint')}>
-          <TextArea value={scenario} onChange={setScenario} rows={3} placeholder={t('character.scenario.placeholder')} />
-        </Field>
-        <Field label={t('character.greeting')} hint={t('character.greeting.hint')}>
-          <TextArea
-            value={firstMessage}
-            onChange={setFirstMessage}
-            rows={3}
-            placeholder={t('character.greeting.placeholder')}
-          />
-        </Field>
-        <Field label={t('character.example')} hint={t('character.example.hint')}>
-          <TextArea
-            value={exampleDialogue}
-            onChange={setExampleDialogue}
-            rows={4}
-            placeholder={t('character.example.placeholder')}
-          />
-        </Field>
-        <Field label={t('character.systemPrompt')} hint={t('character.systemPrompt.hint')}>
-          <textarea
-            className="input"
-            rows={3}
-            value={systemPrompt}
-            placeholder={t('character.systemPrompt.placeholder')}
-            onChange={(event) => setSystemPrompt(event.target.value)}
-          />
-        </Field>
-        <Field label={t('character.greetings')} hint={t('character.greetings.hint')}>
-          <textarea
-            className="input"
-            rows={3}
-            value={greetings}
-            placeholder={t('character.greetings.placeholder')}
-            onChange={(event) => setGreetings(event.target.value)}
-          />
-        </Field>
+        {saveError !== undefined && <Banner tone="error">{saveError}</Banner>}
+        {errors.length > 0 && (
+          <Banner tone="error">
+            <span>{t('character.editor.validationFailed')}</span>
+            {errors.map((issue, index) => (
+              <span key={`${issue.path}-${issue.code}-${String(index)}`}>
+                <br />
+                {issueLine(t, issue)}
+              </span>
+            ))}
+          </Banner>
+        )}
+        {warnings.length > 0 && (
+          <Banner tone="warn">
+            <span>{t('character.editor.warnings')}</span>
+            {warnings.map((issue, index) => (
+              <span key={`${issue.path}-${issue.code}-${String(index)}`}>
+                <br />
+                {issueLine(t, issue)}
+              </span>
+            ))}
+          </Banner>
+        )}
+
+        <BasicSection draft={draft} set={set} />
+        <IdentitySection draft={draft} set={set} />
+        <PersonaSection draft={draft} set={set} />
+        <SpeechSection draft={draft} set={set} />
+        <ExamplesSection examples={examples} onChange={setExamples} />
+        <StateSection variables={variables} onChange={setVariables} />
+        <AdvancedSection draft={draft} set={set} enabled={enabled} onEnabledChange={setEnabled} />
 
         {!isNew && (
           <div className="form__danger">
@@ -144,19 +213,19 @@ export function CharacterEditScreen({ store, characterId, onDone }: CharacterEdi
       </div>
 
       <div className="actionbar">
-        <Button block disabled={busy || name.trim() === ''} onClick={() => void save()}>
-          {busy ? t('common.saving') : isNew ? t('character.create') : t('character.save')}
+        <Button block disabled={saving || draft.name.trim() === ''} onClick={() => void save()}>
+          {saving ? t('character.editor.saveBusy') : t('character.editor.save')}
         </Button>
       </div>
 
       <ConfirmDialog
         open={pendingDelete}
         title={t('characters.delete')}
-        message={t('characters.delete.message', { name: existing?.name ?? name })}
+        message={t('characters.delete.message', { name: existing?.identity.name ?? draft.name })}
         onCancel={() => setPendingDelete(false)}
         onConfirm={() => {
           setPendingDelete(false);
-          if (!isNew) void store.actions.deleteCharacter(characterId);
+          void store.actions.deleteCharacter(characterId);
           onDone('');
         }}
       />

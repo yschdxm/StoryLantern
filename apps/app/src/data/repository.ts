@@ -193,12 +193,22 @@ export function validateMemoryDraft(draft: MemoryDraft): Required<Omit<MemoryDra
  * `validateCard`，仓储只做兜底校验：有 error 就抛 `DataError`，不写进日志。
  * warning 不拦保存（导入的旧卡字段缺失是已知过渡态）。
  */
+export interface CardLibraryEntry {
+  id: string;
+  /** false = 退役/草稿：任何会话都不参与（见 `packages/cards/src/activation.ts`）。 */
+  enabled: boolean;
+}
+
 export interface CardStore {
   list(type?: CardType): Promise<CardDocument[]>;
   get(id: string): Promise<CardDocument | undefined>;
   /** 保存整张卡（调用方负责先过 validateCard）；返回落库后的卡。 */
   save(card: CardDocument): Promise<CardDocument>;
   remove(id: string): Promise<boolean>;
+  /** 卡片库状态（启停）。与卡片内容分开：导出/分享卡片不带走别人的停用状态。 */
+  library(): Promise<CardLibraryEntry[]>;
+  /** 库级启停；卡片不存在时抛 `DataError`。 */
+  setEnabled(id: string, enabled: boolean): Promise<void>;
 }
 
 /** 会话开局配置（成员 / 舞台 / 处境 / 开场模式）：一次写入，按 HLC LWW。 */

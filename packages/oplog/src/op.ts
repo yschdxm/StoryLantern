@@ -31,6 +31,7 @@ export type OpType =
   // ---- 卡片模型（ADR-0011）：新写入一律走这五类 ----
   | 'card.upsert'
   | 'card.delete'
+  | 'card.library'
   | 'session.setup'
   | 'runtime.patch'
   | 'pack.upsert'

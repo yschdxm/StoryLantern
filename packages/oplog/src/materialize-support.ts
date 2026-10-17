@@ -27,6 +27,7 @@ export function emptyState(): MaterializedState {
     runtimePatches: {},
     packs: {},
     stash: {},
+    cardLibrary: {},
   };
 }
 
@@ -52,6 +53,7 @@ export function normalizeState(state: Partial<MaterializedState>): MaterializedS
     runtimePatches: state.runtimePatches ?? base.runtimePatches,
     packs: state.packs ?? base.packs,
     stash: state.stash ?? base.stash,
+    cardLibrary: state.cardLibrary ?? base.cardLibrary,
   };
 }
 

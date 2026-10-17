@@ -28,4 +28,11 @@ export const enExtra: AppMessages = {
   'chat.trace.block.summary': 'Relevant summaries',
   'chat.trace.rulesOmitted': '{count} conditional rules skipped (condition evaluator not implemented yet; not pretending they apply)',
   'chat.trace.loreDropped': '{count} lore entries not injected (probability miss or over budget)',
+  // Card activation (ADR-0011 addendum): why a card did not take part
+  'chat.trace.inactive': 'Cards not used in this request ({count})',
+  'chat.trace.inactive.library-disabled': 'Disabled in library (retired/draft)',
+  'chat.trace.inactive.override-off': 'Turned off for this session',
+  'chat.trace.inactive.not-in-session': 'Not present / not the current scene',
+  'chat.trace.inactive.no-instance': 'No item instance',
+  'chat.trace.inactive.not-mounted': 'Not in this session’s resource pool',
 };

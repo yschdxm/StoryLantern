@@ -12,11 +12,33 @@
 import type { StateValue } from './types-base.ts';
 import type { OpeningMode, Tone } from './types-enums.ts';
 
+/**
+ * 这一局加载的资源池（"注册"的落地形态）。
+ *
+ * 为什么不给每张卡维护"全局注册 / 会话注册"两份名单：卡片大多应**按类型自动激活**
+ * （在场角色 / 当前场景 / 持有物品 / 关键词命中的典籍），手工名单只会腐烂（新增卡忘了挂）。
+ * 所以这里只描述**资源池**（加载了哪些包/单卡），"哪张卡参与"由 `activation.ts` 按类型算；
+ * 用户要手动干预时用 `overrides`，只记例外。
+ */
+export interface SessionMounts {
+  /** 世界包 ID（包里的卡片进入资源池）。 */
+  pack_ids?: readonly string[];
+  /** 直接挂载的单卡（不属于任何包，或只想用其中一张）。 */
+  card_ids?: readonly string[];
+}
+
 /** 开局配置：创建会话时产生，随会话销毁；不属于角色卡，也不属于世界包。 */
 export interface SessionSetup {
   /** 会话成员（角色卡 ID，≥1；多个即群聊）。 */
   characters: readonly string[];
-  /** 引用的世界包（可多个；允许多个包叠加，冲突不强制解决）。 */
+  /**
+   * 这一局的资源池；**不填 = 全库可用**（轻量用法：只有一个库，不想维护挂载表）。
+   * 填了就只在这些包/单卡里激活（多世界包隔离）。
+   */
+  mounts?: SessionMounts;
+  /** 这一局的例外开关：卡片 id -> 是否参与（只存与默认不同的项）。 */
+  overrides?: Readonly<Record<string, boolean>>;
+  /** @deprecated 旧字段：等价于 `mounts.pack_ids`；保留是为了让已写入的 setup 还能被读。 */
   world_pack_ids?: readonly string[];
   /** 当前舞台（场景卡 ID）；不填 = 自由场景，由 premise 决定。 */
   scene_id?: string;

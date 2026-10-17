@@ -1,8 +1,10 @@
 import {
   cardDelete,
+  cardLibrary,
   cardUpsert,
   clampStateDelta,
   deriveRuntime,
+  isCardLibraryEnabled,
   liveCard,
   liveStash,
   listCards,
@@ -193,6 +195,20 @@ export function createCardStore(deps: CardStoreDeps): CardStore {
         if (liveCard(deps.materializer().state, id) === undefined) return false;
         await deps.appendAndApply([cardDelete(deps.base(), { card_id: id })]);
         return true;
+      }),
+
+    library: () =>
+      deps.withReady(async () => {
+        const state = deps.materializer().state;
+        return listCards(state).map((record) => ({ id: record.id, enabled: isCardLibraryEnabled(state, record.id) }));
+      }),
+
+    setEnabled: (id, enabled) =>
+      deps.withReady(async () => {
+        if (liveCard(deps.materializer().state, id) === undefined) {
+          throw new DataError('invalid-argument', '卡片不存在');
+        }
+        await deps.appendAndApply([cardLibrary(deps.base(), { card_id: id, enabled })]);
       }),
   };
 }

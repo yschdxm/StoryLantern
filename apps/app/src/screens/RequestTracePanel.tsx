@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { useT } from '../i18n/context.tsx';
+import type { ActivationEntry } from '../../../../packages/cards/src/index.ts';
 import type { PromptTraceV2 } from '../data/prompt-v2.ts';
 import { Sheet } from '../ui/components.tsx';
 
@@ -23,6 +24,8 @@ export interface RequestTraceState {
   firstDeltaMs?: number;
   totalMs?: number;
   attempts: ModelAttempt[];
+  /** 没有参与本次装配的卡片及原因（库级停用 / 资源池外 / 不在场 / 无实例…）。 */
+  inactiveCards?: readonly ActivationEntry[];
 }
 
 export function RequestTracePanel({
@@ -125,6 +128,20 @@ export function RequestTracePanel({
                 </li>
               ))}
             </ul>
+          )}
+
+          {(state.inactiveCards?.length ?? 0) > 0 && (
+            <>
+              <h3 className="trace__heading">{t('chat.trace.inactive', { count: state.inactiveCards?.length ?? 0 })}</h3>
+              <ul className="trace__list">
+                {(state.inactiveCards ?? []).slice(0, 8).map((entry) => (
+                  <li key={entry.id}>
+                    <span className="trace__name">{entry.id}</span>
+                    <span className="trace__meta">{t(`chat.trace.inactive.${entry.code}`)}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
 
           <p className="trace__line">
