@@ -1,4 +1,4 @@
-import { retrieve, type RetrieveOptions, type RetrievalDoc, type ScoredDoc } from './retrieval.ts';
+import { retrieve, tokenize, type RetrieveOptions, type RetrievalDoc, type ScoredDoc } from './retrieval.ts';
 
 /**
  * 混合检索（M4 第三块的另一半）：**BM25 + 向量**，用 RRF 合并。
@@ -37,6 +37,13 @@ export interface HybridRetrieveOptions extends RetrieveOptions {
   vectorLimit?: number | undefined;
   /** RRF 的 k（默认 60）。 */
   rrfK?: number | undefined;
+  /**
+   * 融合后是否再做一次词法重排（见 `rerankDocs`）。**默认关闭**：
+   * 它会偏向字面命中，对"语义改写"类提问可能变差 —— 要开必须先量。
+   */
+  rerank?: boolean | undefined;
+  /** 重排参数（只在 rerank: true 时生效）。 */
+  rerankOptions?: RerankOptions | undefined;
 }
 
 export interface HybridRetrieveResult {
@@ -95,6 +102,49 @@ export function vectorSearch(
     if (score > 0) scored.push({ id: doc.id, score });
   }
   return scored.sort((left, right) => right.score - left.score || left.id.localeCompare(right.id)).slice(0, limit);
+}
+
+/**
+ * **词法重排（rerank）**：在 RRF 融合之后用完全透明的信号再排一次。
+ *
+ * 信号只有两个，都能解释给人听：
+ *  1. **词项覆盖率**：查询里的词有多少出现在这段文本里（0..1）；
+ *  2. **完整短语命中**：整句查询原样出现在文本里 → 加固定奖励。
+ *
+ * 为什么默认**不启用**：RRF 已经融合了两路检索，再加重词法权重会偏向字面命中，
+ * 对"换了说法"的提问可能变差。没有量过就不该默认打开——要打开请先跑
+ * `eval/long-chat/retrieval.test.ts` 那组对比，把数字写进结论。
+ */
+export interface RerankOptions {
+  /** 覆盖率权重（默认 0.5）：score * (1 + weight * coverage)。 */
+  coverageWeight?: number;
+  /** 完整短语命中的固定奖励（默认 1，与 RRF 分数同量级）。 */
+  phraseBonus?: number;
+}
+
+export function rerankDocs(
+  query: string,
+  candidates: readonly ScoredDoc[],
+  docs: readonly RetrievalDoc[],
+  options: RerankOptions = {},
+): ScoredDoc[] {
+  const coverageWeight = options.coverageWeight ?? 0.5;
+  const phraseBonus = options.phraseBonus ?? 1;
+  const queryTerms = new Set(tokenize(query));
+  const textById = new Map(docs.map((doc) => [doc.id, doc.text]));
+  const phrase = query.trim();
+  if (queryTerms.size === 0) return [...candidates];
+  return candidates
+    .map((candidate) => {
+      const text = textById.get(candidate.id) ?? '';
+      const docTerms = new Set(tokenize(text));
+      let hit = 0;
+      for (const term of queryTerms) if (docTerms.has(term)) hit += 1;
+      const coverage = hit / queryTerms.size;
+      const bonus = phrase !== '' && text.includes(phrase) ? phraseBonus : 0;
+      return { ...candidate, score: candidate.score * (1 + coverageWeight * coverage) + bonus };
+    })
+    .sort((left, right) => right.score - left.score || left.id.localeCompare(right.id));
 }
 
 export async function retrieveHybrid(
@@ -159,7 +209,13 @@ export async function retrieveHybrid(
       };
     });
 
-  return { mode: 'hybrid', sources: ['bm25', embedder.id], docs: merged, notes };
+  return { mode: 'hybrid', sources: ['bm25', embedder.id], docs: options.rerank === true ? reranked(merged, notes) : merged, notes };
+
+  /** 重排并记一条 note（只走这里，保证"为什么变了"永远写在结果里）。 */
+  function reranked(input: ScoredDoc[], log: string[]): ScoredDoc[] {
+    log.push('已做词法重排（覆盖率 + 短语命中；默认关闭，需显式开启）');
+    return rerankDocs(query, input, docs, options.rerankOptions);
+  }
 }
 
 /**

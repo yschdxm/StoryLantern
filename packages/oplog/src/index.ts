@@ -131,11 +131,13 @@ export {
   cosineSimilarity,
   createHashEmbeddingStub,
   reciprocalRankFusion,
+  rerankDocs,
   retrieveHybrid,
   vectorSearch,
   type EmbeddingPort,
   type HybridRetrieveOptions,
   type HybridRetrieveResult,
+  type RerankOptions,
   type RetrievalMode,
 } from './retrieval-hybrid.ts';
 export {

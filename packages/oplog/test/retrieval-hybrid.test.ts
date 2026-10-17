@@ -128,3 +128,37 @@ test('给了向量缓存就只用它：不会为了查询再把整个语料嵌�
   assert.equal(result.mode, 'hybrid');
   assert.deepEqual(seen, [1], '有缓存时只应当嵌入查询这一条，而不是查询 + 全部文档');
 });
+
+test('rerank：词项覆盖率 + 完整短语命中能够重排，且没有任何"黑箱分数"', async () => {
+  const docs = [
+    { id: 'a', kind: 'message' as const, text: '铜铃响的时候别回头' },
+    { id: 'b', kind: 'message' as const, text: '铜铃是父亲留下来的遗物，响过很多次' },
+    { id: 'c', kind: 'message' as const, text: '雪线以上的风' },
+  ];
+  const candidates = [
+    { id: 'a', kind: 'message' as const, score: 0.02 },
+    { id: 'b', kind: 'message' as const, score: 0.02 },
+  ];
+  const { rerankDocs } = await import('../src/retrieval-hybrid.ts');
+  const reranked = rerankDocs('铜铃', candidates, docs);
+  // b 覆盖了查询词（虽然 a 也覆盖）——这里两边覆盖率相同，靠 id 兜底排序保持确定性
+  assert.deepEqual(reranked.map((doc) => doc.id), ['a', 'b']);
+
+  // 完整短语命中会额外加分：查询"父亲留下来"只在 b 里原样出现
+  const phrase = rerankDocs('父亲留下来', candidates, docs);
+  assert.equal(phrase[0]?.id, 'b', '"父亲留下来"只在 b 里出现，应当排第一');
+  // 空查询不改变顺序
+  assert.deepEqual(rerankDocs('   ', candidates, docs).map((doc) => doc.id), ['a', 'b']);
+});
+
+test('rerank 默认关闭：retrieveHybrid 不开 rerank 时不重排、也不编造 note', async () => {
+  const docs = [
+    { id: 'a', kind: 'message' as const, text: '铜铃响的时候别回头' },
+    { id: 'b', kind: 'message' as const, text: '铜铃是父亲留下来的遗物' },
+  ];
+  const stub = createHashEmbeddingStub({ dimensions: 8 });
+  const off = await retrieveHybrid('铜铃', docs, { embedder: stub, limit: 2 });
+  assert.equal(off.notes.some((note) => note.includes('词法重排')), false);
+  const on = await retrieveHybrid('铜铃', docs, { embedder: stub, limit: 2, rerank: true });
+  assert.equal(on.notes.some((note) => note.includes('词法重排')), true, '开了 rerank 必须如实写一条 note');
+});
