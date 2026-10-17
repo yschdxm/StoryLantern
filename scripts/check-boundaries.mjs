@@ -87,6 +87,7 @@ async function walk(dir, out = []) {
 const TEXT_FILE = /\.(ts|mts|tsx|mjs|js|cjs|json|jsonl|md|ya?ml|toml|txt|gitignore|gitattributes|editorconfig|properties|kts|gradle|rs|py|html|css)$/i;
 const TEXT_ROOTS = ['docs', 'bundles', 'fixtures', 'eval', 'spikes'];
 const TEXT_ROOT_FILES = [
+  'AGENTS.md',
   'README.md',
   'package.json',
   'pnpm-workspace.yaml',
