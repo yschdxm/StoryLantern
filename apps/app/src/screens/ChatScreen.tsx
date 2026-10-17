@@ -90,6 +90,7 @@ export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings, t
       transport,
       ...(candidatesFor(fresh.settings, 'chat')[0]?.id === undefined ? {} : { profileId: candidatesFor(fresh.settings, 'chat')[0]?.id }),
       model: fresh.settings[SETTING_KEYS.embeddingModel],
+      rerankModel: fresh.settings[SETTING_KEYS.rerankModel],
       messages: fresh.messages,
       summaries: allSummaries,
       recordUsage: async (call) => {

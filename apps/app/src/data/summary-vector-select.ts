@@ -1,4 +1,5 @@
-import { cosineSimilarity, type EmbeddingPort } from '../../../../packages/oplog/src/index.ts';
+import { cosineSimilarity, type EmbeddingPort, type RerankPort } from '../../../../packages/oplog/src/index.ts';
+import { createHostRerankPort } from './rerank-host.ts';
 import type { PromptSummary } from './prompt-blocks.ts';
 import { DEFAULT_EMBEDDING_MODEL, createHostEmbeddingPort } from './embedding-host.ts';
 import type { WireTransport } from '../../../../packages/wire/src/index.ts';
@@ -20,6 +21,8 @@ export interface VectorSelectInput {
   summaries: readonly PromptSummary[];
   /** 默认 3（与 SUMMARY_INJECT_LIMIT 一致）。 */
   limit?: number;
+  /** 可选的 **rerank 模型**（交叉编码器）：给了就先按余弦粗排 10 条再精排。 */
+  reranker?: RerankPort | undefined;
 }
 
 export async function selectSummariesByVector(input: VectorSelectInput): Promise<PromptSummary[]> {
@@ -34,10 +37,23 @@ export async function selectSummariesByVector(input: VectorSelectInput): Promise
     // 余弦：查询与每条摘要
     score: cosineSimilarity(queryVector, vectors[index + 1] ?? []),
   }));
-  return scored
-    .sort((left, right) => right.score - left.score || left.summary.id.localeCompare(right.summary.id))
-    .slice(0, limit)
-    .map((item) => item.summary);
+  const byCosine = scored.sort((left, right) => right.score - left.score || left.summary.id.localeCompare(right.summary.id));
+  const reranker = input.reranker;
+  if (reranker === undefined) return byCosine.slice(0, limit).map((item) => item.summary);
+  // 粗排 10 条交给 **rerank 模型**（交叉编码器）精排；失败就退回余弦顺序，不让一次对话失败
+  const wide = byCosine.slice(0, Math.max(limit, 10));
+  try {
+    const hits = await reranker.rerank(input.question, wide.map((item) => item.summary.text), { topN: limit });
+    const picked: PromptSummary[] = [];
+    for (const hit of hits) {
+      const item = wide[hit.index];
+      if (item !== undefined) picked.push(item.summary);
+    }
+    return picked.length === 0 ? wide.slice(0, limit).map((item) => item.summary) : picked;
+  } catch (error) {
+    console.warn('rerank 模型失败，退回余弦顺序：', error);
+    return wide.slice(0, limit).map((item) => item.summary);
+  }
 }
 
 export interface ChatSummarySelectionInput {
@@ -48,6 +64,8 @@ export interface ChatSummarySelectionInput {
   messages: readonly { role: string; content: string }[];
   /** 用哪份模型配置的地址与密钥（不给就用设置里的默认那组）。 */
   profileId?: string | undefined;
+  /** rerank 模型 id；空串 = 不精排（默认空：多一次网络调用，要让用户主动开）。 */
+  rerankModel?: string | undefined;
   /** 每完成一次嵌入请求回调一次（调用方据此记账，与摘要那条同一条路）。 */
   recordUsage?: ((call: { modelId: string; promptTokens: number }) => Promise<void>) | undefined;
   /**
@@ -90,7 +108,17 @@ export async function selectSummariesForChat(input: ChatSummarySelectionInput): 
     return undefined;
   }
   try {
+    const rerankModel = input.rerankModel?.trim() ?? '';
     const picked = await selectSummariesByVector({
+      ...(rerankModel === ''
+        ? {}
+        : {
+            reranker: createHostRerankPort({
+              transport: input.transport,
+              model: rerankModel,
+              ...(input.profileId === undefined || input.profileId === '' ? {} : { profileId: input.profileId }),
+            }),
+          }),
       embedder: createHostEmbeddingPort({
         transport: input.transport,
         ...(input.profileId === undefined || input.profileId === '' ? {} : { profileId: input.profileId }),

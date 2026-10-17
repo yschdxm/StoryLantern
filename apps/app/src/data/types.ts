@@ -180,6 +180,8 @@ export const SETTING_KEYS = {
   embeddingBaseUrl: 'embedding.base_url',
   embeddingApiKey: 'embedding.api_key',
   embeddingModel: 'embedding.model',
+  /** rerank 模型（交叉编码器，如 Qwen3-Reranker-8B）：留空 = 不做精排。 */
+  rerankModel: 'model.rerank_model',
   /** 上一次聊天按向量挑摘要的结果（只用于可观测；不含密钥）。 */
   vectorOutcome: 'debug.vector.outcome',
   model: 'model.name',

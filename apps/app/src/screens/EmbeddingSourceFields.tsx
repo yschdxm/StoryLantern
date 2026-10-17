@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import type { WireTransport } from '../../../../packages/wire/src/index.ts';
 import type { AppStore } from '../app/state.ts';
 import { formatResolved, probeEmbedding, type WireEmbedResolved } from '../data/embedding-host.ts';
+import { probeRerank } from '../data/rerank-host.ts';
 import { SETTING_KEYS } from '../data/types.ts';
 import { useT } from '../i18n/context.tsx';
 import { Banner, Button, Field, TextInput } from '../ui/components.tsx';
@@ -32,6 +33,7 @@ export function EmbeddingSourceFields({
   const t = useT();
   const [baseUrlDraft, setBaseUrlDraft] = useState(settings[SETTING_KEYS.embeddingBaseUrl] ?? '');
   const [modelDraft, setModelDraft] = useState(settings[SETTING_KEYS.embeddingModel] ?? '');
+  const [rerankDraft, setRerankDraft] = useState(settings[SETTING_KEYS.rerankModel] ?? '');
   const [apiKey, setApiKey] = useState('');
   const [note, setNote] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState(false);
@@ -61,6 +63,7 @@ export function EmbeddingSourceFields({
   const commit = async (): Promise<void> => {
     await store.actions.setSetting(SETTING_KEYS.embeddingBaseUrl, baseUrlDraft.trim());
     await store.actions.setSetting(SETTING_KEYS.embeddingModel, modelDraft.trim());
+    await store.actions.setSetting(SETTING_KEYS.rerankModel, rerankDraft.trim());
   };
 
   const saveKey = async (): Promise<void> => {
@@ -109,6 +112,10 @@ export function EmbeddingSourceFields({
           onBlur={() => void commit()}
         />
       </Field>
+      <Field label={t('settings.vector.rerankModel')} hint={t('settings.vector.rerankModel.hint')}>
+        {/* rerank 模型是**交叉编码器**（给 query+文档 打分），与上面的 embedding 模型不是一类 */}
+        <TextInput value={rerankDraft} placeholder="Qwen3-Reranker-8B" onChange={setRerankDraft} onBlur={() => void commit()} />
+      </Field>
       <Field label={t('settings.vector.apiKey')} hint={t('settings.vector.apiKey.hint')}>
         {/* 只写不读：宿主只回掩码，写回掩码会覆盖真密钥（同步口令上踩过一次） */}
         <TextInput
@@ -125,6 +132,27 @@ export function EmbeddingSourceFields({
         {transport !== undefined && (
           <Button disabled={busy} onClick={() => void test()}>
             {t('settings.vector.test')}
+          </Button>
+        )}
+        {transport !== undefined && (
+          <Button
+            variant="ghost"
+            disabled={busy || rerankDraft.trim() === ''}
+            onClick={() => {
+              setBusy(true);
+              setNote(t('settings.vector.testing'));
+              void probeRerank({ transport, model: rerankDraft.trim() })
+                .then((result) => {
+                  setNote(
+                    result.ok
+                      ? t('settings.vector.rerankOk', { order: result.order.map((hit) => `${hit.index + 1}:${hit.score.toFixed(3)}`).join(' '), ms: result.ms })
+                      : result.message,
+                  );
+                })
+                .finally(() => setBusy(false));
+            }}
+          >
+            {t('settings.vector.testRerank')}
           </Button>
         )}
       </div>

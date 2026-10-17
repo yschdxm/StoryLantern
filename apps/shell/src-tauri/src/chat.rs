@@ -485,3 +485,73 @@ mod tests {
         assert_eq!(payload.len(), 3);
     }
 }
+/// `chat.rerank({ query, documents:[...], model, profileId?, topN? })`：
+/// 调 **rerank 模型（交叉编码器）** 给文档打分。与 `chat_embed` 是两类模型，别混。
+///
+/// 密钥仍由宿主读：优先用设置里的 embedding 来源（同一个 provider 通常既有 embedding 也有 rerank），
+/// 否则退回该 profile / 旧字段；密钥**绝不回传**，只回 `keyConfigured` 布尔。
+pub fn chat_rerank(store: &Store, args: &[Value]) -> Result<Value, WireErrorPayload> {
+    let request = args
+        .first()
+        .ok_or_else(|| WireErrorPayload::new("invalid-argument", "缺少请求体"))?;
+    let query = request.get("query").and_then(Value::as_str).unwrap_or_default().to_string();
+    let documents: Vec<Value> = request
+        .get("documents")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let model = request.get("model").and_then(Value::as_str).unwrap_or_default().to_string();
+    if query.trim().is_empty() || documents.is_empty() {
+        return Err(WireErrorPayload::new("invalid-argument", "query / documents 不能为空"));
+    }
+    if model.trim().is_empty() {
+        return Err(WireErrorPayload::new(
+            "not-configured",
+            "没有指定 rerank 模型（例如 Qwen3-Reranker-8B、bge-reranker-v2-m3）",
+        ));
+    }
+
+    let profile_id = request.get("profileId").and_then(Value::as_str);
+    let target = resolve_target(store, profile_id)?;
+    let embedding_base = setting(store, "embedding.base_url", "");
+    let embedding_key = setting(store, "embedding.api_key", "");
+    let base_url = if !embedding_base.trim().is_empty() { embedding_base } else { target.base_url.clone() };
+    let api_key = if !embedding_key.trim().is_empty() { embedding_key } else { target.api_key.clone() };
+    if base_url.trim().is_empty() {
+        return Err(WireErrorPayload::new(
+            "not-configured",
+            "没有可用的 rerank 来源：embedding.base_url 与这份 profile 的 base_url 都是空的",
+        ));
+    }
+
+    let top_n = request.get("topN").and_then(Value::as_i64);
+    let mut body = json!({ "model": model, "query": query, "documents": documents });
+    if let Some(value) = top_n {
+        body["top_n"] = json!(value);
+    }
+
+    let url = format!("{}/rerank", base_url.trim_end_matches('/'));
+    let client = reqwest::blocking::Client::builder()
+        .connect_timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(120))
+        .build()
+        .map_err(|error| WireErrorPayload::new("transport-failed", format!("初始化请求失败：{error}")))?;
+    let mut http = client.post(&url).json(&body);
+    if !api_key.is_empty() {
+        http = http.bearer_auth(&api_key);
+    }
+    let resolved = json!({
+        "baseUrl": base_url,
+        "model": model,
+        "keyConfigured": !api_key.is_empty(),
+        "source": if api_key.is_empty() { "no-key" } else { "configured" },
+    });
+    match http.send() {
+        Ok(response) => Ok(json!({
+            "status": response.status().as_u16(),
+            "body": response.text().unwrap_or_default(),
+            "resolved": resolved,
+        })),
+        Err(error) => Err(WireErrorPayload::new("transport-failed", format!("请求 {url} 失败：{error}"))),
+    }
+}
