@@ -29,6 +29,7 @@ import { createAppLocaleService, registerAppMessages, translatorOf } from './i18
 import { AppShell } from './ui/AppShell.tsx';
 import { installViewportHeight } from './ui/viewport.ts';
 import { ScreenMenu } from './ui/ScreenMenu.tsx';
+import { CommandPaletteHost } from './ui/CommandPaletteHost.tsx';
 import { SessionsScreen } from './screens/SessionsScreen.tsx';
 import { ChatScreen } from './screens/ChatScreen.tsx';
 import { CharactersScreen } from './screens/CharactersScreen.tsx';
@@ -378,6 +379,7 @@ function Root(): ReturnType<typeof AppShell> {
           />
         )}
       </AppShell>
+      <CommandPaletteHost onNavigate={(next) => router.navigate(next)} />
     </I18nProvider>
   );
 }
