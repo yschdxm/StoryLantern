@@ -61,8 +61,12 @@ export interface VisualAsset {
   /** 开放字符串：`key_art` / `portrait` / `turnaround` / `outfit` / `detail` / `palette` /
    *  `expression_sheet` / `concept` / `background` / `icon` 等，按卡类型取用。 */
   type: string;
-  /** 资产引用，必须是 `asset://<sha256>`（卡内不内嵌二进制）。 */
-  path: string;
+  /**
+   * 资产引用：**可选**。有图时必须是 `asset://<sha256>`（卡内不内嵌二进制）；
+   * 无图时只写 `caption`（描述优先、图片为锚：资产通道接上之前，纯文字设定也能用）。
+   */
+  path?: string;
+  /** 必填：纯文本模型读不了图，caption 是 LLM 唯一入口。 */
   caption: string;
   tags?: readonly string[];
   view?: 'front' | 'side' | 'back' | 'detail';

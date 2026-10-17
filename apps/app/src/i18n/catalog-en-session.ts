@@ -1,0 +1,71 @@
+import type { AppMessages } from './messages-types.ts';
+
+/**
+ * English shard for session creation (SessionSetup, ADR-0011).
+ * Same key set as `catalog-zh-session.ts`; merged in `messages.ts`.
+ */
+export const enSession: AppMessages = {
+  'tab.sessionNew': 'New chat',
+  'session.create.title': 'New chat',
+  'session.create.loading': 'Loading characters and world resources…',
+  'session.create.noCards': 'This storage backend has no card model; members fall back to legacy character records and the resource pool is unavailable.',
+  'session.create.noPacks': 'This storage backend has no world-pack list; the resource pool can only mount individual cards.',
+  'session.create.noStore': 'This storage backend cannot create chats with a session setup: the app may be older or downgraded. Update the app and retry; your selections will not be lost.',
+  'session.create.failed': 'Could not create the chat: {{message}}. The storage may be unavailable, or a selected member may have been deleted. Check and retry; your selections will not be lost.',
+
+  'session.create.members': 'Members',
+  'session.create.members.hint': 'Pick at least one character; picking several starts a group chat.',
+  'session.create.members.empty': 'No character cards yet; create a character on the Characters tab first.',
+
+  'session.create.basic': 'Basics',
+  'session.create.titleLabel': 'Chat title',
+  'session.create.titleHint': 'Empty = the first member’s name.',
+  'session.create.titlePlaceholder': 'e.g. Night at the pass',
+
+  'session.create.situation': 'This run',
+  'session.create.premise': 'Premise / entry point',
+  'session.create.premiseHint': 'Recommended: where this run starts and why the user is here; it can be left empty.',
+  'session.create.premisePlaceholder': 'Rainy night. You push open the border tavern door; the hearth is dying.',
+  'session.create.userRole': 'User role',
+  'session.create.userRoleHint': 'Who the user is in this run (optional).',
+  'session.create.userRolePlaceholder': 'A passing traveller',
+  'session.create.setting': 'Era / place',
+  'session.create.settingHint': 'For example “low-magic medieval border” (optional).',
+  'session.create.settingPlaceholder': 'Low-magic medieval border',
+  'session.create.tone': 'Tone',
+  'session.create.tone.unset': 'Not set',
+  'session.create.tone.light': 'Light',
+  'session.create.tone.serious': 'Serious',
+  'session.create.tone.dark': 'Dark',
+  'session.create.tone.mystery': 'Mystery',
+
+  'session.create.resources': 'World resources',
+  'session.create.resources.hint': 'Nothing selected = the whole library is available. Selected packs/cards become this run’s resource pool.',
+  'session.create.packs': 'World packs',
+  'session.create.packs.empty': 'No world packs yet; just skip this.',
+  'session.create.cards': 'Individual cards',
+  'session.create.cards.search': 'Search resource cards',
+  'session.create.cards.searchPlaceholder': 'Filter by name…',
+  'session.create.cards.empty': 'No scene / item / lore cards yet.',
+  'session.create.cards.noMatch': 'No matching cards.',
+  'session.create.scene': 'Current scene',
+  'session.create.scene.free': 'Free scene (not set)',
+  'session.create.scene.empty': 'No scene cards yet; leave it empty and let the premise define the stage.',
+
+  'session.create.opening': 'Opening',
+  'session.create.opening.hint': 'The opening belongs to this run, not to the character card.',
+  'session.create.opening.designated': 'Designated opening',
+  'session.create.opening.designated.hint': 'Pick a member to speak first; empty text uses that character’s opening draft (first segment).',
+  'session.create.opening.needMember': 'Select a member before choosing the opening speaker.',
+  'session.create.opening.speaker': 'Who speaks first',
+  'session.create.opening.input': 'Opening text',
+  'session.create.opening.inputHint': 'Empty = the first segment of the character’s opening draft',
+  'session.create.opening.inputPlaceholder': '"Come in. The wind will close the door."',
+  'session.create.opening.self': 'User opening',
+  'session.create.opening.self.hint': 'The chat starts empty; you speak first.',
+  'session.create.opening.auto': 'Smart opening',
+  'session.create.opening.auto.unavailable': 'Model-generated openings are not implemented yet',
+
+  'session.create.submit': 'Start chat',
+  'session.create.submitBusy': 'Creating…',
+};

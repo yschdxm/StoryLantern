@@ -19,14 +19,18 @@ import type {
   SessionRuntime,
   SessionSetup,
 } from '../../../../packages/cards/src/index.ts';
-import { scanLore, type ScanBook, type ScoredEntry } from '../../../../packages/lore/src/index.ts';
+import type { ScoredEntry } from '../../../../packages/lore/src/index.ts';
 import { retrieve } from '../../../../packages/oplog/src/index.ts';
 import type { AssembleFn, PromptGraph } from '../../../../plugins/writing-pipeline/src/index.ts';
 import { formatMemoryBlock, selectMemories, type RetrievedMemory } from './memory-retrieval.ts';
 import { renderAllSections, type PromptBlockDataV2, type PromptWorldV2 } from './prompt-blocks-v2.ts';
+import { loreTextOf } from './prompt-lore.ts';
 import type { ChatPromptMessage, PromptHistoryItem } from './prompt.ts';
 import type { PromptSummary } from './prompt-blocks.ts';
 import { SETTING_KEYS, type Memory, type MessageRole } from './types.ts';
+
+// 典籍检索的实现搬到了 prompt-lore.ts；这些名字仍从这里导出，避免调用方/测试跟着改
+export { loreBooksOf, passesProbability, stableHash } from './prompt-lore.ts';
 
 export type PromptSectionKind =
   | 'custom' | 'setup' | 'rules' | 'character' | 'state' | 'scene'
@@ -157,34 +161,6 @@ export function createPromptBlockDataV2(options: {
 }
 
 /** FNV-1a：跨设备同结果，禁止 Math.random。 */
-export function stableHash(text: string): number {
-  let hash = 0x811c9dc5;
-  for (let index = 0; index < text.length; index += 1) {
-    hash ^= text.charCodeAt(index);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  return hash >>> 0;
-}
-
-/** 概率判定：未设 / ≥100 全注入；否则 hash(entryId|最后一条消息) % 100 < probability。 */
-export function passesProbability(entryId: string, probability: number | undefined, lastMessageKey: string): boolean {
-  if (probability === undefined || !Number.isFinite(probability) || probability >= 100) return true;
-  return stableHash(`${entryId}|${lastMessageKey}`) % 100 < Math.max(0, probability);
-}
-
-/** 典籍卡 → `packages/lore` 的扫描书（每卡一条；priority 高 → order 小 → 先占预算）。 */
-export function loreBooksOf(cards: readonly LoreCard[]): ScanBook[] {
-  return cards.map((card) => ({
-    id: card.meta.id, name: card.meta.name, enabled: true,
-    entries: [{
-      id: card.meta.id, keys: card.keys, secondaryKeys: card.secondary_keys ?? [], content: card.content,
-      enabled: true, order: 100 - (card.trigger?.priority ?? 5), caseSensitive: false,
-      recursive: card.trigger?.recursive ?? true, depth: card.trigger?.depth ?? 0,
-      constant: card.trigger?.constant ?? false,
-    }],
-  }));
-}
-
 function lastUserQuery(history: ReadonlyArray<{ role: MessageRole; content: string }>): string {
   for (let index = history.length - 1; index >= 0; index -= 1) {
     const item = history[index];
@@ -219,30 +195,6 @@ function summaryTextOf(data: PromptBlockDataV2): string | undefined {
   const matched = ranked.filter((summary): summary is PromptSummary => summary !== undefined).slice(0, SUMMARY_INJECT_LIMIT_V2);
   data.outcomes.matchedSummaries = matched;
   return matched.length === 0 ? undefined : `【相关摘要】\n${matched.map((summary) => summary.text.trim()).join('\n')}`;
-}
-
-function loreTextOf(data: PromptBlockDataV2): string | undefined {
-  if (data.world.loreCards.length === 0) return undefined;
-  const result = scanLore({
-    books: loreBooksOf(data.world.loreCards),
-    messages: data.history.map((item) => ({ role: item.role, content: item.content })),
-    ...(data.loreBudgetChars === undefined ? {} : { budgetChars: data.loreBudgetChars }),
-  });
-  const byId = new Map(data.world.loreCards.map((card) => [card.meta.id, card]));
-  const kept: ScoredEntry[] = [];
-  // trace 的 loreDropped 是"概率 + 预算"拦下的总数
-  let dropped = result.dropped.length;
-  for (const entry of result.matched) {
-    const trigger = byId.get(entry.entryId)?.trigger;
-    if (trigger?.constant === true || passesProbability(entry.entryId, trigger?.probability, data.lastMessageKey)) {
-      kept.push(entry);
-    } else {
-      dropped += 1;
-    }
-  }
-  data.outcomes.matchedLore = kept;
-  data.outcomes.loreDropped = dropped;
-  return kept.length === 0 ? undefined : `【相关设定】\n${kept.map((entry) => entry.content.trim()).join('\n')}`;
 }
 
 function precomputeRetrieval(data: PromptBlockDataV2): void {

@@ -94,6 +94,7 @@ export interface SessionStore {
   list(): Promise<Session[]>;
   /** `greetingIndex`：`0`=第一条开场白（默认）、`-1`=不插入、其余依次对应备选开场白。 */
   create(characterId: string, title?: string, greetingIndex?: number): Promise<Session>;
+  /** 带开局配置创建（可选能力）：成员/资源池/处境/开场模式一次写入；开场消息由 opening_mode 决定。 */ createWithSetup?(input: { characterIds: readonly string[]; setup: SessionSetup; title?: string }): Promise<Session>;
   rename(id: string, title: string): Promise<boolean>;
   remove(id: string): Promise<boolean>;
 }

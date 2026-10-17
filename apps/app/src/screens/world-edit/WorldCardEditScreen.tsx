@@ -10,6 +10,7 @@ import { BasicWorldSection } from './CommonSections.tsx';
 import { ItemSections } from './ItemSections.tsx';
 import { LoreSections } from './LoreSections.tsx';
 import { SceneSections } from './SceneSections.tsx';
+import { VisualsSection } from '../visuals-edit/VisualsSection.tsx';
 import {
   buildCard,
   draftOfCard,
@@ -225,6 +226,7 @@ export function WorldCardEditScreen({ store, kind, cardId, onDone }: WorldCardEd
         )}
 
         <BasicWorldSection draft={draft} update={updateCommon} enabled={enabled} onEnabledChange={setEnabled} />
+        <VisualsSection drafts={draft.visuals} onChange={(next) => setDraft((current) => ({ ...current, visuals: next }))} />
         {draft.kind === 'scene' && <SceneSections draft={draft} update={updateScene} references={references} />}
         {draft.kind === 'item' && <ItemSections draft={draft} update={updateItem} />}
         {draft.kind === 'lore' && <LoreSections draft={draft} update={updateLore} />}

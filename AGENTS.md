@@ -25,7 +25,7 @@ pnpm --filter @storylantern/app exec vite preview --port 15199 --strictPort
 ## 1. 硬约束（违反即失败）
 
 - **运行时零第三方依赖**：界面只允许 React；`typescript`、`@playwright/test` 是仅有的 devDependency。不要 `pnpm add` 运行时包。
-- **单文件 ≤400 行**；`apps/app/src/main.tsx` 已约 396 行（贴着上限），**不许再变长**：要加页面先抽组件/路由分发。
+- **单文件 ≤400 行**；`apps/app/src/main.tsx` 已约 392 行（贴着上限），**不许再变长**：要加页面先抽组件/路由分发。
 - 文本文件必须 UTF-8；不伪造：不用假数据/示例功能冒充实现，不在报告或提交信息里写没跑过的结论。
 - **术语**：英文 design token 统一称**设计变量（样式变量）**，不写"令牌"。
 - 中文优先；界面文案中英双语，中文为主。
@@ -39,11 +39,21 @@ pnpm --filter @storylantern/app exec vite preview --port 15199 --strictPort
 - 角色编辑器：`screens/CharacterEditScreen.tsx` + `screens/character-edit/*`（基本信息/身份/人格/语言/示例/状态变量/高级+启停）。
 - 世界页（第三标签）：`screens/WorldScreen.tsx`（L1 列表 + 类型筛选 + 新建）+ `screens/world-edit/`
   （场景/物品/典籍编辑器；纯表单逻辑在 `world-form.ts`）。路由：`#/world`、`#/worldcard/<kind>/<id>`。
+- 会话创建：`#/session/new` → `screens/SessionCreateScreen.tsx`（成员/世界池/处境/开场模式），
+  写 `session.create + session.setup + 可选开场消息`（`createWithSetup`，纯函数在 `data/session-create-ops.ts`）。
+- 酒馆导入/导出：`data/import-cards.ts` / `data/export-cards.ts`（能映射的映射；`scenario`/开场白进 CompatStash 草稿；
+  `character_book` → 典籍卡 + 世界包）。`ImportScreen` 走卡片仓储，不再写旧 characters/lorebooks。
+- 条件表达式：`packages/cards/src/expr.ts`；规则块 `data/prompt-rules.ts`、典籍块 `data/prompt-lore.ts`。
+  **未知变量/类型不匹配是错误**（跳过并计数），不许静默当 false。
 - 设置页已三级分层：`screens/SettingsScreen.tsx`（约 65 行薄壳）+ `settings/SettingsHome.tsx`（L1）+ 6 个分区页 `settings/{Model,Appearance,Sync,Data,Advanced,About}Settings.tsx`。新增设置项**放进对应分区页**，不要往外壳加内容。
 - 设置行复用 `ui/SettingsRow.tsx`（label + 当前值 + 箭头/行内控件，≥44px）。
 - 设计变量在 `styles.css` 顶部 `:root`（间距/字阶/圆角/阴影/层级/动效/聚焦环/触控/语义色，暗亮 system 三态）。
 - 无障碍基线已全局提供：`:focus-visible`、`prefers-reduced-motion` 归零、`.sr-only`。
-- 已知限制：视觉资产/物品行为规则/世界包编辑器未做；会话创建界面还没接 `SessionSetup`；L3 无独立 URL（设置分区）；详见 ADR-0011 与 `docs/SETTINGS-IA.md §8`。
+- 视觉设定：四类卡共用 `screens/visuals-edit/VisualsSection.tsx` + `data/visuals-form.ts`；
+  **caption 是给模型的入口，图可后补**（`VisualAsset.path` 可选；有图必须 `asset://<sha256>`）。
+  图片上传/资产同步**尚未接线**，界面只能手填 asset 引用——不要在文档里说已支持上传。
+- 已知限制：物品 `behaviors` 与角色 `rules` 仍无编辑 UI（数据与求值器已就绪）；世界包编辑器未做（只读清单）；
+  L3 无独立 URL（设置分区）；详见 ADR-0011 与 `docs/SETTINGS-IA.md §8`。
 - **hash 路由必须对实体 id 编解码**（`router.ts` 的 `encodePart`/`decodePart`）：id 不保证是 ASCII，漏了会出现"找不到这张卡片"。
 
 ## 3. 代码边界

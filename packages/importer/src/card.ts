@@ -9,6 +9,13 @@ import {
   type ImportedLorebookEntry,
 } from './types.ts';
 
+/** ST 的数值字段既可能是 number 也可能是数字字符串；非数字一律当"没给"。 */
+function asInteger(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return Math.trunc(value);
+  if (typeof value === 'string' && value.trim() !== '' && Number.isFinite(Number(value))) return Math.trunc(Number(value));
+  return undefined;
+}
+
 /** 世界书：SillyTavern 原生（`entries` 为 uid→条目 的 map）与 CCv3（数组 + decorators）两种形态。 */
 
 export function parseLorebook(value: unknown, fallbackName: string): ImportedLorebook {
@@ -23,6 +30,10 @@ export function parseLorebook(value: unknown, fallbackName: string): ImportedLor
 
   const entries: ImportedLorebookEntry[] = list.filter(isRecord).map((entry) => {
     const disabled = entry['disable'] === true || entry['enabled'] === false;
+    const order = asInteger(entry['order'] ?? entry['insertion_order']);
+    const depth = asInteger(entry['depth']);
+    // ST 用 excludeRecursion 表达"不参与二次触发"；字段缺失时的默认值仍是允许递归
+    const excluded = entry['excludeRecursion'] ?? entry['exclude_recursion'];
     return attachRaw(
       {
         keys: asStringArray(entry['key'] ?? entry['keys']),
@@ -31,6 +42,9 @@ export function parseLorebook(value: unknown, fallbackName: string): ImportedLor
         name: asString(entry['comment'] ?? entry['name']),
         enabled: entry['enabled'] === true ? true : !disabled,
         constant: entry['constant'] === true,
+        ...(order === undefined ? {} : { order }),
+        ...(depth === undefined ? {} : { depth }),
+        ...(excluded === undefined ? {} : { recursive: excluded !== true }),
       },
       entry,
     );
@@ -58,6 +72,41 @@ export function parseEmbeddedLorebook(cardData: Record<string, unknown>, fallbac
   }
 }
 
+/** 我们已经映射（或明确处理）的 data 字段：其余字段如实进 discarded，不静默丢。 */
+const HANDLED_CARD_FIELDS: ReadonlySet<string> = new Set([
+  'name', 'description', 'personality', 'scenario', 'first_mes', 'mes_example',
+  'creator_notes', 'system_prompt', 'post_history_instructions', 'alternate_greetings',
+  'tags', 'creator', 'character_version', 'extensions', 'character_book',
+  'depth_prompt', 'group_only_greetings',
+]);
+
+/** `depth_prompt` 可能是字符串，也可能是 `{ prompt, depth }`（ST 放在 extensions 里）。 */
+function depthPromptOf(data: Record<string, unknown>): string {
+  const raw = data['depth_prompt'] ?? (isRecord(data['extensions']) ? data['extensions']['depth_prompt'] : undefined);
+  if (typeof raw === 'string') return raw.trim();
+  if (isRecord(raw)) return asString(raw['prompt']).trim();
+  return '';
+}
+
+/** `extensions` 的值不导入：只留键名，由导入层写进丢弃清单。 */
+function extensionKeysOf(data: Record<string, unknown>): string[] {
+  const extensions = data['extensions'];
+  return isRecord(extensions) ? Object.keys(extensions).sort() : [];
+}
+
+/** 我们没有映射的顶层 data 字段（`nickname`/`assets` 之类）：如实上报。 */
+function unmappedFieldsOf(data: Record<string, unknown>): string[] {
+  return Object.keys(data)
+    .filter((key) => !HANDLED_CARD_FIELDS.has(key) && key !== 'spec' && key !== 'spec_version')
+    .sort();
+}
+
+function trimmedStrings(value: unknown): string[] {
+  return asStringArray(value)
+    .map((item) => item.trim())
+    .filter((item) => item !== '');
+}
+
 /**
  * 角色卡 JSON → 领域对象。
  *
@@ -66,8 +115,8 @@ export function parseEmbeddedLorebook(cardData: Record<string, unknown>, fallbac
  *  - `{spec:'chara_card_v1'}`（与 legacy 同构）
  *  - 扁平 legacy：字段就在顶层
  *
- * 关键取舍：**只映射 v0.1 界面已有的 6 个字段**，其余（alternate_greetings、system_prompt、
- * extensions…）不假装支持——写进 notes 让用户知道丢了什么。
+ * 这里把**酒馆侧可映射的字段全部解析出来**（作者/版本/tags/回复后指令/群聊开场…），
+ * 是否进卡片、进草稿、还是丢弃由上层 `import-cards.ts` 按 §15 决定；解析器不擅自丢数据。
  */
 export function parseCharacterJson(value: unknown, source: string): ImportedCharacter {
   if (!isRecord(value)) throw new ImportError('bad-card', '角色卡不是对象');
@@ -86,13 +135,11 @@ export function parseCharacterJson(value: unknown, source: string): ImportedChar
   }
 
   // 备选开场白与卡片自带的 system prompt 都带进角色：不再"只留第一条/未启用"
-  const alternates = asStringArray(data['alternate_greetings'])
-    .map((item) => item.trim())
-    .filter((item) => item !== '');
+  const alternates = trimmedStrings(data['alternate_greetings']);
   if (alternates.length > 0) notes.push(`另带入 ${alternates.length} 条备选开场白（可在角色里切换）`);
   const cardPrompt = asString(data['system_prompt']).trim();
   if (cardPrompt !== '') notes.push('卡片自带 system prompt 已带入角色（优先于全局提示）');
-  if (asString(data['creator_notes']) !== '') notes.push('跳过 creator notes');
+  if (asString(data['creator_notes']).trim() !== '') notes.push('creator notes 已作为卡片简介带入');
 
   return attachRaw(
     {
@@ -107,6 +154,15 @@ export function parseCharacterJson(value: unknown, source: string): ImportedChar
       systemPrompt: cardPrompt,
       alternateGreetings: alternates,
       spec: spec === '' ? 'legacy' : spec,
+      creator: asString(data['creator']),
+      characterVersion: asString(data['character_version']),
+      creatorNotes: asString(data['creator_notes']),
+      postHistoryInstructions: asString(data['post_history_instructions']),
+      tags: trimmedStrings(data['tags']),
+      depthPrompt: depthPromptOf(data),
+      groupOnlyGreetings: trimmedStrings(data['group_only_greetings']),
+      extensionKeys: extensionKeysOf(data),
+      unmappedFields: unmappedFieldsOf(data),
       ...(lorebook === undefined ? {} : { lorebook }),
       notes:
         regexScriptCount(data) === 0

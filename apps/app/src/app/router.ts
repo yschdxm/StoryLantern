@@ -19,6 +19,7 @@ export function isSettingsSection(value: string | undefined): value is SettingsS
 
 export type Route =
   | { name: 'sessions' }
+  | { name: 'sessionNew' }
   | { name: 'characters' }
   | { name: 'lore' }
   | { name: 'world'; kind?: WorldKind }
@@ -74,6 +75,8 @@ export function parseRoute(hash: string): Route {
       return ROOT_ROUTE;
     case 'characters':
       return { name: 'characters' };
+    case 'session':
+      return tail === 'new' ? { name: 'sessionNew' } : ROOT_ROUTE;
     case 'lore':
       return { name: 'lore' };
     case 'world':
@@ -113,6 +116,8 @@ export function routeToHash(route: Route): string {
   switch (route.name) {
     case 'sessions':
       return '#/sessions';
+    case 'sessionNew':
+      return '#/session/new';
     case 'characters':
       return '#/characters';
     case 'lore':
@@ -154,7 +159,7 @@ export function isRootRoute(route: Route): boolean {
 
 /** 当前标签（二级页面归属它的来源标签，保证底栏高亮不闪）。 */
 export function activeTabName(route: Route): Route['name'] {
-  if (route.name === 'chat') return 'sessions';
+  if (route.name === 'chat' || route.name === 'sessionNew') return 'sessions';
   if (route.name === 'character' || route.name === 'import' || route.name === 'memories') return 'characters';
   if (route.name === 'lorebook' || route.name === 'lore') return 'lore';
   if (route.name === 'worldCard') return 'world';
@@ -173,6 +178,8 @@ export interface Router {
 export function parentOf(route: Route): Route | undefined {
   switch (route.name) {
     case 'chat':
+      return { name: 'sessions' };
+    case 'sessionNew':
       return { name: 'sessions' };
     case 'character':
     case 'import':

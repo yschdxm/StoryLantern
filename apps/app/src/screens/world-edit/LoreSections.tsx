@@ -5,10 +5,10 @@ import { Field, TextArea, TextInput } from '../../ui/components.tsx';
 import type { LoreDraft } from './world-form.ts';
 
 /**
- * 典籍（原世界书）分区：分类 / 内容 / 概述 / 触发词 / 匹配逻辑 / 触发策略。
+ * 典籍（原世界书）分区：启停 / 分类 / 内容 / 概述 / 触发词 / 匹配逻辑 / 触发策略。
  *
- * 关键词触发是典籍**唯一**适合的激活方式（设计文档 6.5）；条件表达式只保存源码，
- * 求值器尚未实现——界面上必须写清楚，不假装条件会生效。
+ * 关键词触发是典籍**唯一**适合的激活方式（设计文档 6.5）；条件表达式由
+ * `packages/cards/expr` 求值（不成立或求值失败都不注入，请求面板会如实计数）。
  */
 
 const LORE_KINDS: readonly LoreKind[] = ['rule', 'history', 'faction', 'race', 'culture', 'geography', 'tech', 'other'];
@@ -25,6 +25,15 @@ export function LoreSections({
   return (
     <section className="settings-group">
       <h2 className="settings-group__title">{t('world.editor.lore.title')}</h2>
+      <label className="switch">
+        <input
+          type="checkbox"
+          checked={draft.enabled}
+          onChange={(event) => update({ enabled: event.target.checked })}
+        />
+        <span>{t('world.editor.lore.enabled')}</span>
+      </label>
+      <p className="muted">{t('world.editor.lore.enabled.hint')}</p>
       <Field label={t('world.editor.lore.kind')}>
         <select
           className="input"

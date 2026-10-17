@@ -12,6 +12,7 @@ export * from './types-world.ts';
 export * from './types-session.ts';
 export * from './types-document.ts';
 export * from './activation.ts';
+export * from './expr.ts';
 export * from './validate.ts';
 export * from './brief.ts';
 

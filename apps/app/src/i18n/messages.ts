@@ -10,6 +10,10 @@ import { zhEditor } from './catalog-zh-editor.ts';
 import { enEditor } from './catalog-en-editor.ts';
 import { zhWorld } from './catalog-zh-world.ts';
 import { enWorld } from './catalog-en-world.ts';
+import { zhSession } from './catalog-zh-session.ts';
+import { enSession } from './catalog-en-session.ts';
+import { zhVisual } from './catalog-zh-visual.ts';
+import { enVisual } from './catalog-en-visual.ts';
 import type { AppMessages } from './messages-types.ts';
 
 /**
@@ -27,6 +31,6 @@ export const APP_LOCALES = ['zh-CN', 'en'] as const;
 export type { AppMessages } from './messages-types.ts';
 
 export const APP_MESSAGES: Record<string, AppMessages> = {
-  'zh-CN': { ...zhCN, ...zhSync, ...zhExtra, ...zhSettings, ...zhEditor, ...zhWorld },
-  en: { ...en, ...enSync, ...enExtra, ...enSettings, ...enEditor, ...enWorld },
+  'zh-CN': { ...zhCN, ...zhSync, ...zhExtra, ...zhSettings, ...zhEditor, ...zhWorld, ...zhSession, ...zhVisual },
+  en: { ...en, ...enSync, ...enExtra, ...enSettings, ...enEditor, ...enWorld, ...enSession, ...enVisual },
 };

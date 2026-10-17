@@ -161,6 +161,14 @@ export interface LoreCard extends CardBase {
   secondary_keys?: readonly string[];
   logic?: LoreLogic;
   trigger?: LoreTrigger;
+  /**
+   * 条目级启停（缺省 = 启用）：关掉后不参与扫描。
+   *
+   * 与**库级启停**（`card.library` op）的区别：库级是"这张卡退役/草稿，任何会话都不用"；
+   * 这里是"条目先留着，但这一版先别注入"。放在卡片里是因为它属于作者的设定语义，
+   * 跟着卡片同步/导出；库级是使用者的库状态，不随卡片导出。
+   */
+  enabled?: boolean;
 }
 
 // ---------------------------------------------------------------- 世界包（发布单位，不是卡片类型）

@@ -27,6 +27,7 @@ import {
 } from './character-compat.ts';
 import { createCardStores, type CardModelStores } from './card-store.ts';
 import { migrateLegacyIntoLog } from './migrate-cards.ts';
+import { sessionCreateOpsFor } from './session-create-ops.ts';
 import { pickOpening } from './greeting.ts';
 import { createLoreStore } from './op-lore-store.ts';
 import { createMessageStore } from './op-message-store.ts';
@@ -222,6 +223,16 @@ export function createOpLogRepository(options: OpLogRepositoryOptions): OpLogRep
         }
         await appendAndApply(ops);
         const view = sessionView(materializer, id);
+        if (view === undefined) throw new DataError('store-error', '创建会话后读不到它');
+        return withSessionCharacterName(materializer.state, view);
+      }),
+
+    createWithSetup: (input) =>
+      withReady(async () => {
+        // 校验与 op 构造在纯函数里（`session-create-ops.ts`），这里只负责落盘 + 读回视图
+        const { sessionId, ops } = sessionCreateOpsFor(materializer.state, base(), input);
+        await appendAndApply(ops);
+        const view = sessionView(materializer, sessionId);
         if (view === undefined) throw new DataError('store-error', '创建会话后读不到它');
         return withSessionCharacterName(materializer.state, view);
       }),

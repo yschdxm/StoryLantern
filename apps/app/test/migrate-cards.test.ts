@@ -232,7 +232,7 @@ test('迁移：旧世界书 2 条 → 1 个包 + 2 张典籍卡（含触发与�
   const second = liveCard(materializer.state, 'entry-2')?.card as LoreCard | undefined;
   assert.ok(second !== undefined);
   assert.equal(second.meta.name, '王都', '没有 comment 时用第一个 key');
-  assert.deepEqual([...(second.meta.tags ?? [])], ['legacy-disabled'], '旧 enabled=false 只能打标记（语义缺口）');
+  assert.equal(second.enabled, false, '旧 enabled=false 映射到条目级启停字段（正式字段，不再用 tags 打标记）');
   assert.equal(second.trigger?.depth, 4);
 });
 

@@ -11,6 +11,8 @@ import { SETTING_KEYS } from './data/types.ts';
 import type { Repository } from './data/repository.ts';
 import type { OpLogRepository } from './data/op-repository.ts';
 import type { OpLogAdmin, SyncAdmin } from './screens/screen-props.ts';
+import { createOpAdmin } from './app/op-admin.ts';
+import { SessionCreateScreen } from './screens/SessionCreateScreen.tsx';
 import { pickSafFolder } from './data/saf.ts';
 import { buildSyncService, describeSyncProblem, readSyncConfig, runSync, SYNC_SECRET_KEY, SYNC_S3_SECRET_KEY, type FolderBackendProvider, type RunSyncInput, type SyncBackendFactory, type SyncConfig } from './data/sync/app-sync.ts';
 import { createJoinLink, decodeJoinLink, joinLinkWrites } from './data/sync/join-link.ts';
@@ -65,18 +67,7 @@ const chat = createChatClient(transport);
 // transport 也交给设置页：模型面板用它做「测试向量来源」（密钥仍由宿主注入，前端看不到）
 // op 日志管理入口（只有 op 仓储有）：设置 → 开发者里能看统计、点"从 op 日志重建"
 const opLogRepository = repository as Partial<OpLogRepository>;
-const opAdmin: OpLogAdmin | undefined =
-  typeof opLogRepository.logStats === 'function' && typeof opLogRepository.rebuild === 'function'
-    ? {
-        stats: () => opLogRepository.logStats!(),
-        rebuild: () => opLogRepository.rebuild!(),
-        counts: () => opLogRepository.counts!(),
-        ...(typeof opLogRepository.createSnapshot === 'function'
-          ? { createSnapshot: () => opLogRepository.createSnapshot!() }
-          : {}),
-        ...(typeof opLogRepository.clearSnapshot === 'function' ? { clearSnapshot: () => opLogRepository.clearSnapshot!() } : {}),
-      }
-    : undefined;
+const opAdmin: OpLogAdmin | undefined = createOpAdmin(repository);
 const opRepositoryForSync = opLogRepository as OpLogRepository;
 const store: AppStore = createAppStore(repository);
 const router = createRouter();
@@ -319,10 +310,11 @@ function Root(): ReturnType<typeof AppShell> {
         onNavigate={(next) => router.navigate(next)}
         layout={route.name === 'chat' ? 'fill' : 'scroll'}
         hideTabs={
-          route.name === 'chat' || route.name === 'character' || route.name === 'import' || route.name === 'worldCard' || route.name === 'memories' || route.name === 'facts'
+          route.name === 'chat' || route.name === 'sessionNew' || route.name === 'character' || route.name === 'import' || route.name === 'worldCard' || route.name === 'memories' || route.name === 'facts'
         }
       >
         {route.name === 'sessions' && <SessionsScreen store={store} router={router} host={host} chat={chat} />}
+        {route.name === 'sessionNew' && <SessionCreateScreen store={store} router={router} />}
         {route.name === 'characters' && <CharactersScreen store={store} router={router} host={host} chat={chat} />}
         {route.name === 'world' && <WorldScreen store={store} router={router} />}
         {route.name === 'worldCard' && (

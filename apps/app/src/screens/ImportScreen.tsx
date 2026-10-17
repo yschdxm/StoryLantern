@@ -3,16 +3,19 @@ import { describeError } from '../data/error-text.ts';
 import type { ScreenProps } from './screen-props.ts';
 import { useT } from '../i18n/context.tsx';
 import { importFile, importText, type Imported } from '../../../../packages/importer/src/index.ts';
-import { characterDraftFrom, chatImportPlan, loreEntryDraftsFrom, lorebookDraftFrom } from '../data/import-bridge.ts';
+import { chatImportPlan } from '../data/import-bridge.ts';
+import { planCharacterImport, planLorebookImport } from '../data/import-cards.ts';
 import { Banner, Button, EmptyState, Icon } from '../ui/components.tsx';
 
 /**
  * 导入页。
  *
- * 两条路径都留着：**选文件**（手机上是系统文件选择器）与**粘贴文本**。
+ * 两条输入路径都留着：**选文件**（手机上是系统文件选择器）与**粘贴文本**。
  * 后者的价值不只是兜底——桌面用户拿到一段卡 JSON 时，粘贴比"先存成文件再选"快得多。
  *
- * 导入结果逐条显示：成功给名字，失败给原因，绝不出现"点了没反应"。
+ * 落库走**卡片模型**（ADR-0011）：角色 → `cards.save` + 兼容草稿；内嵌/独立世界书 →
+ * `packs.save` + 逐条典籍卡。旧 `characters.save/lorebooks.save` 只留给聊天记录导入这条旧路径。
+ * 结果逐条显示：成功给名字与转存/丢弃提示，失败给原因，绝不出现"点了没反应"。
  */
 
 interface ParsedItem {
@@ -28,6 +31,8 @@ export function ImportScreen({ store, router }: ScreenProps): ReactNode {
   const [busy, setBusy] = useState(false);
   const [summary, setSummary] = useState<string | undefined>(undefined);
   const [skipped, setSkipped] = useState(0);
+  const [notes, setNotes] = useState<string[]>([]);
+  const [failures, setFailures] = useState<string[]>([]);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const sequence = useRef(0);
 
@@ -67,83 +72,124 @@ export function ImportScreen({ store, router }: ScreenProps): ReactNode {
     }
   };
 
-  /** 把解析结果写进仓储：角色直接建；聊天记录按角色名找到（或建）角色再建会话。 */
+  /**
+   * 把解析结果写进仓储。
+   *
+   * 每一项独立 try/catch：一项校验失败不能拖垮整批（部分成功是常态），失败原因逐条可见。
+   * 卡片仓储缺失（浏览器最小实现）时如实提示，而不是退回旧写入路径假装成功。
+   */
   const applyImport = async (): Promise<void> => {
     setBusy(true);
     setSummary(undefined);
+    setNotes([]);
+    setFailures([]);
+    const cards = store.repository.cards;
+    const packs = store.repository.packs;
+    const stash = store.repository.stash;
     let characters = 0;
     let sessions = 0;
-    let skipped = 0;
     let lorebooks = 0;
     let entries = 0;
+    let skippedCount = 0;
+    const notices: string[] = [];
+    const problems: string[] = [];
     try {
+      const existingNames = new Set(cards === undefined ? [] : (await cards.list('character')).map((card) => card.meta.name));
       for (const item of items) {
         const result = item.result;
-        if (result.kind === 'character') {
-          // 同名角色不再建一份：重复导入同一张卡很容易发生，静默造重复是最烦人的结果
-          if (store.getState().characters.some((character) => character.name === result.name)) {
-            skipped += 1;
-            continue;
-          }
-          const saved = await store.actions.saveCharacter(characterDraftFrom(result));
-          characters += 1;
-          // 卡片里的内嵌世界书 → 一本真正绑定了该角色的世界书（条目按卡片顺序编号）
-          if (result.lorebook !== undefined && result.lorebook.entries.length > 0) {
-            const book = await store.actions.saveLorebook(lorebookDraftFrom(result.lorebook, saved.id));
-            for (const entry of loreEntryDraftsFrom(book.id, result.lorebook)) {
-              await store.actions.saveLoreEntry(entry);
+        try {
+          if (result.kind === 'character') {
+            if (cards === undefined) {
+              problems.push(t('world.editor.noCards'));
+              continue;
+            }
+            // 同名角色不再建一份：重复导入同一张卡很容易发生，静默造重复是最烦人的结果
+            if (existingNames.has(result.name)) {
+              skippedCount += 1;
+              continue;
+            }
+            const plan = planCharacterImport(result, { now: Date.now() });
+            await cards.save(plan.card);
+            existingNames.add(plan.card.meta.name);
+            characters += 1;
+            if (stash !== undefined) {
+              for (const entry of plan.stash) await stash.save(entry);
+            }
+            if (plan.pack !== undefined && packs !== undefined) {
+              await packs.save(plan.pack);
+              lorebooks += 1;
+            }
+            for (const loreCard of plan.loreCards) {
+              await cards.save(loreCard);
               entries += 1;
             }
-            lorebooks += 1;
-          }
-          // 有开场白就顺手建一个会话，导入完能立刻开聊——不然用户还得自己找一遍
-          if (result.firstMessage.trim() !== '') {
-            await store.actions.createSession(saved.id);
+            notices.push(...plan.notes);
+          } else if (result.kind === 'lorebook') {
+            if (cards === undefined) {
+              problems.push(t('import.noCards'));
+              continue;
+            }
+            const plan = planLorebookImport(result.lorebook, { now: Date.now() });
+            if (packs !== undefined) {
+              await packs.save(plan.pack);
+              lorebooks += 1;
+            }
+            for (const card of plan.cards) {
+              await cards.save(card);
+              entries += 1;
+            }
+            notices.push(...plan.notes);
+          } else if (result.kind === 'chat') {
+            // 聊天记录仍走旧路径：角色/会话/消息都是旧模型，本任务不改它
+            const plan = chatImportPlan(result, store.getState().characters);
+            let characterId = plan.existingCharacter?.id;
+            if (characterId === undefined) {
+              characterId = (await store.actions.saveCharacter({ name: plan.characterName })).id;
+              characters += 1;
+            }
+            const session = await store.actions.createSession(characterId, plan.title);
             sessions += 1;
+            // 批量写入：整本历史只发生**一次**仓储写入（真机上逐条 append 会慢到不可用）
+            await store.actions.appendMany(
+              session.id,
+              plan.messages.map((message) => ({
+                role: message.role,
+                content: message.content,
+                ...(message.createdAt === undefined ? {} : { createdAt: message.createdAt }),
+                ...(message.candidates.length === 0 ? {} : { candidates: message.candidates }),
+              })),
+            );
+            await store.actions.refreshSessions();
           }
-        } else if (result.kind === 'chat') {
-          const plan = chatImportPlan(result, store.getState().characters);
-          let characterId = plan.existingCharacter?.id;
-          if (characterId === undefined) {
-            characterId = (await store.actions.saveCharacter({ name: plan.characterName })).id;
-            characters += 1;
-          }
-          const session = await store.actions.createSession(characterId, plan.title);
-          sessions += 1;
-          // 批量写入：整本历史只发生**一次**仓储写入。
-          // 以前是逐条 appendMessage + 逐条 appendCandidates：真机上 1 万条就是 1 万次 IPC + 1 万次事务，
-          // 实测 ≥180 秒仍未完成（见 DEVELOPMENT.md 的《导入瓶颈》两节）。
-          await store.actions.appendMany(
-            session.id,
-            plan.messages.map((message) => ({
-              role: message.role,
-              content: message.content,
-              ...(message.createdAt === undefined ? {} : { createdAt: message.createdAt }),
-              ...(message.candidates.length === 0 ? {} : { candidates: message.candidates }),
-            })),
-          );
-          // 逐条追加时只做了就地更新；批量结束后对齐一次，列表摘要才是权威值
-          await store.actions.refreshSessions();
+        } catch (cause) {
+          // 部分失败：原因逐条可见（文件名 + 四段式错误文本由 describeError 提供）
+          problems.push(`${item.fileName}：${describeError(cause)}`);
         }
       }
-      setSkipped(skipped);
+
+      setSkipped(skippedCount);
+      setNotes([...new Set(notices)]);
+      setFailures([...new Set(problems)]);
       setSummary(
         t('import.done', {
           characters: t('count.characters', { count: characters }),
           sessions: t('count.sessions', { count: sessions }),
-          // 世界书是这次导入的新收获，值得单独报出来
           ...(lorebooks === 0 ? {} : { lore: t('import.lore', { books: lorebooks, entries }) }),
         }),
       );
-      setItems([]);
+      if (problems.length === 0) setItems([]);
+      // 卡片导入不经过 store.actions.saveCharacter：最后统一刷新一次，列表页立刻看得到
+      await store.actions.refresh();
     } catch (cause) {
-      addError('导入', describeError(cause));
+      setFailures([describeError(cause)]);
     } finally {
       setBusy(false);
     }
   };
 
-  const importable = items.filter((item) => item.result.kind === 'character' || item.result.kind === 'chat').length;
+  const importable = items.filter(
+    (item) => item.result.kind === 'character' || item.result.kind === 'chat' || item.result.kind === 'lorebook',
+  ).length;
 
   return (
     <div className="settings">
@@ -194,6 +240,28 @@ export function ImportScreen({ store, router }: ScreenProps): ReactNode {
         </Banner>
       )}
 
+      {failures.length > 0 && (
+        <Banner tone="error">
+          {failures.map((failure, index) => (
+            <span key={`${failure}-${String(index)}`}>
+              {index === 0 ? '' : <br />}
+              {t('import.failed', { message: failure })}
+            </span>
+          ))}
+        </Banner>
+      )}
+
+      {notes.length > 0 && (
+        <Banner tone="info">
+          {notes.map((note, index) => (
+            <span key={`${note}-${String(index)}`}>
+              {index === 0 ? '' : <br />}
+              {note}
+            </span>
+          ))}
+        </Banner>
+      )}
+
       {items.length === 0 ? (
         <EmptyState icon="import" title={t('import.empty')} hint={t('import.hint')} />
       ) : (
@@ -210,12 +278,12 @@ export function ImportScreen({ store, router }: ScreenProps): ReactNode {
                     : result.kind === 'lorebook'
                       ? t('import.parsed.lorebook', { name: result.lorebook.name, count: result.lorebook.entries.length })
                       : t('import.parsed.unknown', { reason: result.reason });
-              const notes = 'notes' in result ? result.notes : [];
+              const itemNotes = 'notes' in result ? result.notes : [];
               return (
                 <li key={item.id} className={`file-row file-row--${ok ? 'ok' : 'fail'}`}>
                   <span className="file-row__name">
                     {label}
-                    {notes.length > 0 && <span className="file-row__note"> · {notes.join('；')}</span>}
+                    {itemNotes.length > 0 && <span className="file-row__note"> · {itemNotes.join('；')}</span>}
                   </span>
                   <span className="file-row__note">{item.fileName}</span>
                 </li>
@@ -226,7 +294,6 @@ export function ImportScreen({ store, router }: ScreenProps): ReactNode {
           <Button block disabled={busy || importable === 0} onClick={() => void applyImport()}>
             {busy ? t('common.saving') : t('import.action', { count: importable })}
           </Button>
-          <p className="muted">{t('import.lorebook.note')}</p>
         </>
       )}
     </div>

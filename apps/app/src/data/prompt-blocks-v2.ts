@@ -24,6 +24,7 @@ import type {
 } from '../../../../packages/cards/src/index.ts';
 import type { ScoredEntry } from '../../../../packages/lore/src/index.ts';
 import type { RetrievedMemory } from './memory-retrieval.ts';
+import { appendVisualCaptions } from './prompt-visuals.ts';
 import type { PromptSummary } from './prompt-blocks.ts';
 import type { Memory, MessageRole } from './types.ts';
 
@@ -133,6 +134,7 @@ export function renderCharacterSection(character: CharacterCard): string {
   if (identity !== '') lines.push(`【身份】${identity}`);
   const appearance = trimmed(character.appearance?.['summary']);
   if (appearance !== '') lines.push(`【外观】${appearance}`);
+  appendVisualCaptions(lines, character.visuals, '【外观参考】', 3);
   const persona = character.persona;
   const personality = joinParts([trimmed(persona.summary), persona.traits.map((trait) => trait.trim()).filter((trait) => trait !== '').join('、')]);
   if (personality !== '') lines.push(`【性格】${personality}`);
@@ -167,29 +169,9 @@ export function renderCharacterSections(data: PromptBlockDataV2): string | undef
 }
 
 /** 规则块：只处理 before_prompt 且启用的 constraint / inject_prompt；带条件表达式的跳过并计数。 */
-export function renderRulesSection(data: PromptBlockDataV2): string | undefined {
-  const rules: Array<{ priority: number; owner: string; id: string; text: string }> = [];
-  let omitted = 0;
-  for (const character of data.world.members) {
-    for (const rule of character.rules ?? []) {
-      if (!rule.enabled || rule.when.event !== 'before_prompt') continue;
-      if ((rule.when.conditions ?? []).length > 0) {
-        // 表达式求值器还没有：宁可少数，也不假装条件规则已生效
-        omitted += 1;
-        continue;
-      }
-      const texts = rule.actions
-        .filter((action) => action.type === 'constraint' || action.type === 'inject_prompt')
-        .map((action) => trimmed(action.text))
-        .filter((text) => text !== '');
-      if (texts.length === 0) continue;
-      rules.push({ priority: rule.priority, owner: character.meta.id, id: rule.id, text: texts.join('\n') });
-    }
-  }
-  data.outcomes.rulesOmitted = omitted;
-  rules.sort((a, b) => b.priority - a.priority || a.owner.localeCompare(b.owner) || a.id.localeCompare(b.id));
-  return rules.length === 0 ? undefined : rules.map((rule) => rule.text).join('\n');
-}
+// 规则块实现在 prompt-rules.ts（条件求值走 packages/cards/expr）；这里 import 后 re-export，保证既有调用/测试不变
+import { renderRulesSection } from './prompt-rules.ts';
+export { renderRulesSection };
 
 /** 开局配置块：只输出非空项；tone 走中文映射。 */
 export function renderSetupSection(data: PromptBlockDataV2): string | undefined {
@@ -256,6 +238,7 @@ export function renderSceneSection(data: PromptBlockDataV2): string | undefined 
   const lines: string[] = [`【当前场景】${trimmed(scene.meta.name)}`];
   const summary = trimmed(scene.appearance?.['summary']) || trimmed(scene.brief);
   if (summary !== '') lines.push(summary);
+  appendVisualCaptions(lines, scene.visuals, '【外观参考】', 1, ['key_art', 'background']);
   const atmosphere = atmosphereText(scene.atmosphere);
   if (atmosphere !== '') lines.push(atmosphere);
   const connections = [...new Set((scene.connections ?? []).map((item) => resolveName(data.world.sceneById, item.target)))];

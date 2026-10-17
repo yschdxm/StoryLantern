@@ -34,13 +34,16 @@ export const zhExtra: AppMessages = {
   'chat.trace.block.items': '持有物品',
   'chat.trace.block.examples': '对话示例',
   'chat.trace.block.summary': '相关摘要',
-  'chat.trace.rulesOmitted': '跳过了 {count} 条带条件的规则（条件求值器尚未实现，不假装生效）',
-  'chat.trace.loreDropped': '{count} 条典籍没有注入（概率未命中或超出预算）',
+  'chat.trace.rulesOmitted': '跳过了 {count} 条条件规则（条件不满足或无法求值）',
+  'chat.trace.loreDropped': '{count} 条典籍没有注入（条目停用 / 条件不满足 / 概率未命中 / 超出预算）',
   // 卡片激活（ADR-0011 补充）：未参与本次请求的原因
   'chat.trace.inactive': '未参与本次请求的卡片（{count}）',
   'chat.trace.inactive.library-disabled': '库级停用（退役/草稿）',
+  'chat.trace.inactive.card-disabled': '条目级停用（作者关掉了这一条）',
   'chat.trace.inactive.override-off': '本会话里被关掉',
   'chat.trace.inactive.not-in-session': '不在场 / 不是当前场景',
   'chat.trace.inactive.no-instance': '没有对应的物品实例',
   'chat.trace.inactive.not-mounted': '不在本局资源池（未挂载的包/卡）',
+  // 导入：卡片仓储不可用时的专门提示（不要借编辑器文案）
+  'import.noCards': '这个环境没有卡片存储，导入无法落库（浏览器最小实现不支持）；请在桌面/安卓应用里导入。',
 };

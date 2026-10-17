@@ -13,6 +13,12 @@ export interface ImportedLorebookEntry {
   name: string;
   enabled: boolean;
   constant: boolean;
+  /** ST 的插入顺序（`order` / CCv3 的 `insertion_order`）；缺省时由调用方按导入顺序编号。 */
+  order?: number;
+  /** ST 的深度窗口（`depth`）；0/缺省 = 用默认窗口。 */
+  depth?: number;
+  /** 是否允许递归扫描（ST 的 `excludeRecursion` 取反）；缺省 true。 */
+  recursive?: boolean;
 }
 
 export interface ImportedLorebook {
@@ -37,6 +43,24 @@ export interface ImportedCharacter {
   alternateGreetings: string[];
   /** 卡片规范版本：`chara_card_v2` / `chara_card_v3` / `legacy`。 */
   spec: string;
+  /** 作者（ST `creator`）。 */
+  creator?: string;
+  /** 卡片版本（ST `character_version`）。 */
+  characterVersion?: string;
+  /** 作者备注（ST `creator_notes`）——可作卡片简介，不再"跳过"。 */
+  creatorNotes?: string;
+  /** 回复后指令（ST `post_history_instructions`）。 */
+  postHistoryInstructions?: string;
+  /** ST `tags`。 */
+  tags?: string[];
+  /** ST `depth_prompt` 的正文（没有承载字段，导入时会被丢弃并如实报告）。 */
+  depthPrompt?: string;
+  /** 群聊专用开场白（ST `group_only_greetings`）。 */
+  groupOnlyGreetings?: string[];
+  /** `extensions` 的键名：值不导入（只留审计），键名用于丢弃清单。 */
+  extensionKeys?: string[];
+  /** 我们没有映射的 `data` 字段名：如实上报丢弃，不静默。 */
+  unmappedFields?: string[];
   lorebook?: ImportedLorebook;
   /** 丢掉了什么、可能影响什么——宁可写清楚，也不静默丢数据。 */
   notes: string[];

@@ -76,7 +76,6 @@ export function BasicWorldSection({
           placeholder={t('world.editor.brief.placeholder')}
         />
       </Field>
-      <p className="world-note">{t('world.editor.visualsUnsupported')}</p>
       <label className="switch">
         <input type="checkbox" checked={enabled} onChange={(event) => onEnabledChange(event.target.checked)} />
         <span>{t('world.editor.enabled')}</span>

@@ -17,6 +17,7 @@ import {
   DEFAULT_STATE_UPDATE_POLICY,
   type CharacterCardDraft,
 } from '../../data/character-compat.ts';
+import { draftsToVisuals, visualsToDrafts, type VisualDraft } from '../../data/visuals-form.ts';
 
 /** 状态变量表格的一行（默认值在界面上是文本，保存时按 type 解析）。 */
 export interface StateVariableDraft {
@@ -30,6 +31,21 @@ export interface StateVariableDraft {
 
 const copyList = (items: readonly string[] | undefined): string[] | undefined =>
   items === undefined ? undefined : [...items];
+
+/** 角色的视觉设定 → 草稿（顺序保持、未知字段挂 raw）。 */
+export function visualDraftsOf(card: CharacterCard): VisualDraft[] {
+  return visualsToDrafts(card.visuals);
+}
+
+/** 把视觉草稿挂回卡片；全部删除时移除 `visuals` 字段（不写空数组）。 */
+export function attachVisuals(card: CharacterCard, drafts: readonly VisualDraft[]): CharacterCard {
+  const visuals = draftsToVisuals(drafts);
+  if (visuals.length === 0) {
+    const { visuals: _ignored, ...rest } = card;
+    return rest;
+  }
+  return { ...card, visuals };
+}
 
 /** 卡片 → 编辑器草稿（示例对话 / 状态变量由调用方另取）。 */
 export function draftOfCard(card: CharacterCard): CharacterCardDraft {

@@ -113,11 +113,28 @@ test('visuals 有 path 没 caption 是 error：caption 是纯文本模型唯一�
   assert.equal(result.ok, false);
 });
 
-test('visuals 每项的 id / type / path 必填，各自用独立路径定位', () => {
+test('visuals 每项的 id / type 必填；path 可选（只有 description 也能用）', () => {
   const result = validateCard(characterCard({ visuals: [{ caption: '只有描述' }] }));
-  assert.deepEqual(paths(result), ['visuals[0].id', 'visuals[0].type', 'visuals[0].path']);
-  assert.deepEqual(codes(result), ['missing-field', 'missing-field', 'missing-field']);
-  assert.equal(result.ok, false);
+  assert.deepEqual(paths(result), ['visuals[0].id', 'visuals[0].type', 'visuals[0].caption']);
+  assert.deepEqual(codes(result), ['missing-field', 'missing-field', 'visual-no-image']);
+  assert.equal(result.ok, false, 'id/type 缺失仍是 error');
+});
+
+test('visuals：无 path 但有 caption → 只 warning visual-no-image，可保存', () => {
+  const result = validateCard(characterCard({
+    visuals: [{ id: 'v1', type: 'portrait', caption: '黑发女剑士，左颊有疤' }],
+  }));
+  const noImage = issue(result, 'visual-no-image');
+  assert.equal(noImage?.path, 'visuals[0].caption');
+  assert.equal(noImage?.severity, 'warning');
+  assert.equal(result.ok, true, '资产通道未接线：描述优先是允许形态');
+});
+
+test('visuals：caption 为空是 error；path 空字符串也是 error', () => {
+  const noCaption = validateCard(characterCard({ visuals: [{ id: 'v1', type: 'portrait' }] }));
+  assert.equal(issue(noCaption, 'visual-caption-missing')?.severity, 'error');
+  const emptyPath = validateCard(characterCard({ visuals: [{ id: 'v1', type: 'portrait', path: '', caption: '描述' }] }));
+  assert.equal(issue(emptyPath, 'empty-field')?.path, 'visuals[0].path');
 });
 
 test('visuals.path 必须是 asset://<sha256>：绝对路径跨设备必坏', () => {
@@ -147,15 +164,18 @@ test('边界字段空串只 warning：旧卡导入后待补全，不拦保存', 
   assert.equal(result.ok, true, '空串是「待补全」而不是「不可用」');
 });
 
-test('角色必填：identity.background / persona.summary / traits 空数组 / speech.style 都是 error', () => {
+test('角色必填：identity.background / persona.summary / traits 空数组 / speech.style 空串是 warning（可保存，待补全）', () => {
   const result = validateCard(characterCard({
-    identity: identity({ background: '' }), persona: persona({ summary: '', traits: [] }), speech: speech({ style: undefined }),
+    identity: identity({ background: '' }), persona: persona({ summary: '', traits: [] }), speech: speech({ style: '' }),
   }));
   assert.deepEqual(paths(result), ['identity.background', 'persona.summary', 'persona.traits', 'speech.style']);
-  assert.equal(result.ok, false);
+  assert.equal(result.ok, true, '空字段只提示，不拦保存（否则导入的旧卡永远存不进去）');
+  for (const path of ['identity.background', 'persona.summary', 'persona.traits', 'speech.style']) {
+    assert.equal(result.issues.find((entry) => entry.path === path)?.severity, 'warning', path);
+  }
 });
 
-test('角色必填再补：identity.name 空串与 persona.traits 缺失都是 error', () => {
+test('角色必填再补：identity.name 空串与 persona.traits 缺失仍是 error（结构不对 vs 还没填）', () => {
   const noName = validateCard(characterCard({ identity: identity({ name: '' }) }));
   assert.equal(issue(noName, 'empty-field')?.path, 'identity.name');
   const noTraits = validateCard(characterCard({ persona: persona({ traits: undefined }) }));

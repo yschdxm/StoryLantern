@@ -109,11 +109,16 @@ function validateVisuals(card: Record<string, unknown>, issues: CardIssue[]): vo
     needText(issues, item, 'id', `${path}.id`, '视觉资产 id');
     needText(issues, item, 'type', `${path}.type`, '视觉资产 type');
     const asset = item['path'];
-    if (asset === undefined) err(issues, `${path}.path`, 'missing-field', '视觉资产 path 必填');
-    else if (typeof asset !== 'string' || !asset.trim()) err(issues, `${path}.path`, 'empty-field', '视觉资产 path 不能是空字符串');
-    else if (!isAssetRef(asset)) err(issues, `${path}.path`, 'asset-ref-invalid', 'path 必须是 asset://<sha256>（卡内不内嵌二进制，绝对路径跨设备必坏）');
-    if (textOf(item['caption']) === undefined) {
+    const caption = textOf(item['caption']);
+    // path 可选：只有 caption 是「描述优先」形态；有 path 就仍必须是内容寻址引用。
+    if (asset !== undefined) {
+      if (typeof asset !== 'string' || !asset.trim()) err(issues, `${path}.path`, 'empty-field', '视觉资产 path 不能是空字符串');
+      else if (!isAssetRef(asset)) err(issues, `${path}.path`, 'asset-ref-invalid', 'path 必须是 asset://<sha256>（卡内不内嵌二进制，绝对路径跨设备必坏）');
+    }
+    if (caption === undefined) {
       err(issues, `${path}.caption`, 'visual-caption-missing', 'caption 必填：纯文本模型读不了图，caption 是 LLM 唯一入口');
+    } else if (asset === undefined) {
+      warn(issues, `${path}.caption`, 'visual-no-image', '只有描述、没有图片：可作为文字设定使用，补图后再填 asset://<sha256>');
     }
     if (item['is_primary'] === true) primaryCount += 1;
   });
@@ -226,23 +231,36 @@ function stateWarnings(card: Record<string, unknown>, issues: CardIssue[]): void
   }
 }
 
+/**
+ * 「字段必须存在，但允许先留空」的校验。
+ *
+ * 为什么要这条：导入的旧卡 / Agent 生成中的卡一定会有空字段。把「缺失」（结构不对）与
+ * 「空串」（还没填）分开，才能既保证结构完整、又不把导入/保存路径堵死（空串只给 warning）。
+ */
+function softText(issues: CardIssue[], holder: Record<string, unknown>, key: string, path: string, label: string, code: string): void {
+  const raw = holder[key];
+  if (raw === undefined) { err(issues, path, 'missing-field', `${label} 必填（可以是空串，表示待补全）`); return; }
+  if (typeof raw !== 'string') { err(issues, path, 'invalid-type', `${label} 必须是字符串，收到 ${typeName(raw)}`); return; }
+  if (!raw.trim()) warn(issues, path, code, `${label} 为空：保存不拦，但建议补全（导入/Agent 生成后常见）`);
+}
+
 function validateCharacter(card: Record<string, unknown>, issues: CardIssue[]): void {
   const identity = obj(issues, card, 'identity', 'identity', 'identity 角色定义');
   if (identity) {
     needText(issues, identity, 'name', 'identity.name', 'identity.name');
-    needText(issues, identity, 'background', 'identity.background', 'identity.background');
+    softText(issues, identity, 'background', 'identity.background', 'identity.background', 'background-pending');
   }
   const persona = obj(issues, card, 'persona', 'persona', 'persona 人格策略');
   if (persona) {
-    needText(issues, persona, 'summary', 'persona.summary', 'persona.summary');
+    softText(issues, persona, 'summary', 'persona.summary', 'persona.summary', 'summary-pending');
     const traits = listAt(issues, persona, 'traits', 'persona.traits', 'persona.traits', true);
-    if (traits && traits.length === 0) err(issues, 'persona.traits', 'empty-field', 'persona.traits 必须是非空数组（性格标签）');
+    if (traits && traits.length === 0) warn(issues, 'persona.traits', 'traits-pending', '性格标签为空：保存不拦，但建议至少写几条（Agent 也能从描述里抽）');
     boundaryField(issues, persona, 'knowledge_boundary', 'persona.knowledge_boundary');
     boundaryField(issues, persona, 'ability_boundary', 'persona.ability_boundary');
   }
   const speech = obj(issues, card, 'speech', 'speech', 'speech 语言风格');
   if (speech) {
-    needText(issues, speech, 'style', 'speech.style', 'speech.style');
+    softText(issues, speech, 'style', 'speech.style', 'speech.style', 'speech-pending');
     const lines = speech['example_lines'];
     if (lines === undefined) warn(issues, 'speech.example_lines', 'example-lines-too-few', '示例台词为空，建议至少 5 条并覆盖不同情绪档位');
     else if (!Array.isArray(lines)) err(issues, 'speech.example_lines', 'invalid-type', `speech.example_lines 必须是数组，收到 ${typeName(lines)}`);

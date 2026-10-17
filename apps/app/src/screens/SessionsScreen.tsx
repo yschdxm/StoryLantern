@@ -52,7 +52,8 @@ export function SessionsScreen({ store, router }: ScreenProps): ReactNode {
       router.navigate({ name: 'character', characterId: 'new' });
       return;
     }
-    setPickCharacter(true);
+    // 会话开局配置（成员/世界池/处境/开场模式）在独立页面完成；这里不再走"选角色→选开场白"的老流程
+    router.navigate({ name: 'sessionNew' });
   };
 
   if (state.status === 'loading' && state.sessions.length === 0) return <LoadingState label={t('sessions.loading')} />;

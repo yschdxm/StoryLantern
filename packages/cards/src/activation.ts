@@ -24,6 +24,7 @@ import type { SessionRuntime, SessionSetup } from './types-session.ts';
 
 export type ActivationCode =
   | 'library-disabled'
+  | 'card-disabled'
   | 'override-off'
   | 'override-on'
   | 'member'
@@ -90,7 +91,9 @@ export function resolveActivation(card: CardDocument, input: ActivationInput): A
         : { active: false, code: 'no-instance' };
     }
     case 'lore':
-      // 典籍的关键词命中在扫描器里算；这里只回答"它有没有资格被扫到"
+      // 条目级启停（作者语义，跟着卡片走）优先于资源池：关掉就是不参与任意会话
+      if (card.enabled === false) return { active: false, code: 'card-disabled' };
+      // 关键词命中与条件在扫描/求值阶段算；这里只回答"它有没有资格被扫到"
       return inPool(id, input.mounted)
         ? { active: true, code: 'mounted' }
         : { active: false, code: 'not-mounted' };

@@ -26,13 +26,16 @@ export const enExtra: AppMessages = {
   'chat.trace.block.items': 'Held items',
   'chat.trace.block.examples': 'Example dialogue',
   'chat.trace.block.summary': 'Relevant summaries',
-  'chat.trace.rulesOmitted': '{count} conditional rules skipped (condition evaluator not implemented yet; not pretending they apply)',
-  'chat.trace.loreDropped': '{count} lore entries not injected (probability miss or over budget)',
+  'chat.trace.rulesOmitted': '{count} conditional rules skipped (condition false or not evaluable)',
+  'chat.trace.loreDropped': '{count} lore entries not injected (entry disabled / condition false / probability miss / over budget)',
   // Card activation (ADR-0011 addendum): why a card did not take part
   'chat.trace.inactive': 'Cards not used in this request ({count})',
   'chat.trace.inactive.library-disabled': 'Disabled in library (retired/draft)',
+  'chat.trace.inactive.card-disabled': 'Entry disabled by the author',
   'chat.trace.inactive.override-off': 'Turned off for this session',
   'chat.trace.inactive.not-in-session': 'Not present / not the current scene',
   'chat.trace.inactive.no-instance': 'No item instance',
   'chat.trace.inactive.not-mounted': 'Not in this session’s resource pool',
+  // Import: dedicated copy when the card store is unavailable (do not reuse editor copy)
+  'import.noCards': 'No card store in this environment, so imports cannot be saved (the minimal browser build does not support it). Import from the desktop/Android app.',
 };

@@ -14,6 +14,7 @@ import {
   type SceneProp, type StateValue,
 } from '../../../../../packages/cards/src/index.ts';
 import { ulid } from '../../../../../packages/oplog/src/index.ts';
+import { draftsToVisuals, visualsToDrafts, type VisualDraft } from '../../data/visuals-form.ts';
 import type { WorldKind } from '../../app/router.ts';
 
 export type WorldCard = SceneCard | ItemCard | LoreCard;
@@ -31,6 +32,8 @@ export interface DraftCommon {
   rating: Rating;
   language: string;
   brief: string; // → brief；留空由结构化字段合成
+  /** 视觉设定（四类共用；caption 必填、path 可选）。 */
+  visuals: VisualDraft[];
 }
 
 export interface SceneConnectionDraft { target: string; direction: 'both' | 'one_way'; how: string; condition: string }
@@ -68,6 +71,8 @@ export interface LoreDraft extends DraftCommon {
   keys: string; // 逗号分隔 → keys
   secondaryKeys: string; // 逗号分隔 → secondary_keys
   logic: LoreLogic; trigger: LoreTriggerDraft;
+  /** 条目级启停（关掉后不参与扫描；与库级启停 `card.library` 是两件事）。 */
+  enabled: boolean;
 }
 
 export type WorldCardDraft = SceneDraft | ItemDraft | LoreDraft;
@@ -133,14 +138,14 @@ function nonEmptyFields(fields: FieldTextMap): FieldTextMap | undefined {
 
 /** 新卡片的初始表单：必填项留空（交给校验器提示），枚举给合理默认值。 */
 export function emptyWorldDraft(kind: WorldKind): WorldCardDraft {
-  const common: DraftCommon = { name: '', description: '', tags: '', aliases: '', rating: 'general', language: 'zh-CN', brief: '' };
+  const common: DraftCommon = { name: '', description: '', tags: '', aliases: '', rating: 'general', language: 'zh-CN', brief: '', visuals: [] };
   if (kind === 'scene') {
     return { ...common, kind: 'scene', type: 'physical', sceneDescription: '', appearance: pickFields(undefined, SCENE_APPEARANCE_FIELDS), atmosphere: pickFields(undefined, ATMOSPHERE_FIELDS), connections: [], occupants: [], props: [], events: '', defaultState: [], isEntry: false };
   }
   if (kind === 'item') {
     return { ...common, kind: 'item', type: 'other', descriptionText: '', functionText: '', rarity: '', value: { currency: '', amount: '', tradable: 'unset' }, usability: { condition: '', maxUses: '' }, durability: { max: '', repairable: 'unset', breakEffect: '' }, appearance: pickFields(undefined, ITEM_APPEARANCE_FIELDS) };
   }
-  return { ...common, kind: 'lore', loreKind: 'other', content: '', summary: '', keys: '', secondaryKeys: '', logic: 'any', trigger: { constant: false, priority: '5', probability: '100', recursive: true, depth: '', conditions: '' } };
+  return { ...common, kind: 'lore', loreKind: 'other', content: '', summary: '', keys: '', secondaryKeys: '', logic: 'any', trigger: { constant: false, priority: '5', probability: '100', recursive: true, depth: '', conditions: '' }, enabled: true };
 }
 
 // ---------------------------------------------------------------- 卡片 → 草稿
@@ -150,6 +155,7 @@ function draftCommonOf(card: WorldCard): DraftCommon {
     id: card.meta.id, name: card.meta.name, description: card.meta.description,
     tags: joinKeyList(card.meta.tags), aliases: joinKeyList(card.meta.aliases),
     rating: card.meta.rating, language: card.meta.language, brief: card.brief ?? '',
+    visuals: visualsToDrafts(card.visuals),
   };
 }
 
@@ -196,6 +202,7 @@ export function draftOfCard(card: WorldCard): WorldCardDraft {
     ...draftCommonOf(card), kind: 'lore', loreKind: card.kind, content: card.content,
     summary: card.summary ?? '', keys: joinKeyList(card.keys), secondaryKeys: joinKeyList(card.secondary_keys),
     logic: card.logic ?? 'any',
+    enabled: card.enabled !== false,
     trigger: {
       constant: trigger?.constant === true,
       priority: trigger?.priority === undefined ? '5' : String(trigger.priority),
@@ -240,7 +247,8 @@ function commonMeta(existing: WorldCard | undefined, draft: WorldCardDraft): Car
 }
 
 function commonOwned(existing: WorldCard | undefined, draft: WorldCardDraft): Record<string, unknown> {
-  return { meta: commonMeta(existing, draft), brief: optionalText(draft.brief) };
+  const visuals = draftsToVisuals(draft.visuals);
+  return { meta: commonMeta(existing, draft), brief: optionalText(draft.brief), visuals: visuals.length === 0 ? undefined : visuals };
 }
 
 function buildAppearance(previous: CardAppearance | undefined, fields: FieldTextMap): CardAppearance | undefined {
@@ -348,6 +356,8 @@ function buildLore(existing: LoreCard | undefined, draft: LoreDraft): LoreCard {
     keys: keys.length === 0 ? undefined : keys,
     secondary_keys: secondary.length === 0 ? undefined : secondary,
     logic: draft.logic, trigger,
+    // 条目级启停：true 不写字段（缺省即启用），保持卡片干净
+    ...(draft.enabled ? {} : { enabled: false }),
   });
 }
 

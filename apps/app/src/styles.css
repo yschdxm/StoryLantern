@@ -1504,3 +1504,89 @@ button.chip { min-height: 36px; }
   flex: 1 1 8rem;
   margin-bottom: 0;
 }
+
+/* ------------------------------------------------------------------ 会话创建 */
+/* 成员/资源选项：名字 + 一行副标题（触摸目标仍由 .switch 保证 ≥44px） */
+.session-create__member {
+  align-items: flex-start;
+}
+
+.session-create__name {
+  display: block;
+  font-size: var(--text-md);
+}
+
+.session-create__subtitle {
+  display: block;
+  color: var(--dim);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+/* 资源池/世界包列表：数量不可控，限高可滚动，避免整页被拉长 */
+.session-create__scroll {
+  max-height: 34vh;
+  margin-bottom: var(--space-3);
+  padding: var(--space-1) var(--space-2);
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.session-create__disabled {
+  opacity: 0.6;
+}
+
+/* ------------------------------------------------------------------ 视觉设定（四类卡共用） */
+.visual-note {
+  margin: 0 0 var(--space-3);
+  color: var(--dim);
+  font-size: var(--text-sm);
+}
+
+.visual-row {
+  margin-bottom: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.visual-row__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* 整行是展开/收起的按钮：触摸目标至少一行高 */
+.visual-row__main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+  min-height: var(--tap-min);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.visual-row__caption {
+  overflow-wrap: anywhere;
+}
+
+.visual-row__meta {
+  color: var(--dim);
+  font-size: var(--text-sm);
+}
+
+.visual-row__body {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}

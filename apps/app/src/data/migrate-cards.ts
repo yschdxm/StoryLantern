@@ -216,9 +216,9 @@ function loreCardOf(entry: LoreEntryRecord): LoreCard {
       rating: 'general',
       // 简介取正文首行（作者原文）；正文为空才退回注释
       description: firstContentLine !== '' ? firstContentLine : comment,
-      // 语义缺口：条目级 enabled 尚未进卡片模型（库级启停见 card.library）。标记出来，报告里如实说明。
-      ...(entry.enabled ? {} : { tags: ['legacy-disabled'] }),
     },
+    // 条目级启停现在有正式字段了（`LoreCard.enabled`），不再用 tags 打标记
+    ...(entry.enabled ? {} : { enabled: false }),
     kind: 'other',
     content: entry.content,
     keys,

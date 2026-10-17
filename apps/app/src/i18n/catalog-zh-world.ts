@@ -212,6 +212,8 @@ export const zhWorld: AppMessages = {
 
   // 编辑器：典籍
   'world.editor.lore.title': '典籍',
+  'world.editor.lore.enabled': '这个条目启用',
+  'world.editor.lore.enabled.hint': '关闭后本条不参与任何会话；卡片仍保留（与"库级停用整张卡"不同）。',
   'world.editor.lore.kind': '典籍分类',
   'world.editor.lore.content': '内容',
   'world.editor.lore.content.hint': '注入内容，必须能独立成立；必填。',
@@ -231,6 +233,6 @@ export const zhWorld: AppMessages = {
   'world.editor.lore.trigger.recursive': '允许二次触发',
   'world.editor.lore.trigger.depth': '深度窗口',
   'world.editor.lore.trigger.conditions': '条件表达式',
-  'world.editor.lore.trigger.conditions.hint': '一行一条；只保存源码，条件求值尚未实现。',
+  'world.editor.lore.trigger.conditions.hint': '一行一条；由引擎按当前会话变量求值，不成立或无法求值时不注入（请求面板会显示被跳过的条数）。',
   'world.editor.lore.trigger.conditions.placeholder': 'moon_phase == "full"',
 };

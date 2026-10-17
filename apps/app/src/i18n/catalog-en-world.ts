@@ -210,6 +210,8 @@ export const enWorld: AppMessages = {
 
   // Editor: lore
   'world.editor.lore.title': 'Lore',
+  'world.editor.lore.enabled': 'This entry is enabled',
+  'world.editor.lore.enabled.hint': 'When off, this entry takes part in no session; the card is kept (different from disabling the whole card in the library).',
   'world.editor.lore.kind': 'Lore kind',
   'world.editor.lore.content': 'Content',
   'world.editor.lore.content.hint': 'Injected content; it must stand on its own. Required.',
@@ -229,6 +231,6 @@ export const enWorld: AppMessages = {
   'world.editor.lore.trigger.recursive': 'Allow recursive trigger',
   'world.editor.lore.trigger.depth': 'Depth window',
   'world.editor.lore.trigger.conditions': 'Condition expressions',
-  'world.editor.lore.trigger.conditions.hint': 'One per line; only the source is stored — condition evaluation is not implemented yet.',
+  'world.editor.lore.trigger.conditions.hint': 'One per line; evaluated against the session variables. Entries whose conditions are false or cannot be evaluated are not injected (the request panel reports how many were skipped).',
   'world.editor.lore.trigger.conditions.placeholder': 'moon_phase == "full"',
 };
