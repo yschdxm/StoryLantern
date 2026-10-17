@@ -25,7 +25,7 @@ pnpm --filter @storylantern/app exec vite preview --port 15199 --strictPort
 ## 1. 硬约束（违反即失败）
 
 - **运行时零第三方依赖**：界面只允许 React；`typescript`、`@playwright/test` 是仅有的 devDependency。不要 `pnpm add` 运行时包。
-- **单文件 ≤400 行**；`apps/app/src/main.tsx` 384 行（删签名/恢复密钥后回落），仍不要往上堆：加页面先抽组件/路由分发。
+- **单文件 ≤400 行**；`apps/app/src/main.tsx` 391 行，仍不要往上堆：加页面先抽组件/路由分发。
 - 文本文件必须 UTF-8；不伪造：不用假数据/示例功能冒充实现，不在报告或提交信息里写没跑过的结论。
 - **术语**：英文 design token 统一称**设计变量（样式变量）**，不写"令牌"。
 - 中文优先；界面文案中英双语，中文为主。
@@ -69,7 +69,7 @@ pnpm --filter @storylantern/app exec vite preview --port 15199 --strictPort
   （真机 WebView 没有可用的非对称签名能力）；`.slbak` 含资产所以会变大（base64 +33%）；规则条件的"语义"只在运行时求值
   （编辑器另提供"试算"用示例变量验证）；L3 无独立 URL（设置分区）；详见 ADR-0011 与 `docs/SETTINGS-IA.md §8`。
 - 行数已贴上限，加东西先拆：`ChatScreen`/`SessionCreateScreen`/`op-repository.ts` 399，`repository.ts` 400；
-  `main.tsx` 384、`sync/service.ts` 372、`assets-sync.ts` 362、`app-sync.ts` 388。
+  `main.tsx` 391、`sync/service.ts` 372、`assets-sync.ts` 362、`app-sync.ts` 388。
 - **hash 路由必须对实体 id 编解码**（`router.ts` 的 `encodePart`/`decodePart`）：id 不保证是 ASCII，漏了会出现"找不到这张卡片"。
 
 ## 3. 代码边界

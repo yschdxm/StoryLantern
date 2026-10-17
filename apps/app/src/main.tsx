@@ -253,7 +253,14 @@ function Root(): ReturnType<typeof AppShell> {
                   ? { exportBackup: opLogRepository.exportBackup.bind(opLogRepository) }
                   : {}),
                 ...(typeof opLogRepository.importBackup === 'function'
-                  ? { importBackup: opLogRepository.importBackup.bind(opLogRepository) }
+                  ? {
+                      importBackup: async (...args: Parameters<NonNullable<typeof opLogRepository.importBackup>>) => {
+                        const result = await opLogRepository.importBackup!(...args);
+                        // 恢复只是把 op 补进日志：界面状态不会自己变，必须刷新一次（真机试玩时踩到过）
+                        await store.actions.refresh();
+                        return result;
+                      },
+                    }
                   : {}),
               })),
         };
