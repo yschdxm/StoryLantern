@@ -345,6 +345,7 @@ static STORE_METHODS: &[MethodDef] = &[
 
 static CHAT_METHODS: &[MethodDef] = &[
     MethodDef { name: "reply", kind: "stream", description: "以会话的角色设定与历史为输入，流式产出回复", call: None, stream: Some(crate::chat::chat_reply) },
+    MethodDef { name: "preview", kind: "call", description: "这次调用真正会发出去的 URL 与请求体（逐字节，不联网）", call: Some(crate::chat::chat_preview), stream: None },
     MethodDef { name: "probe", kind: "call", description: "连通性自检：地址/密钥/模型名是否可用", call: Some(crate::chat::chat_probe), stream: None },
     MethodDef { name: "embed", kind: "call", description: "向量嵌入（宿主侧发出，密钥不进前端）", call: Some(crate::chat::chat_embed), stream: None },
 ];

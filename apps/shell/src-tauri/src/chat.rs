@@ -160,13 +160,7 @@ pub fn chat_reply(
     let mut request = client
         .post(&url)
         .header("content-type", "application/json")
-        .json(&json!({
-            "model": model,
-            "messages": payload_messages,
-            "stream": true,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-        }));
+        .json(&build_body(&model, &payload_messages, temperature, max_tokens));
     if !api_key.is_empty() {
         request = request.bearer_auth(&api_key);
     }
@@ -220,6 +214,44 @@ fn is_local_endpoint(url: &str) -> bool {
         || lower.contains("10.0.2.2")
         || lower.contains("192.168.")
         || lower.contains("10.0.")
+}
+
+/// **真正会被发出去的请求体**——唯一实现。
+///
+/// 发送（`chat_reply`）与预览（`chat_preview`）都调它，所以"界面看到的请求"
+/// 与"宿主实际 PUT 的字节"不可能各写一份而漂移（M2 退出判据）。
+/// 返回 `serde_json::Value`，由 reqwest 的 `.json()` 序列化；`chat_preview` 用
+/// `serde_json::to_string` 得到**同一份字节**。
+fn build_body(model: &str, payload_messages: &[Value], temperature: f64, max_tokens: i64) -> Value {
+    json!({
+        "model": model,
+        "messages": payload_messages,
+        "stream": true,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    })
+}
+
+/// `chat.preview({ messages, systemPrompt, profileId? })`：
+/// 返回这次调用**会发出去的** URL 与请求体字符串（不发动网络请求）。
+///
+/// 用途有两个： Inspector 可以显示"逐字节的真实请求"；测试可以把它与界面展示的内容比对。
+pub fn chat_preview(store: &Store, args: &[Value]) -> Result<Value, WireErrorPayload> {
+    let (payload_messages, _system) = read_request(args)?;
+    let profile_id = args
+        .first()
+        .and_then(|request| request.get("profileId"))
+        .and_then(Value::as_str);
+    let target = resolve_target(store, profile_id)?;
+    let body = build_body(&target.model, &payload_messages, target.temperature, target.max_tokens);
+    let text = serde_json::to_string(&body)
+        .map_err(|error| WireErrorPayload::new("serialize-failed", format!("请求体序列化失败：{error}")))?;
+    Ok(json!({
+        "url": format!("{}/chat/completions", target.base_url.trim_end_matches('/')),
+        "body": text,
+        "byteLength": text.len(),
+        "model": target.model,
+    }))
 }
 
 fn truncate(text: &str, limit: usize) -> String {
@@ -397,5 +429,59 @@ pub fn chat_probe(store: &Store, args: &[Value]) -> Result<Value, WireErrorPaylo
             Ok(json!({ "ok": false, "message": format!("接口返回 {status}：{}", truncate(&body, 200)) }))
         }
         Err(error) => Ok(json!({ "ok": false, "message": format!("请求失败：{error}") })),
+    }
+}
+
+// ---------------------------------------------------------------- 测试
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// golden 文件同时被 Node 侧的 apps/app/test/chat-body-parity.test.ts 读取。
+    const GOLDEN: &str = include_str!("../tests/chat-body-golden.json");
+
+    /// M2 退出判据：宿主真正发出去的请求体 == golden（逐字节）。
+    ///
+    /// 这条能拦住两类真实事故：① 发请求时少传/多传字段（比如忘了 `stream: true`）；
+    /// ② 发送路径与预览路径各写一份 body 而漂移 —— 现在两者都调 `build_body`，这里钉住它。
+    #[test]
+    fn body_matches_golden_byte_for_byte() {
+        let golden: Value = serde_json::from_str(GOLDEN).expect("golden 不是合法 JSON");
+        let request = &golden["request"];
+        let target = &golden["target"];
+
+        let system = request["systemPrompt"].as_str().unwrap_or_default();
+        let messages = request["messages"].as_array().expect("golden.request.messages 应当是数组");
+
+        // 与 read_request 相同的组装规则：systemPrompt 非空 → 作为第一条 system 消息
+        let mut payload: Vec<Value> = Vec::new();
+        if !system.trim().is_empty() {
+            payload.push(json!({ "role": "system", "content": system }));
+        }
+        payload.extend(messages.iter().cloned());
+
+        let body = build_body(
+            target["model"].as_str().unwrap_or_default(),
+            &payload,
+            target["temperature"].as_f64().unwrap_or(0.0),
+            target["maxTokens"].as_i64().unwrap_or(0),
+        );
+        let actual = serde_json::to_string(&body).expect("序列化失败");
+        assert_eq!(actual, golden["body"].as_str().unwrap_or_default(), "请求体与 golden 不一致（逐字节）");
+    }
+
+    /// read_request 的组装规则也要被钉住：systemPrompt 必须成为第一条 system 消息，
+    /// 且顺序是 system → 历史消息（与界面展示的顺序一致）。
+    #[test]
+    fn read_request_prepends_system_prompt() {
+        let golden: Value = serde_json::from_str(GOLDEN).expect("golden 不是合法 JSON");
+        let (payload, system) = match read_request(&[golden["request"].clone()]) {
+            Ok(value) => value,
+            Err(error) => panic!("read_request 失败：{}", error.message),
+        };
+        assert_eq!(system, "你以克制的笔触叙事。");
+        assert_eq!(payload.first().and_then(|item| item["role"].as_str()), Some("system"));
+        assert_eq!(payload.len(), 3);
     }
 }

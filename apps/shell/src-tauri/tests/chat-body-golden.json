@@ -1,0 +1,12 @@
+{
+  "说明": "M2 退出判据：界面展示的请求 == 宿主真正发出去的请求体。这份文件同时被 Rust 测试（chat.rs）和 Node 测试（chat-body-parity.test.ts）读取。body 是 serde_json 的精确序列化结果（serde_json 默认按 key 字典序）。",
+  "request": {
+    "systemPrompt": "你以克制的笔触叙事。",
+    "messages": [
+      { "role": "user", "content": "你好" },
+      { "role": "assistant", "content": "嗯。" }
+    ]
+  },
+  "target": { "model": "deepseek-flash", "temperature": 0.9, "maxTokens": 1024 },
+  "body": "{\"max_tokens\":1024,\"messages\":[{\"content\":\"你以克制的笔触叙事。\",\"role\":\"system\"},{\"content\":\"你好\",\"role\":\"user\"},{\"content\":\"嗯。\",\"role\":\"assistant\"}],\"model\":\"deepseek-flash\",\"stream\":true,\"temperature\":0.9}"
+}
