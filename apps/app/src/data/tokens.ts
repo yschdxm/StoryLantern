@@ -6,10 +6,15 @@
  */
 
 import type { MessageRole } from './types.ts';
+import type { ChatToolCall } from './chat-client.ts';
 
 export interface ChatPromptMessage {
-  role: 'user' | 'assistant' | 'system';
+  role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
+  /** tool 结果消息：对应哪一次 assistant 的 tool_call（OpenAI 协议要求）。 */
+  tool_call_id?: string;
+  /** assistant 发起的工具调用（下一轮由 role:'tool' 消息给出结果）。 */
+  tool_calls?: readonly ChatToolCall[];
 }
 
 export interface PromptHistoryItem {

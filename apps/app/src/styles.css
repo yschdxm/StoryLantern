@@ -1872,3 +1872,23 @@ button.chip { min-height: 36px; }
   background: var(--accent-soft);
   border-color: var(--accent);
 }
+
+/* ------------------------------------------------------------------ Agent 调优面板 */
+.agent-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.agent-proposal__payload {
+  margin: var(--space-1) 0;
+  font-size: var(--text-sm);
+}
+
+.agent-proposal__payload summary {
+  min-height: var(--tap-min);
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  color: var(--dim);
+}

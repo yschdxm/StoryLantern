@@ -82,6 +82,39 @@ test('流式：没有 usage 时不伪造字段（调用方按 estimated:true 自
   assert.equal('usage' in result, false);
 });
 
+test('流式 tool_calls：按 index 合并 id/name 与分片 arguments，最终返回完整调用', async () => {
+  const raw: unknown[] = [];
+  const client = createChatClient(
+    transportOf(() => [
+      { toolCalls: [{ index: 0, id: 'call_1', type: 'function', function: { name: 'search', arguments: '{"q":' } }] },
+      { toolCalls: [{ index: 0, function: { arguments: '"x"}' } }] },
+      { toolCalls: [{ index: 1, id: 'call_2', type: 'function', function: { name: 'read', arguments: '{}' } }] },
+      { delta: 'done' },
+    ]),
+  );
+  const result = await client.reply(CALL, { onDelta: (chunk) => raw.push(chunk) });
+  assert.equal(result.text, 'done');
+  assert.deepEqual(result.toolCalls, [
+    { id: 'call_1', type: 'function', function: { name: 'search', arguments: '{"q":"x"}' } },
+    { id: 'call_2', type: 'function', function: { name: 'read', arguments: '{}' } },
+  ]);
+  assert.equal(raw.length, 4, 'toolCalls 原始增量也要透传给 onDelta');
+  assert.deepEqual(raw[0], { toolCalls: [{ index: 0, id: 'call_1', type: 'function', function: { name: 'search', arguments: '{"q":' } }] });
+});
+
+test('preview：tools/toolChoice 原样传给宿主（body 由宿主统一构造）', async () => {
+  const tools = [{ type: 'function' as const, function: { name: 'search', description: '搜索', parameters: { type: 'object' } } }];
+  const client = createChatClient(
+    transportOf((request) => {
+      const call = request.args[0] as ChatCall;
+      assert.deepEqual(call.tools, tools);
+      assert.equal(call.toolChoice, 'auto');
+      return [{ url: '', body: '', byteLength: 0, model: '' }];
+    }),
+  );
+  await client.preview({ ...CALL, tools, toolChoice: 'auto' });
+});
+
 test('preview：走 chat.preview，原样带回 URL/body/字节数/模型名', async () => {
   const client = createChatClient(
     transportOf((request) => {

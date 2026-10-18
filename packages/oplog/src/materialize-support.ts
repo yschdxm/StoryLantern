@@ -28,6 +28,7 @@ export function emptyState(): MaterializedState {
     packs: {},
     stash: {},
     cardLibrary: {},
+    agent: { runs: {}, proposals: {}, events: {} },
   };
 }
 
@@ -54,6 +55,7 @@ export function normalizeState(state: Partial<MaterializedState>): MaterializedS
     packs: state.packs ?? base.packs,
     stash: state.stash ?? base.stash,
     cardLibrary: state.cardLibrary ?? base.cardLibrary,
+    agent: state.agent ?? base.agent,
   };
 }
 

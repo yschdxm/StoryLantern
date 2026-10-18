@@ -26,6 +26,7 @@ import {
   withSessionCharacterName,
 } from './character-compat.ts';
 import { createCardStores, type CardModelStores } from './card-store.ts';
+import { createAgentStore, type AgentStore } from './agent-store.ts';
 import { migrateLegacyIntoLog } from './migrate-cards.ts';
 import { sessionCreateOpsFor } from './session-create-ops.ts';
 import { pickOpening } from './greeting.ts';
@@ -90,6 +91,8 @@ export interface OpLogRepository extends Omit<Repository, 'cards' | 'setups' | '
    * 用函数而不是属性：`rebuild()` 会换成新的物化器，属性会拿到过期引用。
    */
   currentMaterializer(): Materializer;
+  /** Agent 运行/事件/提案（PLAN §7）：全部走 op 日志，可同步、可审计。 */
+  readonly agent: AgentStore;
 }
 
 export function createOpLogRepository(options: OpLogRepositoryOptions): OpLogRepository {
@@ -266,6 +269,7 @@ export function createOpLogRepository(options: OpLogRepositoryOptions): OpLogRep
   const facts = createFactStore({ withReady, materializer: () => materializer, appendAndApply, base });
   // 卡片模型（ADR-0011）的五个存储：同一套依赖，`withReady` 会等到迁移跑完
   const cardStores = createCardStores({ withReady, materializer: () => materializer, appendAndApply, base });
+  const agent: AgentStore = createAgentStore({ withReady, materializer: () => materializer, appendAndApply, base });
   // 记忆与调优助手共用同一套依赖：于是"应用建议"走的就是普通本地写入那条路
   const memories: MemoryStore = createMemoryStore({ withReady, materializer: () => materializer, appendAndApply, base });
   const tuner: TunerStore = createTunerStore({ withReady, materializer: () => materializer, appendAndApply, base });
@@ -279,6 +283,7 @@ export function createOpLogRepository(options: OpLogRepositoryOptions): OpLogRep
     messages,
     lorebooks, memories, tuner, summaries, facts,
     ...cardStores,
+    agent,
     // 设备配置不进 op 日志：密钥不该离开本机，主题/语言属于设备偏好
     settings: options.settings,
 
@@ -358,7 +363,6 @@ export function createOpLogRepository(options: OpLogRepositoryOptions): OpLogRep
       }
       return { ops, lastSeq: cursor };
     },
-
     async importOps(ops) {
       await ready;
       if (ops.length === 0) return { appended: 0, duplicates: 0 };
@@ -367,7 +371,6 @@ export function createOpLogRepository(options: OpLogRepositoryOptions): OpLogRep
       materializer.applyAll(ops);
       return { appended: outcome.appended, duplicates: outcome.duplicates };
     },
-
     async counts() {
       await ready;
       return {
@@ -377,9 +380,7 @@ export function createOpLogRepository(options: OpLogRepositoryOptions): OpLogRep
         cards: listCards(materializer.state).length,
       };
     },
-
     currentMaterializer: () => materializer,
-
     async probe(): Promise<ProbeInfo> {
       await ready;
       const stats = await options.ops.stats();

@@ -129,6 +129,26 @@ fn include_usage(args: &[Value]) -> bool {
         .unwrap_or(true)
 }
 
+/// `tools` / `toolChoice`：function calling 的可选请求字段（Agent 层用）。
+///
+/// `read_request` 已经**原样保留** messages 里的 `role: tool` / `tool_call_id` /
+/// `tool_calls`（直接 clone 传入数组，不挑字段），所以多轮工具调用能正确回放。
+fn tools_of(args: &[Value]) -> Option<Value> {
+    let tools = args.first()?.get("tools")?.as_array()?.clone();
+    if tools.is_empty() {
+        return None;
+    }
+    Some(Value::Array(tools))
+}
+
+fn tool_choice_of(args: &[Value]) -> Option<String> {
+    match args.first()?.get("toolChoice").and_then(Value::as_str)? {
+        "auto" => Some("auto".to_string()),
+        "none" => Some("none".to_string()),
+        _ => None,
+    }
+}
+
 /// `chat.reply({ messages, systemPrompt, postHistory?, profileId?, includeUsage? })`：流式产出回复。
 pub fn chat_reply(
     out: &StreamOut,
@@ -185,6 +205,8 @@ pub fn chat_reply(
             temperature,
             max_tokens,
             include_usage(args),
+            tools_of(args).as_ref(),
+            tool_choice_of(args).as_deref(),
         ));
     if !api_key.is_empty() {
         request = request.bearer_auth(&api_key);
@@ -237,6 +259,7 @@ pub fn chat_reply(
                 }
                 out.chunk(json!({ "usage": Value::Object(usage) }));
             }
+            SseEvent::ToolCalls(deltas) => out.chunk(json!({ "toolCalls": deltas })),
             SseEvent::Done => break,
             SseEvent::Ignore => {}
         }
@@ -261,6 +284,9 @@ enum SseEvent {
         completion_tokens: Option<i64>,
         total_tokens: Option<i64>,
     },
+    /// function calling 的增量（`choices[0].delta.tool_calls`）：一个 chunk 里可能带多个 index。
+    /// 只保留原字段；arguments 可能是分片，拼接由前端按 index 做。
+    ToolCalls(Vec<Value>),
     /// 空行/坏 JSON/没有可发内容的行：跳过，不报错。
     Ignore,
 }
@@ -291,6 +317,38 @@ fn parse_sse_data(raw: &str) -> SseEvent {
     if let Some(reasoning) = delta["reasoning"].as_str() {
         if !reasoning.is_empty() {
             return SseEvent::Reasoning(reasoning.to_string());
+        }
+    }
+    // function calling：tool_calls 可能是首包（带 id/name）或后续 arguments 分片
+    if let Some(calls) = delta["tool_calls"].as_array() {
+        let mut deltas: Vec<Value> = Vec::new();
+        for call in calls {
+            let Some(index) = call.get("index").and_then(Value::as_i64) else { continue };
+            let mut out = serde_json::Map::new();
+            out.insert("index".to_string(), json!(index));
+            if let Some(value) = call.get("id").and_then(Value::as_str) {
+                out.insert("id".to_string(), json!(value));
+            }
+            if let Some(value) = call.get("type").and_then(Value::as_str) {
+                out.insert("type".to_string(), json!(value));
+            }
+            let function = &call["function"];
+            if function.is_object() {
+                let mut f = serde_json::Map::new();
+                if let Some(value) = function.get("name").and_then(Value::as_str) {
+                    f.insert("name".to_string(), json!(value));
+                }
+                if let Some(value) = function.get("arguments").and_then(Value::as_str) {
+                    f.insert("arguments".to_string(), json!(value));
+                }
+                if !f.is_empty() {
+                    out.insert("function".to_string(), Value::Object(f));
+                }
+            }
+            deltas.push(Value::Object(out));
+        }
+        if !deltas.is_empty() {
+            return SseEvent::ToolCalls(deltas);
         }
     }
     // 用量 chunk：`{"choices":[],"usage":{...}}`（OpenAI 兼容流在末尾单独发一条）。
@@ -330,6 +388,8 @@ fn build_body(
     temperature: f64,
     max_tokens: i64,
     include_usage: bool,
+    tools: Option<&Value>,
+    tool_choice: Option<&str>,
 ) -> Value {
     let mut body = json!({
         "model": model,
@@ -338,6 +398,13 @@ fn build_body(
         "temperature": temperature,
         "max_tokens": max_tokens,
     });
+    // function calling：只有调用方给了才带（旧请求字节不变）
+    if let Some(tools) = tools {
+        body["tools"] = tools.clone();
+    }
+    if let Some(choice) = tool_choice {
+        body["tool_choice"] = json!(choice);
+    }
     // 真实 token 用量：OpenAI 兼容端点要显式要才在流末尾发 usage chunk。
     // 不认识的端点会回 400 —— 调用方可传 includeUsage:false 关掉（错误原样交回，不静默重试）。
     if include_usage {
@@ -363,6 +430,8 @@ pub fn chat_preview(store: &Store, args: &[Value]) -> Result<Value, WireErrorPay
         target.temperature,
         target.max_tokens,
         include_usage(args),
+        tools_of(args).as_ref(),
+        tool_choice_of(args).as_deref(),
     );
     let text = serde_json::to_string(&body)
         .map_err(|error| WireErrorPayload::new("serialize-failed", format!("请求体序列化失败：{error}")))?;
@@ -587,6 +656,8 @@ mod tests {
             target["temperature"].as_f64().unwrap_or(0.0),
             target["maxTokens"].as_i64().unwrap_or(0),
             true,
+            None,
+            None,
         );
         let actual = serde_json::to_string(&body).expect("序列化失败");
         assert_eq!(actual, golden["body"].as_str().unwrap_or_default(), "请求体与 golden 不一致（逐字节）");
@@ -683,12 +754,69 @@ mod tests {
     #[test]
     fn build_body_include_usage_flag() {
         let messages = vec![json!({ "role": "user", "content": "hi" })];
-        let on = build_body("m", &messages, 0.9, 1024, true);
+        let on = build_body("m", &messages, 0.9, 1024, true, None, None);
         assert_eq!(on["stream_options"]["include_usage"], json!(true));
-        let off = build_body("m", &messages, 0.9, 1024, false);
+        let off = build_body("m", &messages, 0.9, 1024, false, None, None);
         assert!(off.get("stream_options").is_none(), "关掉时不能带 stream_options");
         assert_eq!(include_usage(&[json!({ "includeUsage": false })]), false);
         assert_eq!(include_usage(&[json!({})]), true, "默认开");
+    }
+
+    /// function calling：tools/tool_choice 只在给出时进请求体；旧请求字节不变。
+    #[test]
+    fn build_body_tools_and_choice() {
+        let messages = vec![json!({ "role": "user", "content": "hi" })];
+        let tools = json!([{
+            "type": "function",
+            "function": { "name": "search", "description": "搜索", "parameters": { "type": "object", "properties": {} } }
+        }]);
+        let body = build_body("m", &messages, 0.9, 1024, false, Some(&tools), Some("auto"));
+        assert_eq!(body["tools"], tools);
+        assert_eq!(body["tool_choice"], json!("auto"));
+
+        let plain = build_body("m", &messages, 0.9, 1024, false, None, None);
+        assert!(plain.get("tools").is_none(), "没给 tools 不能凭空写");
+        assert!(plain.get("tool_choice").is_none());
+        assert_eq!(tool_choice_of(&[json!({ "toolChoice": "none" })]).as_deref(), Some("none"));
+        assert_eq!(tool_choice_of(&[json!({ "toolChoice": "bogus" })]), None, "未知取值不猜");
+        assert_eq!(tools_of(&[json!({ "tools": [] })]), None, "空数组不写");
+    }
+
+    /// read_request 原样保留 tool 消息：`role:tool` + `tool_call_id`、assistant 的 `tool_calls`。
+    #[test]
+    fn read_request_preserves_tool_messages() {
+        let request = json!({
+            "messages": [
+                { "role": "assistant", "content": "", "tool_calls": [{
+                    "id": "call_1", "type": "function", "function": { "name": "search", "arguments": "{}" }
+                }] },
+                { "role": "tool", "tool_call_id": "call_1", "content": "结果" }
+            ]
+        });
+        let (payload, _) = read_request(&[request]).expect("read_request 失败");
+        assert_eq!(payload.len(), 2);
+        assert_eq!(payload[0]["tool_calls"][0]["id"], json!("call_1"));
+        assert_eq!(payload[1]["role"], json!("tool"));
+        assert_eq!(payload[1]["tool_call_id"], json!("call_1"));
+    }
+
+    /// SSE tool_calls 增量：首包 id/name，后续只有 arguments 分片（拼接由前端按 index 做）。
+    #[test]
+    fn parse_sse_data_recognizes_tool_call_deltas() {
+        let first = r#"{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"search","arguments":"{\"q\":"}}]}}]}"#;
+        let expected = SseEvent::ToolCalls(vec![json!({
+            "index": 0, "id": "call_1", "type": "function",
+            "function": { "name": "search", "arguments": "{\"q\":" }
+        })]);
+        assert_eq!(parse_sse_data(first), expected);
+
+        let fragment = r#"{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"\"x\"}"}}]}}]}"#;
+        assert_eq!(
+            parse_sse_data(fragment),
+            SseEvent::ToolCalls(vec![json!({ "index": 0, "function": { "arguments": "\"x\"}" } })])
+        );
+        // 没有 index 的条目不能硬塞成第 0 个
+        assert_eq!(parse_sse_data(r#"{"choices":[{"delta":{"tool_calls":[{"function":{"name":"x"}}]}}]}"#), SseEvent::Ignore);
     }
 }
 /// `chat.rerank({ query, documents:[...], model, profileId?, topN? })`：

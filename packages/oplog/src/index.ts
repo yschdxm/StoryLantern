@@ -265,6 +265,42 @@ export {
   type SessionRecord,
   type Snapshot,
 } from './materialize.ts';
+// ---- Agent 层（PLAN §7）：运行 / 事件 / 提案 ----
+export {
+  agentEventAppend,
+  agentOps,
+  agentProposalCreate,
+  agentProposalDecide,
+  agentRunFinish,
+  agentRunStart,
+  type AgentEventAppendPayload,
+  type AgentOpBase,
+  type AgentProposalCreatePayload,
+  type AgentProposalDecidePayload,
+  type AgentRunFinishPayload,
+  type AgentRunFinishStatus,
+  type AgentRunStartPayload,
+} from './agent-ops.ts';
+export {
+  agentProposalOf,
+  agentRunOf,
+  applyAgentOp,
+  isAgentOp,
+  listAgentEvents,
+  pendingAgentProposals,
+} from './agent-projection.ts';
+export type {
+  AgentBudgetRecord,
+  AgentEventKind,
+  AgentEventRecord,
+  AgentProposalDecision,
+  AgentProposalKind,
+  AgentProposalRecord,
+  AgentProposalStatus,
+  AgentRunRecord,
+  AgentRunStatus,
+  AgentState,
+} from './state-types.ts';
 export {
   SnapshotError,
   isDeltaSnapshot,

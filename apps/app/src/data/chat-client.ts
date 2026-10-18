@@ -16,7 +16,30 @@ export interface ChatDelta {
   /** 思考链增量（DeepSeek 的 `delta.reasoning_content` / 兼容的 `delta.reasoning`）。 */
   reasoning?: string;
   /** 真实 token 用量（流末尾单独一条 chunk；部分端点可能没有）。 */
-  usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number };
+  usage?: ChatUsage;
+  /** function calling 的原始增量（arguments 可能分片；由客户端按 index 累积）。 */
+  toolCalls?: readonly RawToolCallDelta[];
+}
+
+/** function calling：请求里声明的工具。 */
+export interface ChatToolDefinition {
+  type: 'function';
+  function: { name: string; description: string; parameters: unknown };
+}
+
+/** 完整的工具调用（累积后的结果；arguments 是 JSON 字符串）。 */
+export interface ChatToolCall {
+  id: string;
+  type: 'function';
+  function: { name: string; arguments: string };
+}
+
+/** SSE 里的工具调用增量：首包带 id/name，后续只有 arguments 片段。 */
+export interface RawToolCallDelta {
+  index: number;
+  id?: string;
+  type?: string;
+  function?: { name?: string; arguments?: string };
 }
 
 export interface ChatUsage {
@@ -32,6 +55,8 @@ export interface ChatReplyResult {
   /** 思考链全文（与正文分开存：它属于生成元数据，不显示为消息正文）。 */
   reasoning?: string;
   usage?: ChatUsage;
+  /** 模型请求的工具调用（已把 arguments 分片拼完整）。 */
+  toolCalls?: readonly ChatToolCall[];
   aborted: boolean;
 }
 
@@ -55,6 +80,10 @@ export interface ChatCall {
    * 默认 true；个别不支持的端点会回 400，调用方可显式传 false 关掉。
    */
   includeUsage?: boolean;
+  /** function calling：可选工具定义；不给就不带（旧请求字节不变）。 */
+  tools?: readonly ChatToolDefinition[];
+  /** `auto` / `none`；与 tools 一起发给接口。 */
+  toolChoice?: 'auto' | 'none';
   /** 多模型路由：只传 id，密钥由宿主自己取。 */
   profileId?: string;
 }
@@ -106,24 +135,38 @@ export function createChatClient(transport: WireTransport | undefined): ChatClie
       let text = '';
       let reasoning = '';
       let usage: ChatUsage | undefined;
+      // function calling：按 index 把 arguments 分片拼起来（id/name 只出现在首包）
+      const pendingCalls = new Map<number, { id?: string; type?: string; name?: string; args: string }>();
       try {
         for await (const chunk of bound.stream<ChatDelta>('chat', 'reply', request)) {
           const delta = typeof chunk.delta === 'string' ? chunk.delta : '';
           const thought = typeof chunk.reasoning === 'string' ? chunk.reasoning : '';
           if (chunk.usage !== undefined) usage = { ...chunk.usage, estimated: false };
-          if (delta === '' && thought === '') {
-            // 纯 usage chunk 也要透传（调用方可能据此刷新用量面板）
-            if (chunk.usage !== undefined) handlers.onDelta?.(chunk);
-            continue;
+          for (const raw of chunk.toolCalls ?? []) {
+            const current = pendingCalls.get(raw.index) ?? { args: '' };
+            if (raw.id !== undefined) current.id = raw.id;
+            if (raw.type !== undefined) current.type = raw.type;
+            if (raw.function?.name !== undefined) current.name = raw.function.name;
+            if (raw.function?.arguments !== undefined) current.args += raw.function.arguments;
+            pendingCalls.set(raw.index, current);
           }
+          if (delta === '' && thought === '' && chunk.usage === undefined && (chunk.toolCalls?.length ?? 0) === 0) continue;
           if (delta !== '') text += delta;
           if (thought !== '') reasoning += thought;
           handlers.onDelta?.(chunk);
         }
+        const toolCalls: ChatToolCall[] = [...pendingCalls.entries()]
+          .sort(([left], [right]) => left - right)
+          .map(([index, call]) => ({
+            id: call.id ?? `call_${index}`,
+            type: 'function',
+            function: { name: call.name ?? '', arguments: call.args },
+          }));
         return {
           text,
           ...(reasoning === '' ? {} : { reasoning }),
           ...(usage === undefined ? {} : { usage }),
+          ...(toolCalls.length === 0 ? {} : { toolCalls }),
           aborted: false,
         };
       } catch (cause) {

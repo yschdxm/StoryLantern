@@ -1,3 +1,4 @@
+import type { AgentStore } from './agent-store.ts';
 import type {
   Character,
   CharacterDraft,
@@ -60,6 +61,8 @@ export interface Repository {
   readonly runtime?: RuntimeStore;
   readonly packs?: PackStore;
   readonly stash?: StashStore;
+  /** Agent 运行/事件/提案（PLAN §7）：只有 op-log 仓储有。 */
+  readonly agent?: AgentStore;
   /**
    * 调优助手（M5，ADR-0003 侧信道）：只看不改地给建议；应用与撤销都走既有的 op 写入路径。
    *
@@ -271,18 +274,15 @@ export interface ProbeInfo {
   sessions: number;
   messages: number;
 }
-
 /** 仓储层统一抛这个：`code` 供界面分支，`message` 直接给用户看。 */
 export class DataError extends Error {
   readonly code: string;
-
   constructor(code: string, message: string) {
     super(message);
     this.name = 'DataError';
     this.code = code;
   }
 }
-
 /** 角色字段的公共校验：两个实现必须给出同样的错误码与文案。 */
 export function validateCharacterDraft(draft: CharacterDraft): Required<Omit<CharacterDraft, 'id'>> {
   const name = (draft.name ?? '').trim();

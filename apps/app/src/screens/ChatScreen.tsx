@@ -14,6 +14,7 @@ import { Banner, Button, LoadMore, Sheet, SheetItem, useWindowedList } from '../
 import { RequestTracePanel } from './RequestTracePanel.tsx';
 import { MessageContent, StreamingContent } from './chat/MessageBubble.tsx';
 import { MessageDetail } from './chat/MessageDetail.tsx';
+import { AgentLauncher } from './agent/AgentLauncher.tsx';
 import { MessageEditSheet } from './chat/MessageEditSheet.tsx';
 import { MessageRevisionsSheet } from './chat/MessageRevisionsSheet.tsx';
 import { useChatReply } from './chat/use-chat-reply.ts';
@@ -197,6 +198,7 @@ export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings, t
           {t('chat.trace.open')}
         </button>
       )}
+      <AgentLauncher store={store} chat={chat} requestLog={requestLog} settings={state.settings} sessionId={sessionId} />
 
       <div className="chat__scroll" ref={scrollRef}>
         {state.messages.length === 0 && streaming === null ? (

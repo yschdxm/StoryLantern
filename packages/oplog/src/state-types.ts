@@ -146,6 +146,75 @@ export interface MaterializedState {
   stash: Record<string, StashRecord>;
   /** 卡片库级启停（与卡片内容分开：导出/分享不带走别人的停用状态）。缺省 = 启用。 */
   cardLibrary: Record<string, LibraryRecord>;
+  // ---- Agent 层（PLAN §7：侧信道调优助手）----
+  /** Agent 运行 / 事件 / 提案：可同步的内容（不是 UI 缓存）。 */
+  agent: AgentState;
+}
+
+/** Agent 运行的终态（`running` 不是 op 写入的状态，而是投影的初始值）。 */
+export type AgentRunStatus = 'running' | 'done' | 'cancelled' | 'failed' | 'blocked';
+
+/** 预算：超过任意一项即由引擎停止（`maxUsd` 可选，需要调用方给价格换算）。 */
+export interface AgentBudgetRecord {
+  maxRounds: number;
+  maxToolCalls: number;
+  maxUsd?: number;
+}
+
+export interface AgentRunRecord {
+  runId: string;
+  /** 绑定的会话；不带会话的调优任务可以没有。 */
+  sessionId?: string;
+  goal: string;
+  modelProfileId?: string;
+  budget: AgentBudgetRecord;
+  createdAt: number;
+  status: AgentRunStatus;
+  startedHlc: Hlc;
+  startedOpId: string;
+  /** 最近一次状态写入（start/finish 共用同一条时间线）。 */
+  updatedHlc: Hlc;
+  updatedOpId: string;
+  finishedAt?: number;
+}
+
+export type AgentEventKind = 'assistant' | 'tool' | 'tool_result' | 'status' | 'error' | 'checkpoint';
+
+export interface AgentEventRecord {
+  eventId: string;
+  runId: string;
+  kind: AgentEventKind;
+  data: unknown;
+  at: number;
+  hlc: Hlc;
+  opId: string;
+}
+
+export type AgentProposalKind = 'lorebook_patch' | 'prompt_patch' | 'memory_compaction' | 'reply_rewrite';
+export type AgentProposalStatus = 'pending' | 'approved' | 'rejected';
+export type AgentProposalDecision = 'approved' | 'rejected';
+
+/** 一条待审提案：**只描述要做什么**，应用是下一批的事（引擎/工具都不写数据）。 */
+export interface AgentProposalRecord {
+  proposalId: string;
+  runId: string;
+  kind: AgentProposalKind;
+  summary: string;
+  payload: unknown;
+  status: AgentProposalStatus;
+  createdAt: number;
+  createdHlc: Hlc;
+  createdOpId: string;
+  decidedAt?: number;
+  decisionHlc?: Hlc;
+  decisionOpId?: string;
+}
+
+/** `state.agent` 的形状：事件按 runId 分桶、按 HLC 排序（派生顺序与到达顺序无关）。 */
+export interface AgentState {
+  runs: Record<string, AgentRunRecord>;
+  proposals: Record<string, AgentProposalRecord>;
+  events: Record<string, AgentEventRecord[]>;
 }
 
 /** 一张卡的库状态（目前只有启停；将来收藏/隐藏也放这里）。 */

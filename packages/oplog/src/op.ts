@@ -37,7 +37,9 @@ export type OpType =
   | 'pack.upsert'
   | 'pack.delete'
   | 'stash.upsert'
-  | 'stash.delete';
+  | 'stash.delete'
+  // ---- Agent 层（PLAN §7）：运行 / 事件 / 提案 ----
+  | 'agent.run.start' | 'agent.event.append' | 'agent.proposal.create' | 'agent.proposal.decide' | 'agent.run.finish';
 
 /** 角色卡字段：整体覆盖写入（LWW 由 op 的 HLC 决定）。id 放在 entity 里，不重复进 payload。 */
 export interface CharacterUpsertPayload {
@@ -390,10 +392,5 @@ export function settingSet(
 // ---- 世界书 ----
 // 世界书的 payload 类型与构造器放在 `lore-ops.ts`（字段多、还会长大），这里只做转发，
 // 让调用方仍然可以只 import `op.ts`。
-export type {
-  LoreEntryDeletePayload,
-  LoreEntryUpsertPayload,
-  LorebookDeletePayload,
-  LorebookUpsertPayload,
-} from './lore-ops.ts';
+export type { LoreEntryDeletePayload, LoreEntryUpsertPayload, LorebookDeletePayload, LorebookUpsertPayload } from './lore-ops.ts';
 export { loreEntryDelete, loreEntryUpsert, lorebookDelete, lorebookUpsert } from './lore-ops.ts';

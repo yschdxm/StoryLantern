@@ -21,6 +21,7 @@ import {
   applyLorebookUpsert,
   listLorebooks,
 } from './lorebook-projection.ts';
+import { applyAgentOp, isAgentOp } from './agent-projection.ts';
 import { applyMemoryDelete, applyMemoryUpsert, listMemories, memoriesFor } from './memory-projection.ts';
 import { applySummaryDelete, applySummaryUpsert, listSummaries } from './summary-projection.ts';
 import { applyFactDelete, applyFactUpsert } from './fact-projection.ts';
@@ -40,17 +41,8 @@ import type {
 } from './state-types.ts';
 
 export type {
-  CandidateRecord,
-  CharacterRecord,
-  ForkGroup,
-  LoreEntryRecord,
-  LorebookRecord,
-  MaterializedState,
-  MemoryRecord,
-  MessageRecord,
-  RevisionRecord,
-  SessionRecord,
-  Snapshot,
+  CandidateRecord, CharacterRecord, ForkGroup, LoreEntryRecord, LorebookRecord, MaterializedState,
+  MemoryRecord, MessageRecord, RevisionRecord, SessionRecord, Snapshot,
 } from './state-types.ts';
 
 type ApplyResult = 'applied' | 'duplicate' | 'orphan';
@@ -300,6 +292,7 @@ export class Materializer {
       applyCardModelOp(this.#state, op);
       return 'applied';
     }
+    if (isAgentOp(op.type)) return applyAgentOp(this.#state, op);
     switch (op.type) {
       case 'character.upsert':
         return this.#characterUpsert(op);
