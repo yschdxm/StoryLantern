@@ -86,13 +86,18 @@ fn resolve_target(store: &Store, profile_id: Option<&str>) -> Result<ModelTarget
     })
 }
 
-/// 前端传来的对话请求：`{ messages: [{role, content}], systemPrompt?: string, profileId?: string }`
+/// 前端传来的对话请求：`{ messages, systemPrompt?, postHistory?, profileId? }`
+///
+/// 组装顺序：`systemPrompt`（第一条 system）→ 历史消息 → `postHistory`（**最后一条 system**）。
+/// `postHistory` 是"历史之后才注入的提醒"：它不占历史窗口前部位置，
+/// 又必须在最后一条用户消息之后，模型才会把它当成对本次回复的即时约束。
 fn read_request(args: &[Value]) -> Result<(Vec<Value>, String), WireErrorPayload> {
     let request = args
         .first()
         .ok_or_else(|| WireErrorPayload::new("invalid-argument", "缺少请求体"))?;
 
     let system = request.get("systemPrompt").and_then(Value::as_str).unwrap_or_default().to_string();
+    let post_history = request.get("postHistory").and_then(Value::as_str).unwrap_or_default().to_string();
     let messages = request
         .get("messages")
         .and_then(Value::as_array)
@@ -107,6 +112,9 @@ fn read_request(args: &[Value]) -> Result<(Vec<Value>, String), WireErrorPayload
         payload.push(json!({ "role": "system", "content": system }));
     }
     payload.extend(messages);
+    if !post_history.trim().is_empty() {
+        payload.push(json!({ "role": "system", "content": post_history }));
+    }
     Ok((payload, system))
 }
 
@@ -188,23 +196,60 @@ pub fn chat_reply(
         }
         let Ok(line) = line else { break };
         let Some(data) = line.strip_prefix("data:") else { continue };
-        let data = data.trim();
-        if data.is_empty() {
-            continue;
-        }
-        if data == "[DONE]" {
-            break;
-        }
-        let Ok(parsed) = serde_json::from_str::<Value>(data) else { continue };
-        if let Some(delta) = parsed["choices"][0]["delta"]["content"].as_str() {
-            if !delta.is_empty() {
-                out.chunk(json!({ "delta": delta }));
-            }
+        match parse_sse_data(data) {
+            SseEvent::Delta(text) => out.chunk(json!({ "delta": text })),
+            SseEvent::Reasoning(text) => out.chunk(json!({ "reasoning": text })),
+            SseEvent::Done => break,
+            SseEvent::Ignore => {}
         }
     }
 
     out.finish();
     Ok(())
+}
+
+/// 一条 SSE `data:` 行的解析结果。抽成纯函数，便于单测（不用真的开网络）。
+#[derive(Debug, PartialEq)]
+enum SseEvent {
+    /// 正文增量（OpenAI 兼容的 `choices[0].delta.content`）。
+    Delta(String),
+    /// 思考链增量（DeepSeek 的 `reasoning_content`，或兼容字段 `reasoning`）。
+    Reasoning(String),
+    /// 流结束标记 `[DONE]`。
+    Done,
+    /// 空行/坏 JSON/没有可发内容的行：跳过，不报错。
+    Ignore,
+}
+
+fn parse_sse_data(raw: &str) -> SseEvent {
+    let data = raw.trim();
+    if data.is_empty() {
+        return SseEvent::Ignore;
+    }
+    if data == "[DONE]" {
+        return SseEvent::Done;
+    }
+    let Ok(parsed) = serde_json::from_str::<Value>(data) else {
+        return SseEvent::Ignore;
+    };
+    let delta = &parsed["choices"][0]["delta"];
+    // 正文优先：同一行同时带两种字段时先发正文（正常实现不会这样）。
+    if let Some(content) = delta["content"].as_str() {
+        if !content.is_empty() {
+            return SseEvent::Delta(content.to_string());
+        }
+    }
+    if let Some(reasoning) = delta["reasoning_content"].as_str() {
+        if !reasoning.is_empty() {
+            return SseEvent::Reasoning(reasoning.to_string());
+        }
+    }
+    if let Some(reasoning) = delta["reasoning"].as_str() {
+        if !reasoning.is_empty() {
+            return SseEvent::Reasoning(reasoning.to_string());
+        }
+    }
+    SseEvent::Ignore
 }
 
 fn is_local_endpoint(url: &str) -> bool {
@@ -483,6 +528,53 @@ mod tests {
         assert_eq!(system, "你以克制的笔触叙事。");
         assert_eq!(payload.first().and_then(|item| item["role"].as_str()), Some("system"));
         assert_eq!(payload.len(), 3);
+    }
+
+    /// postHistory：历史之后、最后一条 system；空/纯空白不追加。
+    #[test]
+    fn read_request_appends_post_history_last() {
+        let request = json!({
+            "systemPrompt": "系统开头",
+            "postHistory": "本次回复请保持克制。",
+            "messages": [
+                { "role": "user", "content": "甲" },
+                { "role": "assistant", "content": "乙" }
+            ]
+        });
+        let (payload, _) = read_request(&[request]).expect("read_request 失败");
+        assert_eq!(payload.len(), 4);
+        assert_eq!(payload.first().and_then(|item| item["role"].as_str()), Some("system"));
+        assert_eq!(payload.first().and_then(|item| item["content"].as_str()), Some("系统开头"));
+        let last = payload.last().expect("应当有最后一条");
+        assert_eq!(last["role"].as_str(), Some("system"));
+        assert_eq!(last["content"].as_str(), Some("本次回复请保持克制。"));
+
+        let blank = json!({
+            "systemPrompt": "",
+            "postHistory": "   ",
+            "messages": [{ "role": "user", "content": "甲" }]
+        });
+        let (payload, _) = read_request(&[blank]).expect("read_request 失败");
+        assert_eq!(payload.len(), 1, "空 postHistory 不追加 system 消息");
+    }
+
+    /// SSE 行解析：正文、思考链（两种字段名）、[DONE]、坏 JSON/空行全部单独钉住。
+    #[test]
+    fn parse_sse_data_recognizes_content_and_reasoning() {
+        let content = r#"{"choices":[{"delta":{"content":"你好"}}]}"#;
+        assert_eq!(parse_sse_data(content), SseEvent::Delta("你好".to_string()));
+
+        let deepseek = r#"{"choices":[{"delta":{"reasoning_content":"先想一下"}}]}"#;
+        assert_eq!(parse_sse_data(deepseek), SseEvent::Reasoning("先想一下".to_string()));
+
+        let compat = r#"{"choices":[{"delta":{"reasoning":"兼容字段"}}]}"#;
+        assert_eq!(parse_sse_data(compat), SseEvent::Reasoning("兼容字段".to_string()));
+
+        assert_eq!(parse_sse_data("[DONE]"), SseEvent::Done);
+        assert_eq!(parse_sse_data("  "), SseEvent::Ignore);
+        assert_eq!(parse_sse_data("不是 json"), SseEvent::Ignore);
+        assert_eq!(parse_sse_data(r#"{"choices":[{"delta":{}}]}"#), SseEvent::Ignore);
+        assert_eq!(parse_sse_data(r#"{"error":{"message":"quota"}}"#), SseEvent::Ignore);
     }
 }
 /// `chat.rerank({ query, documents:[...], model, profileId?, topN? })`：

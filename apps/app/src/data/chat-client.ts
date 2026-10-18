@@ -11,11 +11,23 @@ import type { ChatPromptMessage } from './tokens.ts';
  */
 
 export interface ChatDelta {
-  delta: string;
+  /** 正文增量。 */
+  delta?: string;
+  /** 思考链增量（DeepSeek 的 `delta.reasoning_content` / 兼容的 `delta.reasoning`）。 */
+  reasoning?: string;
+}
+
+export interface ChatUsage {
+  promptTokens?: number;
+  completionTokens?: number;
+  estimated: boolean;
 }
 
 export interface ChatReplyResult {
   text: string;
+  /** 思考链全文（与正文分开存：它属于生成元数据，不显示为消息正文）。 */
+  reasoning?: string;
+  usage?: ChatUsage;
   aborted: boolean;
 }
 
@@ -29,8 +41,21 @@ export interface ChatReplyResult {
 export interface ChatCall {
   messages: ChatPromptMessage[];
   systemPrompt?: string;
+  /**
+   * 历史之后、最后一条 system 注入（宿主把它放在 messages 之后）。
+   * 用于"回复前提醒"这类后置指令，不占历史窗口的前部位置。
+   */
+  postHistory?: string;
   /** 多模型路由：只传 id，密钥由宿主自己取。 */
   profileId?: string;
+}
+
+/** 预览：这次调用**会发出去的**请求（URL/请求体/字节数/模型名），不发动网络。 */
+export interface ChatPreview {
+  url: string;
+  body: string;
+  byteLength: number;
+  model: string;
 }
 
 export interface ChatClient {
@@ -39,6 +64,7 @@ export interface ChatClient {
     request: ChatCall,
     handlers: { onDelta?: (delta: ChatDelta) => void; signal?: AbortSignal },
   ): Promise<ChatReplyResult>;
+  preview(call: ChatCall): Promise<ChatPreview>;
   probe(profileId?: string): Promise<{ ok: boolean; message: string }>;
 }
 
@@ -50,6 +76,9 @@ export function createChatClient(transport: WireTransport | undefined): ChatClie
     return {
       available: false,
       async reply() {
+        return error();
+      },
+      async preview() {
         return error();
       },
       async probe() {
@@ -66,16 +95,30 @@ export function createChatClient(transport: WireTransport | undefined): ChatClie
     async reply(request, handlers) {
       const bound = handlers.signal === undefined ? client : client.withSignal(handlers.signal);
       let text = '';
+      let reasoning = '';
       try {
         for await (const chunk of bound.stream<ChatDelta>('chat', 'reply', request)) {
-          if (typeof chunk.delta === 'string' && chunk.delta !== '') {
-            text += chunk.delta;
-            handlers.onDelta?.(chunk);
-          }
+          const delta = typeof chunk.delta === 'string' ? chunk.delta : '';
+          const thought = typeof chunk.reasoning === 'string' ? chunk.reasoning : '';
+          if (delta === '' && thought === '') continue;
+          if (delta !== '') text += delta;
+          if (thought !== '') reasoning += thought;
+          handlers.onDelta?.(chunk);
         }
-        return { text, aborted: false };
+        return reasoning === '' ? { text, aborted: false } : { text, reasoning, aborted: false };
       } catch (cause) {
-        if (cause instanceof WireError && cause.code === 'aborted') return { text, aborted: true };
+        if (cause instanceof WireError && cause.code === 'aborted') {
+          return reasoning === '' ? { text, aborted: true } : { text, reasoning, aborted: true };
+        }
+        if (cause instanceof WireError) throw new DataError(cause.code, cause.message);
+        throw cause;
+      }
+    },
+
+    async preview(call) {
+      try {
+        return await client.call<ChatPreview>('chat', 'preview', call);
+      } catch (cause) {
         if (cause instanceof WireError) throw new DataError(cause.code, cause.message);
         throw cause;
       }

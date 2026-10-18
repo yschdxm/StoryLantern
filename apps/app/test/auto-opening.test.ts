@@ -92,6 +92,9 @@ function mockChat(options: { text?: string; fail?: unknown; hang?: boolean; avai
     async probe() {
       return { ok: true, message: '' };
     },
+    async preview() {
+      return { url: '', body: '', byteLength: 0, model: '' };
+    },
   };
   return client;
 }

@@ -1,6 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { checkCitations, formatNumbered, numberedHistory, parseCitationIndices } from '../src/data/citations.ts';
+import {
+  checkCitations,
+  formatNumbered,
+  numberedHistory,
+  parseCitationIndices,
+  resolveCitations,
+  stripCitationMarkers,
+} from '../src/data/citations.ts';
 
 /**
  * 「引用正确」的测试。三条要钉住的性质：
@@ -69,4 +76,36 @@ test('没引用与越界要分开报，不能混成一种', () => {
   const mixed = checkCitations('……（[9][3]）', WINDOW, supports);
   assert.equal(mixed.verdict, 'correct');
   assert.match(mixed.reason, /越界/);
+});
+
+test('stripCitationMarkers：只去掉引用标记（含紧跟的一个空格），不误伤正文/范围/中文括号/代码方括号', () => {
+  assert.equal(stripCitationMarkers('见 [1] 与 [2, 3]、[4、5]。'), '见 与 、。');
+  assert.equal(stripCitationMarkers('[3] 我记得那件事。'), '我记得那件事。', '标记后的空格一起吃掉');
+  assert.equal(stripCitationMarkers('数组 arr[0] 与范围 [1-3] 不动'), '数组 arr[0] 与范围 [1-3] 不动');
+  assert.equal(stripCitationMarkers('中文括号（3）不动，[abc] 也不动'), '中文括号（3）不动，[abc] 也不动');
+  assert.equal(stripCitationMarkers('没有标记'), '没有标记');
+});
+
+test('resolveCitations：编号 1-based 换算成消息 id；越界/空 id 记 resolved:false', () => {
+  const window: readonly (string | undefined)[] = ['M1', 'M2', undefined, ''];
+  const result = resolveCitations('甲（[1]），乙（[2][4][5]），重复 [1]。', window);
+  assert.equal(result.text, '甲（），乙（），重复 。', '标记被去掉，正文其它字符保留');
+  assert.deepEqual(result.citations, [
+    { index: 1, messageId: 'M1', resolved: true },
+    { index: 2, messageId: 'M2', resolved: true },
+    { index: 4, resolved: false },
+    { index: 5, resolved: false },
+  ]);
+});
+
+test('resolveCitations：多标记区分、去重保序', () => {
+  const result = resolveCitations('（[3,1][3]）', ['A', 'B', 'C']);
+  assert.deepEqual(
+    result.citations.map((citation) => citation.index),
+    [3, 1],
+  );
+  assert.deepEqual(
+    result.citations.map((citation) => citation.messageId),
+    ['C', 'A'],
+  );
 });

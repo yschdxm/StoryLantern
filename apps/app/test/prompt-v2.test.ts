@@ -292,7 +292,82 @@ test('没有 assemble 时走兜底拼接：trace.pipeline === false，块按固�
     cards: [characterCard()],
   }));
   assert.equal(request.trace.pipeline, false);
-  assert.deepEqual(request.trace.blocks.map((block) => block.kind), ['custom', 'character']);
-  assert.deepEqual(request.trace.blocks.map((block) => block.id), ['app.system.custom', 'app.character.c1']);
+  assert.deepEqual(request.trace.blocks.map((block) => block.kind), ['custom', 'character', 'postHistory']);
+  assert.deepEqual(request.trace.blocks.map((block) => block.id), ['app.system.custom', 'app.character.c1', 'app.post_history']);
   assert.ok(request.systemPrompt.startsWith('自定义。'));
+});
+
+// ---------------------------------------------------------------- post-history / 引用窗口
+
+test('post-history：按成员顺序拼接、空串不出现、不进 systemPrompt', () => {
+  const withShort = characterCard({ prompts: { post_history_instructions: ' 保持短句。 ' } });
+  const withAction = characterCard({
+    meta: meta({ id: 'c2', name: '老王' }),
+    identity: { name: '老王', background: '' },
+    prompts: { post_history_instructions: '不要替用户行动。' },
+  });
+  const silent = characterCard({ meta: meta({ id: 'c3', name: '无声' }), identity: { name: '无声', background: '' } });
+  const request = buildChatRequestV2(optionsOf({
+    setup: setupOf({ characters: ['c2', 'c1', 'c3'] }),
+    cards: [withShort, withAction, silent], // 数组顺序故意打乱：以 setup.characters 为准
+  }));
+  assert.equal(request.postHistory, '不要替用户行动。\n保持短句。');
+  assert.ok(!request.systemPrompt.includes('不要替用户行动。'), 'post-history 不进 systemPrompt');
+  const block = request.trace.blocks.find((entry) => entry.id === 'app.post_history');
+  assert.equal(block?.kind, 'postHistory');
+  assert.equal(block?.included, true);
+  assert.equal(block?.chars, request.postHistory?.length);
+  assert.equal(block?.estimatedTokens, estimateTokens('不要替用户行动。\n保持短句。'));
+  const withoutInstructions = buildChatRequestV2(optionsOf({
+    setup: setupOf({ characters: ['c2', 'c1', 'c3'] }),
+    cards: [
+      characterCard(),
+      characterCard({ meta: meta({ id: 'c2', name: '老王' }), identity: { name: '老王', background: '' } }),
+      silent,
+    ],
+  }));
+  assert.equal(request.trace.usedTokens, withoutInstructions.trace.usedTokens, 'post-history 不占系统提示预算');
+  assert.equal(request.trace.systemChars, withoutInstructions.trace.systemChars, 'post-history 不进 systemPrompt');
+
+  const empty = buildChatRequestV2(optionsOf({ cards: [silent] }));
+  assert.equal(empty.postHistory, undefined);
+  assert.equal(empty.trace.blocks.find((entry) => entry.id === 'app.post_history')?.included, false, '没有指令时块仍在，但如实标 false');
+});
+
+test('citationWindow：与 messages 一一对应；有 id 用 id、无 id 为 undefined', () => {
+  const request = buildChatRequestV2(optionsOf({
+    cite: true,
+    history: [
+      { role: 'user', content: '甲', id: 'M1' },
+      { role: 'assistant', content: '乙' },
+      { role: 'system', content: '丙', id: 'M3' },
+    ],
+  }));
+  assert.deepEqual(request.citationWindow, ['M1', undefined, 'M3']);
+  assert.deepEqual(request.messages.map((message) => message.content), ['[1] 甲', '[2] 乙', '[3] 丙']);
+});
+
+test('已有 [3] 的历史在发给模型前被 strip；扫描仍用未 strip 的原文', () => {
+  const request = buildChatRequestV2(optionsOf({
+    cite: true,
+    history: [
+      { role: 'assistant', content: '[3] 我记得那件事。', id: 'M1' },
+      { role: 'user', content: '继续', id: 'M2' },
+    ],
+    cards: [loreCard({ content: '标记也能触发。', keys: ['[3]'] })],
+  }));
+  assert.deepEqual(request.messages.map((message) => message.content), ['[1] 我记得那件事。', '[2] 继续']);
+  assert.deepEqual(request.lore.map((entry) => entry.entryId), ['l1'], '关键词扫描用的是未 strip 的历史原文');
+
+  const plain = buildChatRequestV2(optionsOf({ history: [{ role: 'assistant', content: '[3] 原文', id: 'M1' }] }));
+  assert.equal(plain.messages[0]?.content, '[3] 原文', '不编号时不改写内容');
+});
+
+test('典籍单条预算（token_budget）当前未实现：不假装截断（全局预算仍生效）', () => {
+  const content = '长'.repeat(50);
+  const request = buildChatRequestV2(optionsOf({
+    history: [{ role: 'user', content: '长' }],
+    cards: [loreCard({ content, keys: ['长'], trigger: { token_budget: 1 } })],
+  }));
+  assert.ok(request.systemPrompt.includes(content), '扫描器没有单条预算字段，不能假装按 1 截断');
 });

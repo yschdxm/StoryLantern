@@ -81,6 +81,15 @@ export function ModelSettings({ store, chat, transport, initialRow }: SettingsPr
                 onBlur={() => commit(SETTING_KEYS.model)}
               />
             </Field>
+            <label className="switch">
+              <input
+                type="checkbox"
+                checked={value(SETTING_KEYS.cite) === 'on'}
+                onChange={(event) => saveNow(SETTING_KEYS.cite, event.target.checked ? 'on' : 'off')}
+              />
+              <span>{t('settings.model.cite')}</span>
+            </label>
+            <p className="field__hint">{t('settings.model.cite.hint')}</p>
             <div className="row">
               <Button variant="ghost" onClick={() => setShowKey((current) => !current)}>
                 {showKey ? t('settings.model.hideKey') : t('settings.model.showKey')}

@@ -193,8 +193,8 @@ export class Materializer {
   }
 
 
-  /** 消息的生成状态（界面显示"失败"用）。 */
-  statusOf(messageId: string): 'done' | 'error' {
+  /** 消息的生成状态（界面显示"失败/已停止"用）。 */
+  statusOf(messageId: string): 'done' | 'error' | 'stopped' {
     return this.#state.messages[messageId]?.status ?? 'done';
   }
 

@@ -1,4 +1,5 @@
 import type { MessageDraft, Repository } from '../data/repository.ts';
+import { appendMessageWithMeta } from '../data/message-append.ts';
 import { DataError } from '../data/repository.ts';
 import type { Summary, SummaryDraft } from '../data/summary-types.ts';
 import type { Fact, FactDraft } from '../data/fact-types.ts';
@@ -10,7 +11,7 @@ import type {
   LoreEntryDraft,
   Memory,
   MemoryDraft,
-  Message,
+  Message, MessageMeta,
   Session,
   SettingsMap,
 } from '../data/types.ts';
@@ -60,7 +61,9 @@ export interface AppActions {
     sessionId: string,
     role: Message['role'],
     content: string,
-    options?: { createdAt?: number; status?: Message['status'] },
+    options?: { createdAt?: number; status?: Message['status']; meta?: MessageMeta },
+    candidates?: readonly string[],
+    meta?: MessageMeta,
   ): Promise<Message>;
   updateMessage(id: string, content: string, status?: Message['status']): Promise<void>;
   removeMessage(id: string): Promise<void>;
@@ -90,14 +93,12 @@ export interface AppActions {
   saveFacts(drafts: readonly FactDraft[]): Promise<Fact[]>;
   deleteMemory(id: string): Promise<void>;
 }
-
 export interface AppStore {
   getState(): AppState;
   subscribe(listener: (state: AppState) => void): () => void;
   actions: AppActions;
   readonly repository: Repository;
 }
-
 const INITIAL: AppState = {
   status: 'loading',
   characters: [],
@@ -108,7 +109,6 @@ const INITIAL: AppState = {
   facts: [],
   settings: {},
 };
-
 function messageOf(cause: unknown): string {
   if (cause instanceof DataError) return cause.message;
   if (cause instanceof Error) return cause.message;
@@ -342,14 +342,8 @@ export function createAppStore(repository: Repository): AppStore {
       return added;
     },
 
-    async appendMessage(sessionId, role, content, options = {}) {
-      const message = await repository.messages.append(
-        sessionId,
-        role,
-        content,
-        options.status ?? 'done',
-        ...(options.createdAt === undefined ? [] : [options.createdAt]),
-      );
+    async appendMessage(sessionId, role, content, options = {}, _candidates?, meta?) {
+      const message = await appendMessageWithMeta(repository.messages, sessionId, role, content, options, meta);
       if (state.activeSessionId === sessionId) await actions.loadMessages(sessionId);
       // 就地更新会话摘要（条数/最后一条/时间）。
       // 不在这里逐条 refreshSessions：导入上万条历史会打出上万次查询。

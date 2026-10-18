@@ -8,7 +8,7 @@
  * 依据：`docs/specs/角色卡结构设计文档.md` 第 3–12 章、`docs/specs/世界资源设计文档.md` 第 3、8 章。
  */
 
-import { CITATION_INSTRUCTION, formatNumbered } from './citations.ts';
+import { CITATION_INSTRUCTION, formatNumbered, stripCitationMarkers } from './citations.ts';
 import { isCharacterCard, isItemCard, isLoreCard, isSceneCard } from '../../../../packages/cards/src/index.ts';
 import type {
   CardDocument,
@@ -24,6 +24,9 @@ import { retrieve } from '../../../../packages/oplog/src/index.ts';
 import type { AssembleFn, PromptGraph } from '../../../../plugins/writing-pipeline/src/index.ts';
 import { formatMemoryBlock, selectMemories, type RetrievedMemory } from './memory-retrieval.ts';
 import { renderAllSections, type PromptBlockDataV2, type PromptSummary, type PromptWorldV2 } from './prompt-blocks-v2.ts';
+// 典籍预算：`packages/lore` 的扫描器只有**全局**字符预算（`ScanOptions.budgetChars`，由 loreBudgetChars 传入）；
+// `LoreTrigger.token_budget`（单条预算）目前**没有**对应实现——ScanEntry 没有该字段，
+// 单条预算由扫描器侧预留。这里不伪造：不会假装按单条截断（只映射了 priority/constant/recursive/depth/keys）。
 import { loreTextOf } from './prompt-lore.ts';
 import { estimateTokens, type ChatPromptMessage, type PromptHistoryItem } from './tokens.ts';import { SETTING_KEYS, type Memory, type MessageRole } from './types.ts';
 
@@ -32,7 +35,7 @@ export { loreBooksOf, passesProbability, stableHash } from './prompt-lore.ts';
 
 export type PromptSectionKind =
   | 'custom' | 'setup' | 'rules' | 'character' | 'state' | 'scene'
-  | 'items' | 'examples' | 'memory' | 'summary' | 'lore';
+  | 'items' | 'examples' | 'memory' | 'summary' | 'lore' | 'postHistory';
 
 export interface PromptTraceBlockV2 {
   id: string; kind: PromptSectionKind; chars: number;
@@ -53,6 +56,16 @@ export interface PromptTraceV2 {
 export interface ChatRequestV2 {
   systemPrompt: string; messages: ChatPromptMessage[];
   lore: ScoredEntry[]; memory: RetrievedMemory[]; trace: PromptTraceV2;
+  /**
+   * **post-history 消息**：成员角色的 `prompts.post_history_instructions`（按 setup 成员顺序拼接）。
+   * 它不占 systemPrompt 预算，由调用方作为对话末尾的指令发给模型（`ChatCall.postHistory`）。
+   */
+  postHistory?: string;
+  /**
+   * 引用窗口：与 `messages` **一一对应**（第 i 条编号 i+1）。
+   * `citationWindow[i]` 是第 i 条消息的 id；调用方没给 id 时该位为 `undefined`。
+   */
+  citationWindow: readonly (string | undefined)[];
 }
 
 export interface BuildChatRequestV2Options {
@@ -92,19 +105,33 @@ function splitHistory(history: readonly PromptHistoryItem[], limit: number) {
 function toMessages(kept: readonly PromptHistoryItem[], cite: boolean): ChatPromptMessage[] {
   return kept.map((item, index) => ({
     role: item.role === 'assistant' ? 'assistant' : item.role === 'user' ? 'user' : 'system',
-    content: cite ? formatNumbered(item.content, index + 1) : item.content,
+    // 编号前先去掉旧回复里已有的引用标记：否则上一轮带进来的 `[16]` 会被再编号成 `[2] [16]`，
+    // 模型会把旧编号当成新的窗口编号。扫描用的 history 仍是原文（见 data.history）。
+    content: cite ? formatNumbered(stripCitationMarkers(item.content), index + 1) : item.content,
   }));
 }
 
-/**
- * 概率判定的种子：规格要求"最后一条消息的 id"，但 `PromptHistoryItem` 没有 id 字段。
- * 调用方若在历史项上带了 id 就优先用它；否则退化为 `role:content`（同样跨设备稳定）。
- */
+/** 引用窗口：与 messages 顺序一致；没有 id 的消息留 undefined（不伪造 id）。 */
+function citationWindowOf(kept: readonly PromptHistoryItem[]): (string | undefined)[] {
+  return kept.map((item) => (typeof item.id === 'string' && item.id !== '' ? item.id : undefined));
+}
+
+/** 概率判定的种子：优先用最后一条历史消息的 id；没有 id 时退化为 `role:content`（跨设备稳定）。 */
 function lastMessageKeyOf(kept: readonly PromptHistoryItem[]): string {
   const last = kept[kept.length - 1];
   if (last === undefined) return '';
-  const id = (last as { id?: unknown }).id;
-  return typeof id === 'string' && id !== '' ? id : `${last.role}:${last.content}`;
+  return typeof last.id === 'string' && last.id !== '' ? last.id : `${last.role}:${last.content}`;
+}
+
+/**
+ * post-history 指令：**会话成员**（不含不在场的卡）按 setup 顺序拼接，空串跳过。
+ * 它不进 systemPrompt 的块预算，由调用方作为对话末尾的指令发出去（`ChatCall.postHistory`）。
+ */
+function postHistoryOf(members: readonly CharacterCard[]): string | undefined {
+  const parts = members
+    .map((character) => character.prompts?.post_history_instructions?.trim() ?? '')
+    .filter((text) => text !== '');
+  return parts.length === 0 ? undefined : parts.join('\n');
 }
 
 /** 从卡片里建索引：全部按 id 排序，因此同一份输入无论数组顺序如何都得到同样的装配。 */
@@ -273,6 +300,7 @@ export function buildChatRequestV2(options: BuildChatRequestV2Options): ChatRequ
   const limit = historyLimitOf(options.settings);
   const { kept, excluded } = splitHistory(options.history, limit);
   const messages = toMessages(kept, options.cite === true);
+  const citationWindow = citationWindowOf(kept);
   const data = createPromptBlockDataV2({
     custom: (options.settings[SETTING_KEYS.systemPrompt] ?? '').trim(),
     setup: options.setup,
@@ -285,6 +313,8 @@ export function buildChatRequestV2(options: BuildChatRequestV2Options): ChatRequ
     ...(options.loreBudgetChars === undefined ? {} : { loreBudgetChars: options.loreBudgetChars }),
     lastMessageKey: lastMessageKeyOf(kept),
   });
+  // post-history 指令来自**会话成员**（data.world.members 已按 setup.characters 顺序排好）。
+  const postHistory = postHistoryOf(data.world.members);
   precomputeRetrieval(data);
 
   const assemble = options.assemble;
@@ -314,12 +344,28 @@ export function buildChatRequestV2(options: BuildChatRequestV2Options): ChatRequ
     ];
   }
 
+  // post-history 指令：不占 systemPrompt 预算，但要在 trace 里说清"有/没有"（面板可见）。
+  const postHistoryTokens = postHistory === undefined ? 0 : estimateTokens(postHistory);
+  blocks = [
+    ...blocks,
+    {
+      id: 'app.post_history',
+      kind: 'postHistory',
+      chars: postHistory?.length ?? 0,
+      estimatedTokens: postHistoryTokens,
+      included: postHistory !== undefined,
+      reason: '',
+    },
+  ];
+
   const messageChars = messages.reduce((sum, message) => sum + message.content.length, 0);
   return {
     systemPrompt,
     messages,
     lore: data.outcomes.matchedLore,
     memory: data.outcomes.matchedMemories,
+    ...(postHistory === undefined ? {} : { postHistory }),
+    citationWindow,
     trace: {
       pipeline,
       blocks,

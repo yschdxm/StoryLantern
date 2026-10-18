@@ -15,7 +15,9 @@ export interface ChatPromptMessage {
 export interface PromptHistoryItem {
   role: MessageRole;
   content: string;
-  status?: 'done' | 'streaming' | 'error';
+  status?: 'done' | 'streaming' | 'error' | 'stopped';
+  /** 消息 id（可选）：引用窗口 `citationWindow` 用它把编号换算回消息；调用方拿不到就不填。 */
+  id?: string;
 }
 
 /** 粗估 token：中文约 1 token/字，英文约 1 token/4 字符（与管线里的实现必须一致，有测试盯着）。 */

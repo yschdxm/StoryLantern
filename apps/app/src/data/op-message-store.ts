@@ -11,7 +11,14 @@ import {
 } from '../../../../packages/oplog/src/index.ts';
 import { authorOf, messageView } from './op-views.ts';
 import { DataError, validateMessageRole, type MessageStore } from './repository.ts';
-import type { MessageStatus } from './types.ts';
+import type { MessageMeta, MessageStatus } from './types.ts';
+
+/** app 的 `streaming` 只存在于内存预览，落库只写 done/error/stopped。 */
+function payloadStatus(status: MessageStatus): 'error' | 'stopped' | undefined {
+  if (status === 'error') return 'error';
+  if (status === 'stopped') return 'stopped';
+  return undefined;
+}
 
 /**
  * 消息的 op 仓储（从 `op-repository.ts` 拆出，与世界书/记忆两块同构）。
@@ -55,11 +62,12 @@ export function createMessageStore(deps: MessageStoreDeps): MessageStore {
           .filter((message): message is NonNullable<typeof message> => message !== undefined);
       }),
 
-    append: (sessionId, role, content, status: MessageStatus = 'done', createdAt?: number) =>
+    append: (sessionId, role, content, status: MessageStatus = 'done', createdAt?: number, meta?: MessageMeta) =>
       deps.withReady(async () => {
         // 与其它实现保持同样的校验（未知角色要报 invalid-argument，而不是写进日志）
         const safeRole = validateMessageRole(role);
         const id = ulid();
+        const statusField = payloadStatus(status);
         await deps.appendAndApply([
           messageAppend(
             deps.base(),
@@ -68,7 +76,8 @@ export function createMessageStore(deps: MessageStoreDeps): MessageStore {
               messageId: id,
               author: authorOf(safeRole),
               content,
-              ...(status === 'error' ? { status: 'error' as const } : {}),
+              ...(statusField === undefined ? {} : { status: statusField }),
+              ...(meta === undefined ? {} : { meta }),
             },
             // 导入历史时保留原始时间；其余情况用本机时钟
             createdAt === undefined || createdAt <= 0 ? {} : { hlc: { t: createdAt, c: 0 } },
@@ -86,6 +95,7 @@ export function createMessageStore(deps: MessageStoreDeps): MessageStore {
           const safeRole = validateMessageRole(entry.role);
           const id = ulid();
           const content = entry.content;
+          const statusField = payloadStatus(entry.status ?? 'done');
           ops.push(
             messageAppend(
               deps.base(),
@@ -94,7 +104,8 @@ export function createMessageStore(deps: MessageStoreDeps): MessageStore {
                 messageId: id,
                 author: authorOf(safeRole),
                 content,
-                ...(entry.status === 'error' ? { status: 'error' as const } : {}),
+                ...(statusField === undefined ? {} : { status: statusField }),
+                ...(entry.meta === undefined ? {} : { meta: entry.meta }),
               },
               entry.createdAt === undefined || entry.createdAt <= 0 ? {} : { hlc: { t: entry.createdAt, c: 0 } },
             ),
@@ -126,7 +137,7 @@ export function createMessageStore(deps: MessageStoreDeps): MessageStore {
             revisionId: `${id}:r${record.revisions.length}`,
             baseRevisionId: record.activeRevision.revisionId,
             content,
-            status: status === 'error' ? 'error' : 'done',
+            status: payloadStatus(status) ?? 'done',
           }),
         ]);
         return true;

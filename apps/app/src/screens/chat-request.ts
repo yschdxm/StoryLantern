@@ -11,6 +11,7 @@ import type { WorkspaceSnapshot } from '../app/workspace.ts';
 import { emptyRuntime, setupOfLegacySession } from '../data/card-fallback.ts';
 import type { PromptSummary } from '../data/prompt-blocks-v2.ts';
 import type { BuildChatRequestV2Options } from '../data/prompt-v2.ts';
+import { SETTING_KEYS } from '../data/types.ts';
 
 export interface ChatOptionsInput {
   state: AppState;
@@ -26,7 +27,8 @@ export function buildChatOptionsV2(input: ChatOptionsInput): BuildChatRequestV2O
   const setup = input.workspace?.setup ?? (session === undefined ? undefined : setupOfLegacySession(session));
   const members = setup?.characters ?? [];
   const options: BuildChatRequestV2Options = {
-    cite: true,
+    // 引用编号默认关闭：普通角色扮演不应该突然出现 [16]；设置里显式开启才编号。
+    cite: input.state.settings[SETTING_KEYS.cite] === 'on',
     settings: input.state.settings,
     sessionTitle: session?.title ?? '',
     // 没有 setup 也要能发请求：空成员 + 空处境，由装配器按"最小输入"处理
@@ -37,6 +39,8 @@ export function buildChatOptionsV2(input: ChatOptionsInput): BuildChatRequestV2O
       role: message.role,
       content: message.content,
       status: message.status,
+      // id 是引用窗口把 [n] 换算回消息的唯一依据；不带 id 的旧数据不伪造
+      id: message.id,
     })),
     memories: input.state.memories.filter(
       (memory) => memory.characterId === '' || members.includes(memory.characterId),

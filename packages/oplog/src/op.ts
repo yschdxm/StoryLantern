@@ -70,13 +70,50 @@ export interface SessionDeletePayload {
   sessionId: string;
 }
 
+export interface MessageCitation {
+  /** 1-based：正文里 `[1]` 指上下文窗口的第 1 条。 */
+  index: number;
+  /** 解析到的消息 id；越界或该位置没有 id 时缺省。 */
+  messageId?: string;
+  resolved: boolean;
+}
+export interface MessageTokens {
+  prompt?: number;
+  completion?: number;
+  estimated: boolean;
+}
+
+export interface MessageTiming {
+  firstDeltaMs?: number;
+  totalMs?: number;
+}
+
+/**
+ * 消息的生成元数据：模型、思考链、引用、token、耗时。
+ *
+ * 放在 oplog 内（而不是 app 里）是因为 `message.append` 的 payload 要能带它，
+ * 而 oplog 不能反向依赖 app；app 侧 `data/types.ts` 直接复用这些类型。
+ */
+export interface MessageMeta {
+  modelId?: string;
+  modelLabel?: string;
+  reasoning?: string;
+  citations?: readonly MessageCitation[];
+  tokens?: MessageTokens;
+  timing?: MessageTiming;
+}
+/** 消息生成状态：`stopped` = 用户中途停止（保留已收到的部分内容）。 */
+export type MessagePayloadStatus = 'done' | 'error' | 'stopped';
+
 export interface MessageAppendPayload {
   sessionId: string;
   messageId: string;
   author: MessageAuthor;
   content: string;
   /** 生成失败时把错误文本也当成消息内容，并用这个状态标记出来（界面显示"失败"）。 */
-  status?: 'done' | 'error';
+  status?: MessagePayloadStatus;
+  /** 生成元数据（旧 op 没有这个字段，读回时按缺省处理）。 */
+  meta?: MessageMeta;
 }
 
 export interface MessageEditPayload {
@@ -84,7 +121,7 @@ export interface MessageEditPayload {
   revisionId: string;
   baseRevisionId: string;
   content: string;
-  status?: 'done' | 'error';
+  status?: MessagePayloadStatus;
 }
 
 export interface RevisionSelectPayload {

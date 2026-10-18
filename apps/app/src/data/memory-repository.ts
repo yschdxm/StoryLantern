@@ -32,6 +32,7 @@ import type {
   Memory,
   MemoryDraft,
   Message,
+  MessageMeta,
   MessageRole,
   MessageStatus,
   Session,
@@ -228,7 +229,7 @@ export function createMemoryRepository(
       return state.messages.filter((message) => message.sessionId === sessionId);
     },
 
-    async append(sessionId, role: MessageRole, content: string, status: MessageStatus = 'done', createdAt?: number) {
+    async append(sessionId, role: MessageRole, content: string, status: MessageStatus = 'done', createdAt?: number, meta?: MessageMeta) {
       const safeRole = validateMessageRole(role);
       const message: Message = {
         id: nextId('m'),
@@ -240,6 +241,7 @@ export function createMemoryRepository(
         createdAt: createdAt !== undefined && createdAt > 0 ? createdAt : now(),
         candidates: [],
         selectedCandidateId: '',
+        ...(meta === undefined ? {} : { meta }),
       };
       state.messages.push(message);
       touchSession(sessionId);
@@ -261,7 +263,7 @@ export function createMemoryRepository(
       // 内存实现（测试/预览）逐条走同一个 append，语义与 op 实现一致；真机走 op 实现的批量路径。
       let added = 0;
       for (const entry of entries) {
-        const view = await this.append(sessionId, entry.role, entry.content, entry.status ?? 'done', entry.createdAt);
+        const view = await this.append(sessionId, entry.role, entry.content, entry.status ?? 'done', entry.createdAt, entry.meta);
         added += 1;
         if ((entry.candidates ?? []).length > 0) await this.appendCandidates(view.id, entry.candidates ?? []);
       }

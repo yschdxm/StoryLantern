@@ -7,7 +7,7 @@ import type {
   LorebookDraft,
   Memory,
   MemoryDraft,
-  Message,
+  Message, MessageMeta,
   MessageRole,
   MessageStatus,
   Session,
@@ -106,12 +106,12 @@ export interface MessageDraft {
   createdAt?: number;
   status?: MessageStatus;
   candidates?: readonly string[];
+  /** 生成元数据（旧数据没有）。 */ meta?: MessageMeta;
 }
-
 export interface MessageStore {
   list(sessionId: string): Promise<Message[]>;
-  /** `createdAt` 用于导入历史记录：不传就用当前时间。 */
-  append(sessionId: string, role: MessageRole, content: string, status?: MessageStatus, createdAt?: number): Promise<Message>;
+  /** `createdAt` 用于导入历史记录：不传就用当前时间。`meta` 随 op 一起落库。 */
+  append(sessionId: string, role: MessageRole, content: string, status?: MessageStatus, createdAt?: number, meta?: MessageMeta): Promise<Message>;
   update(id: string, content: string, status?: MessageStatus): Promise<boolean>;
   /**
    * 追加候选回复（SillyTavern 的 swipes 落在这里）。

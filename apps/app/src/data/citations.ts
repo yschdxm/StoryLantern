@@ -116,3 +116,51 @@ export function checkCitations(
 /** 给系统提示用的一句话：怎么引用。 */
 export const CITATION_INSTRUCTION =
   '对话里的每条消息都带编号（如 [12]）。回答时，如果依据了某几条消息，请在句末用同样的编号标注，例如「……（[12][13]）」。不确定来源时不要编编号。';
+
+/**
+ * 引用标记的正则：只认 `[12]` / `[3,7]` / `[3、7]`（编号从 1 起）；范围、中文括号、
+ * 代码式 `arr[0]` 都不碰。去掉标记时顺带吃掉紧跟其后的一个空格——
+ * 否则 `[3] 正文` 会变成 ` 正文`，再编号就成了两个空格。
+ */
+const CITATION_MARKER = /\[([1-9]\d*(?:\s*[,、]\s*[1-9]\d*)*)\][ \t]?/g;
+
+/** 去掉正文里的引用标记（展示用）。 */
+export function stripCitationMarkers(text: string): string {
+  return text.replace(CITATION_MARKER, '');
+}
+
+export interface ResolvedCitation {
+  /** 1-based：正文里 `[1]` 指上下文窗口的第 1 条。 */
+  index: number;
+  /** 解析到的消息 id；越界或该位置没有 id 时缺省。 */
+  messageId?: string;
+  resolved: boolean;
+}
+
+/**
+ * 解析并去掉引用标记，同时把编号换算回**消息 id**。
+ *
+ * `window[index - 1]` 就是第 index 条消息的 id；越界、空串、没有 id 都记 `resolved:false`
+ * （界面可以据此提示"引用了窗口外的消息"，而不是静默丢掉）。
+ * 同一个编号出现多次只记一条（保序）。
+ */
+export function resolveCitations(
+  text: string,
+  window: readonly (string | undefined)[],
+): { text: string; citations: ResolvedCitation[] } {
+  const citations: ResolvedCitation[] = [];
+  const seen = new Set<number>();
+  const stripped = text.replace(CITATION_MARKER, (_marker: string, body: string) => {
+    for (const piece of body.split(/[,、]/)) {
+      const index = Number.parseInt(piece.trim(), 10);
+      if (!Number.isInteger(index) || index <= 0 || seen.has(index)) continue;
+      seen.add(index);
+      const messageId = window[index - 1];
+      const resolved = typeof messageId === 'string' && messageId !== '';
+      citations.push({ index, ...(resolved ? { messageId } : {}), resolved });
+    }
+    return '';
+  });
+  return { text: stripped, citations };
+}
+

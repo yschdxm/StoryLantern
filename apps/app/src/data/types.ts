@@ -8,8 +8,19 @@
 
 export type MessageRole = 'user' | 'assistant' | 'system';
 
-/** 流式落库时的消息状态；`streaming` 表示还没生成完。 */
-export type MessageStatus = 'done' | 'streaming' | 'error';
+/** 流式落库时的消息状态；`streaming` 表示还没生成完，`stopped` 表示用户中途停止。 */
+export type MessageStatus = 'done' | 'streaming' | 'error' | 'stopped';
+
+/**
+ * 生成元数据。类型与 oplog 的 `message.append` payload 共用一份（避免协议/界面两套定义漂移）。
+ */
+export type {
+  MessageCitation,
+  MessageMeta,
+  MessageTiming,
+  MessageTokens,
+} from '../../../../packages/oplog/src/op.ts';
+import type { MessageMeta as MessageMetaType } from '../../../../packages/oplog/src/op.ts';
 
 export interface Character {
   /** ULID：跨设备唯一，因此同步时不冲突（自增整数做不到这件事）。 */
@@ -64,6 +75,8 @@ export interface Message {
   candidates: MessageCandidate[];
   /** 当前选中的候选 id（空串 = 用最初那条正文）。 */
   selectedCandidateId: string;
+  /** 生成元数据（模型/思考链/引用/token/耗时）；旧消息没有。 */
+  meta?: MessageMetaType;
 }
 
 /** 一条候选回复：导入历史时来自 swipes，将来重新生成也会落到这里。 */
@@ -192,6 +205,8 @@ export const SETTING_KEYS = {
   systemPrompt: 'chat.system_prompt',
   /** 进入上下文的最近消息条数（0/未设 = 默认 40）。 */
   historyLimit: 'chat.history_limit',
+  /** 引用模式：'on' = 历史编号并要求模型标注来源；默认 off（普通角色扮演不出现 [16]）。 */
+  cite: 'chat.cite',
   locale: 'app.locale',
   theme: 'app.theme',
   fontScale: 'app.font_scale',

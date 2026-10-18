@@ -1741,3 +1741,109 @@ button.chip { min-height: 36px; }
   opacity: 0.55;
   pointer-events: none;
 }
+
+/* ------------------------------------------------------------------ 聊天：思考链 / 引用 / 详情 */
+.msg__reasoning {
+  margin-top: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--dim);
+}
+
+.msg__reasoning summary {
+  cursor: pointer;
+  min-height: var(--tap-min);
+  display: flex;
+  align-items: center;
+}
+
+.msg__reasoning-text {
+  margin: var(--space-1) 0 0;
+  padding: var(--space-2);
+  max-height: 40vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+
+.msg__citations {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+}
+
+.citation-chip {
+  min-height: var(--tap-min);
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface-2);
+  color: var(--accent);
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.citation-chip--active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.citation-chip--missing {
+  color: var(--warn);
+  cursor: default;
+}
+
+.msg__citation-preview {
+  margin: var(--space-1) 0 0;
+  color: var(--dim);
+  font-size: var(--text-xs);
+}
+
+.request-detail {
+  margin-top: var(--space-2);
+}
+
+.request-detail__body,
+.request-detail__pre {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2);
+  max-height: 40vh;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--text-xs);
+}
+
+.request-detail__diff {
+  max-height: 50vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  padding: var(--space-2);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--text-xs);
+}
+
+.request-detail__line {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.request-detail__line--add {
+  color: var(--ok);
+}
+
+.request-detail__line--remove {
+  color: var(--danger-text);
+}

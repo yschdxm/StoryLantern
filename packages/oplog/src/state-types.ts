@@ -1,5 +1,5 @@
 import type { Hlc } from './hlc.ts';
-import type { MessageAuthor } from './op.ts';
+import type { MessageAuthor, MessageMeta } from './op.ts';
 import type { SummaryLevel } from './summary-ops.ts';
 import type { FactAuthor, FactState } from './fact-ops.ts';
 import type { CardDocument, CompatStashEntry, RuntimeDelta, SessionSetup, WorldPackManifest } from '../../cards/src/index.ts';
@@ -34,9 +34,11 @@ export interface MessageRecord {
   activeRevision: { revisionId: string; hlc: Hlc; explicit: boolean };
   candidates: CandidateRecord[];
   selectedCandidate?: { candidateId: string; hlc: Hlc };
-  /** 生成失败等状态（append/edit 都会更新，按 HLC 取最新）。 */
-  status?: 'done' | 'error';
+  /** 生成失败/中途停止等状态（append/edit 都会更新，按 HLC 取最新）。 */
+  status?: 'done' | 'error' | 'stopped';
   statusHlc?: Hlc;
+  /** 生成元数据（模型、思考链、引用、token、耗时）；旧数据没有。 */
+  meta?: MessageMeta;
   deleted?: { hlc: Hlc };
 }
 

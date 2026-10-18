@@ -67,10 +67,12 @@ export function messageView(materializer: Materializer, messageId: string): Mess
     sessionId: record.sessionId,
     role: roleOf(record.author),
     content: materializer.textOf(messageId) ?? '',
-    status: materializer.statusOf(messageId) === 'error' ? 'error' : 'done',
-    createdAt: record.appendHlc.t,
+    status: materializer.statusOf(messageId),
+    // 畸形 op（例如历史 bug 把 meta 写进时间戳）不该让界面显示 NaN
+    createdAt: Number.isFinite(record.appendHlc.t) && record.appendHlc.t > 0 ? record.appendHlc.t : 0,
     candidates: record.candidates.map((candidate) => ({ id: candidate.candidateId, content: candidate.content })),
     selectedCandidateId: record.selectedCandidate?.candidateId ?? '',
+    ...(record.meta === undefined ? {} : { meta: record.meta }),
   };
 }
 

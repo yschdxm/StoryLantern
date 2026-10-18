@@ -1,6 +1,6 @@
 import { compareOpOrder } from './hlc.ts';
 import { cloneHlc, laterThan, type ApplyResult } from './materialize-support.ts';
-import type { MessageAuthor, Op } from './op.ts';
+import type { MessageAuthor, MessageMeta, Op } from './op.ts';
 import type { MaterializedState, MessageRecord } from './state-types.ts';
 
 /**
@@ -16,7 +16,8 @@ export function applyMessageAppend(state: MaterializedState, op: Op): ApplyResul
     messageId: string;
     author: MessageAuthor;
     content: string;
-    status?: 'done' | 'error';
+    status?: 'done' | 'error' | 'stopped';
+    meta?: MessageMeta;
   };
   const existing = state.messages[payload.messageId];
   const revisionId = `${payload.messageId}:r0`;
@@ -41,12 +42,14 @@ export function applyMessageAppend(state: MaterializedState, op: Op): ApplyResul
       activeRevision: { revisionId, hlc: cloneHlc(op.hlc), explicit: false },
       candidates: [],
       ...(payload.status === undefined ? {} : { status: payload.status, statusHlc: cloneHlc(op.hlc) }),
+      ...(payload.meta === undefined ? {} : { meta: payload.meta }),
     };
     state.messages[payload.messageId] = record;
     return 'applied';
   }
 
   // 同一个 messageId 被两个设备各写一次（只可能来自克隆的设备数据）：保留首版语义，补上缺的版本
+  if (existing.meta === undefined && payload.meta !== undefined) existing.meta = payload.meta;
   if (!existing.revisions.some((revision) => revision.revisionId === revisionId)) {
     existing.revisions.push({
       revisionId,
@@ -70,7 +73,7 @@ export function applyMessageEdit(state: MaterializedState, op: Op): ApplyResult 
     revisionId: string;
     baseRevisionId: string;
     content: string;
-    status?: 'done' | 'error';
+    status?: 'done' | 'error' | 'stopped';
   };
   const message = state.messages[payload.messageId];
   if (message === undefined) return 'orphan';

@@ -1,8 +1,10 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { useT } from '../i18n/context.tsx';
 import type { ActivationEntry } from '../../../../packages/cards/src/index.ts';
+import type { ChatCall, ChatPreview } from '../data/chat-client.ts';
 import type { PromptTraceV2 } from '../data/prompt-v2.ts';
-import { Sheet } from '../ui/components.tsx';
+import { Button, Sheet } from '../ui/components.tsx';
+import { RequestDetail } from './chat/RequestDetail.tsx';
 
 /**
  * 「本次请求」面板：把"模型到底看到了什么、裁了什么、为什么"如实摊开。
@@ -26,6 +28,14 @@ export interface RequestTraceState {
   attempts: ModelAttempt[];
   /** 没有参与本次装配的卡片及原因（库级停用 / 资源池外 / 不在场 / 无实例…）。 */
   inactiveCards?: readonly ActivationEntry[];
+  /** 实际要发出去的调用（Inspector 用；与 preview.body 一一对应）。 */
+  request?: ChatCall;
+  /** `chat.preview` 返回的真实请求（URL/body/字节数/模型）；不自己再拼一份。 */
+  preview?: ChatPreview;
+  /** 上一轮的请求体：用于行级 diff；第一轮没有。 */
+  previousBody?: string;
+  /** 预览失败的原因（面板要如实显示，不假装有详情）。 */
+  previewError?: string;
 }
 
 export function RequestTracePanel({
@@ -41,6 +51,7 @@ export function RequestTracePanel({
   onClose: () => void;
 }): ReactNode {
   const t = useT();
+  const [detailOpen, setDetailOpen] = useState(false);
 
   return (
     <Sheet open={open} title={t('chat.trace.title')} onClose={onClose}>
@@ -53,6 +64,20 @@ export function RequestTracePanel({
               total: state.totalMs === undefined ? '—' : state.totalMs,
             })}
           </p>
+
+          <Button variant="ghost" disabled={state.preview === undefined} onClick={() => setDetailOpen((value) => !value)}>
+            {t('chat.request.button')}
+          </Button>
+          {state.previewError !== undefined && (
+            <p className="notice notice--warn">{t('chat.request.unavailable', { message: state.previewError })}</p>
+          )}
+          {detailOpen && state.preview !== undefined && (
+            <RequestDetail
+              preview={state.preview}
+              previousBody={state.previousBody}
+              postHistory={state.request?.postHistory}
+            />
+          )}
 
           {state.attempts.length > 0 && (
             <>
@@ -79,7 +104,11 @@ export function RequestTracePanel({
                 <span className="trace__name">{t(`chat.trace.block.${block.kind}`)}</span>
                 <span className="trace__meta">
                   {t('chat.trace.block.meta', { chars: block.chars, tokens: block.estimatedTokens })}
-                  {block.included ? '' : ` · ${t('chat.trace.block.omitted')}`}
+                  {block.chars === 0
+                    ? ` · ${t('chat.trace.block.empty')}`
+                    : block.included
+                      ? ''
+                      : ` · ${t('chat.trace.block.omitted')}`}
                 </span>
                 {block.reason !== '' && <span className="trace__reason">{block.reason}</span>}
               </li>
