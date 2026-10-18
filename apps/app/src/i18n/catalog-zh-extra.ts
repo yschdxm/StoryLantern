@@ -37,7 +37,7 @@ export const zhExtra: AppMessages = {
   'chat.trace.rulesOmitted': '跳过了 {count} 条条件规则（条件不满足或无法求值）',
   'chat.trace.loreDropped': '{count} 条典籍没有注入（条目停用 / 条件不满足 / 概率未命中 / 超出预算）',
   // 卡片激活（ADR-0011 补充）：未参与本次请求的原因
-  'chat.trace.inactive': '未参与本次请求的卡片（{count}）',
+  'chat.trace.inactive': '未参与本次请求的卡片（{{count}}）',
   'chat.trace.inactive.library-disabled': '库级停用（退役/草稿）',
   'chat.trace.inactive.card-disabled': '条目级停用（作者关掉了这一条）',
   'chat.trace.inactive.override-off': '本会话里被关掉',

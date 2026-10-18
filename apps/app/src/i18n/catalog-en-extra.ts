@@ -29,7 +29,7 @@ export const enExtra: AppMessages = {
   'chat.trace.rulesOmitted': '{count} conditional rules skipped (condition false or not evaluable)',
   'chat.trace.loreDropped': '{count} lore entries not injected (entry disabled / condition false / probability miss / over budget)',
   // Card activation (ADR-0011 addendum): why a card did not take part
-  'chat.trace.inactive': 'Cards not used in this request ({count})',
+  'chat.trace.inactive': 'Cards not used in this request ({{count}})',
   'chat.trace.inactive.library-disabled': 'Disabled in library (retired/draft)',
   'chat.trace.inactive.card-disabled': 'Entry disabled by the author',
   'chat.trace.inactive.override-off': 'Turned off for this session',

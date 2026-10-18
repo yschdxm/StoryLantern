@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatLoreBlock, scanLore, type ScanBook, type ScanMessage } from '../src/index.ts';
+import { formatLoreBlock, scanLore, type ScanBook, type ScanEntry, type ScanMessage } from '../src/index.ts';
 
 /**
  * 世界书扫描的规则都得能被断言，否则"智能"就只是一句口号。
@@ -138,6 +138,84 @@ test('输出与输入顺序无关（两台设备、两次调用都得到同样�
     backward.matched.map((item) => item.entryId),
   );
   assert.deepEqual(forward.matched.map((item) => item.entryId), ['e1', 'e2', 'e3']);
+});
+
+// ---------------------------------------------------------------- ST 高级语义（B3–B6）
+
+test('selectiveLogic 0–3：主键+次键组合按 ST 语义（无次键时都退化为只看主键）', () => {
+  const make = (logic: 0 | 1 | 2 | 3) => [
+    book([entry('e1', ['alpha'], '内容', { secondaryKeys: ['beta', 'gamma'], selectiveLogic: logic })]),
+  ];
+  const all = history('alpha beta gamma');
+  const some = history('alpha beta');
+  const none = history('alpha only');
+  assert.equal(scanLore({ books: make(0), messages: some }).matched.length, 1);
+  assert.equal(scanLore({ books: make(0), messages: none }).matched.length, 0);
+  assert.equal(scanLore({ books: make(1), messages: all }).matched.length, 0, 'NOT ALL：全部次键命中反而不过');
+  assert.equal(scanLore({ books: make(1), messages: some }).matched.length, 1);
+  assert.equal(scanLore({ books: make(2), messages: some }).matched.length, 0, 'NOT ANY：命中任一次键就不过');
+  assert.equal(scanLore({ books: make(2), messages: none }).matched.length, 1);
+  assert.equal(scanLore({ books: make(3), messages: all }).matched.length, 1, 'AND ALL：全部次键命中才过');
+  assert.equal(scanLore({ books: make(3), messages: some }).matched.length, 0);
+  for (const logic of [0, 1, 2, 3] as const) {
+    const noSecondary = [book([entry('e1', ['alpha'], '内容', { selectiveLogic: logic })])];
+    assert.equal(scanLore({ books: noSecondary, messages: history('alpha') }).matched.length, 1, `logic=${logic}`);
+  }
+});
+
+test('递归变体：excludeRecursion / preventRecursion / delayUntilRecursion', () => {
+  const pair = (extra: Partial<ScanEntry>, secondExtra: Partial<ScanEntry> = {}) => [
+    book([entry('a', ['甲'], '乙出现了', extra), entry('b', ['乙'], 'B 设定', secondExtra)]),
+  ];
+  assert.deepEqual(scanLore({ books: pair({}), messages: history('甲') }).matched.map((item) => item.entryId).sort(), ['a', 'b']);
+  assert.deepEqual(scanLore({ books: pair({ excludeRecursion: true }), messages: history('甲') }).matched.map((item) => item.entryId), ['a'], 'exclude：正文不再触发别人');
+  const prevent = pair({}, { preventRecursion: true });
+  assert.deepEqual(scanLore({ books: prevent, messages: history('甲') }).matched.map((item) => item.entryId), ['a'], 'prevent：不被二次命中');
+  assert.deepEqual(scanLore({ books: prevent, messages: history('甲 乙') }).matched.map((item) => item.entryId).sort(), ['a', 'b'], 'prevent 不影响直接命中');
+  const delayed = pair({}, { delayUntilRecursion: 2 });
+  assert.deepEqual(scanLore({ books: delayed, messages: history('甲') }).matched.map((item) => item.entryId), ['a']);
+  assert.deepEqual(scanLore({ books: delayed, messages: history('甲', '闲') }).matched.map((item) => item.entryId), ['a'], '前两轮不参与递归');
+  assert.deepEqual(scanLore({ books: delayed, messages: history('甲', '闲', '了') }).matched.map((item) => item.entryId).sort(), ['a', 'b']);
+});
+
+test('group：同组只留一条；无权重按优先级，有权重确定性抽取（禁止随机）', () => {
+  const grouped = (weights: readonly (number | undefined)[]) => [
+    book([
+      entry('g1', ['触发'], '一', { group: 'G', order: 100, ...(weights[0] === undefined ? {} : { groupWeight: weights[0] }) }),
+      entry('g2', ['触发'], '二', { group: 'G', order: 10, ...(weights[1] === undefined ? {} : { groupWeight: weights[1] }) }),
+    ]),
+  ];
+  const noWeights = scanLore({ books: grouped([undefined, undefined]), messages: history('触发') });
+  assert.deepEqual(noWeights.matched.map((item) => item.entryId), ['g2'], '无权重按 order 小者');
+  assert.equal(noWeights.suppressed, 1, '被 group 丢掉的数量要计数');
+  const weighted = grouped([1, 1]);
+  const first = scanLore({ books: weighted, messages: history('触发') });
+  const second = scanLore({ books: weighted, messages: history('触发') });
+  assert.equal(first.matched.length, 1);
+  assert.deepEqual(first.matched.map((item) => item.entryId), second.matched.map((item) => item.entryId), '同输入同结果');
+  assert.equal(first.suppressed, 1);
+});
+
+test('sticky：命中后 N 轮内继续注入（没有关键词也注入，reason=sticky）', () => {
+  const books = [book([entry('e1', ['铜铃'], '铜铃设定', { sticky: 2, depth: 1 })])];
+  const sticky = scanLore({ books, messages: history('铜铃', '无关', '无关') });
+  assert.deepEqual(sticky.matched.map((item) => item.entryId), ['e1']);
+  assert.equal(sticky.matched[0]?.reason, 'sticky');
+  assert.equal(scanLore({ books, messages: history('铜铃', '无关', '无关', '无关') }).matched.length, 0);
+});
+
+test('cooldown：命中后 N 轮内不再命中（到点恢复）', () => {
+  const books = [book([entry('e1', ['铜铃'], '铜铃设定', { cooldown: 2, depth: 1 })])];
+  const cooling = scanLore({ books, messages: history('铜铃', '无关', '铜铃') });
+  assert.equal(cooling.matched.length, 0);
+  assert.equal(cooling.suppressed, 1);
+  assert.equal(scanLore({ books, messages: history('铜铃', '无关', '无关', '铜铃') }).matched.length, 1);
+});
+
+test('delay：总轮次 < N 时不参与（到点后正常命中）', () => {
+  const books = [book([entry('e1', ['铜铃'], '铜铃设定', { delay: 3 })])];
+  assert.equal(scanLore({ books, messages: history('铜铃', '铜铃') }).matched.length, 0);
+  assert.equal(scanLore({ books, messages: history('铜铃', '铜铃', '铜铃') }).matched.length, 1);
 });
 
 test('注入文本块：按顺序拼接，空结果返回空串', () => {

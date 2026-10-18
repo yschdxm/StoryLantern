@@ -109,6 +109,20 @@ export function LoreSections({
           />
         </Field>
       </div>
+      <Field label={t('world.editor.lore.trigger.selectiveLogic')} hint={t('world.editor.lore.trigger.selectiveLogic.hint')}>
+        <select
+          className="input"
+          value={draft.trigger.selectiveLogic}
+          aria-label={t('world.editor.lore.trigger.selectiveLogic')}
+          onChange={(event) => update({ trigger: { ...draft.trigger, selectiveLogic: event.target.value } })}
+        >
+          {['0', '1', '2', '3'].map((value) => (
+            <option key={value} value={value}>
+              {t(`world.editor.lore.trigger.selectiveLogic.${value}`)}
+            </option>
+          ))}
+        </select>
+      </Field>
       <label className="switch">
         <input
           type="checkbox"
@@ -117,6 +131,34 @@ export function LoreSections({
         />
         <span>{t('world.editor.lore.trigger.recursive')}</span>
       </label>
+      <label className="switch">
+        <input
+          type="checkbox"
+          checked={draft.trigger.excludeRecursion}
+          onChange={(event) => update({ trigger: { ...draft.trigger, excludeRecursion: event.target.checked } })}
+        />
+        <span>{t('world.editor.lore.trigger.excludeRecursion')}</span>
+      </label>
+      <p className="field__hint">{t('world.editor.lore.trigger.excludeRecursion.hint')}</p>
+      <label className="switch">
+        <input
+          type="checkbox"
+          checked={draft.trigger.preventRecursion}
+          onChange={(event) => update({ trigger: { ...draft.trigger, preventRecursion: event.target.checked } })}
+        />
+        <span>{t('world.editor.lore.trigger.preventRecursion')}</span>
+      </label>
+      <p className="field__hint">{t('world.editor.lore.trigger.preventRecursion.hint')}</p>
+      <Field
+        label={t('world.editor.lore.trigger.delayUntilRecursion')}
+        hint={t('world.editor.lore.trigger.delayUntilRecursion.hint')}
+      >
+        <TextInput
+          type="number"
+          value={draft.trigger.delayUntilRecursion}
+          onChange={(value) => update({ trigger: { ...draft.trigger, delayUntilRecursion: value } })}
+        />
+      </Field>
       <label className="switch">
         <input
           type="checkbox"
@@ -140,12 +182,48 @@ export function LoreSections({
           onChange={(value) => update({ trigger: { ...draft.trigger, tokenBudget: value } })}
         />
       </Field>
+      <Field label={t('world.editor.lore.trigger.group')} hint={t('world.editor.lore.trigger.group.hint')}>
+        <TextInput
+          value={draft.trigger.group}
+          onChange={(value) => update({ trigger: { ...draft.trigger, group: value } })}
+        />
+      </Field>
+      <Field label={t('world.editor.lore.trigger.groupWeight')} hint={t('world.editor.lore.trigger.groupWeight.hint')}>
+        <TextInput
+          type="number"
+          value={draft.trigger.groupWeight}
+          onChange={(value) => update({ trigger: { ...draft.trigger, groupWeight: value } })}
+        />
+      </Field>
       <Field label={t('world.editor.lore.trigger.conditions')} hint={t('world.editor.lore.trigger.conditions.hint')}>
         <TextArea
           value={draft.trigger.conditions}
           onChange={(value) => update({ trigger: { ...draft.trigger, conditions: value } })}
           rows={3}
           placeholder={t('world.editor.lore.trigger.conditions.placeholder')}
+        />
+      </Field>
+      <div className="world-pair">
+        <Field label={t('world.editor.lore.trigger.sticky')} hint={t('world.editor.lore.trigger.sticky.hint')}>
+          <TextInput
+            type="number"
+            value={draft.trigger.sticky}
+            onChange={(value) => update({ trigger: { ...draft.trigger, sticky: value } })}
+          />
+        </Field>
+        <Field label={t('world.editor.lore.trigger.cooldown')} hint={t('world.editor.lore.trigger.cooldown.hint')}>
+          <TextInput
+            type="number"
+            value={draft.trigger.cooldown}
+            onChange={(value) => update({ trigger: { ...draft.trigger, cooldown: value } })}
+          />
+        </Field>
+      </div>
+      <Field label={t('world.editor.lore.trigger.delay')} hint={t('world.editor.lore.trigger.delay.hint')}>
+        <TextInput
+          type="number"
+          value={draft.trigger.delay}
+          onChange={(value) => update({ trigger: { ...draft.trigger, delay: value } })}
         />
       </Field>
     </section>

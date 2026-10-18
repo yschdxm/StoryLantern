@@ -81,6 +81,17 @@ test('导入：世界书（ST 原生 uid→条目 map）', async () => {
   assert.ok(book.entries.length >= 2);
   assert.ok(book.entries.some((entry) => entry.keys.includes('灯')));
   assert.ok(book.entries.every((entry) => typeof entry.content === 'string'));
+  // ST 高级世界书字段原样保留，交给导入层映射（B3–B6）
+  const first = book.entries.find((entry) => entry.keys.includes('灯'));
+  assert.equal(first?.selectiveLogic, 0);
+  assert.equal(first?.excludeRecursion, false);
+  assert.equal(first?.preventRecursion, false);
+  assert.equal(first?.delayUntilRecursion, false);
+  assert.equal(first?.group, 'place');
+  assert.equal(first?.groupWeight, 100);
+  assert.equal(first?.sticky, 0);
+  assert.equal(first?.cooldown, 0);
+  assert.equal(first?.delay, 0);
 });
 
 test('导入：世界书（CCv3 数组形态）', async () => {

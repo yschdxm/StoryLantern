@@ -150,6 +150,24 @@ export interface LoreTrigger {
    * 默认 false（纯子串）。
    */
   match_whole_words?: boolean;
+  /** 主/次关键词组合（ST selectiveLogic）：0/缺省=AND ANY、1=NOT ALL、2=NOT ANY、3=AND ALL。 */
+  selective_logic?: 0 | 1 | 2 | 3;
+  /** 命中内容不再参与二次匹配（ST excludeRecursion）。 */
+  exclude_recursion?: boolean;
+  /** 不被二次匹配命中（ST preventRecursion）；直接命中不受限。 */
+  prevent_recursion?: boolean;
+  /** 前 N 个历史轮次不参与**递归**匹配（直接命中不受限）。 */
+  delay_until_recursion?: number;
+  /** 同组最多注入一条；组内选择按 `group_weight` 确定性抽取，无权重按优先级。 */
+  group?: string;
+  /** 组内权重；`<=0`/缺省时整组按优先级。 */
+  group_weight?: number;
+  /** 命中后 N 轮内继续注入（0/未设 = 不启用）。 */
+  sticky?: number;
+  /** 命中后 N 轮内不再命中（0/未设 = 不启用）。 */
+  cooldown?: number;
+  /** 总轮次 < N 时不参与（0/未设 = 不启用）。 */
+  delay?: number;
   /** 变量条件表达式源码数组。 */
   conditions?: readonly string[];
 }

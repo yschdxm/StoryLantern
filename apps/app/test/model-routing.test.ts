@@ -57,8 +57,7 @@ test('路由：只标了别的任务时，该任务没有候选（宁可明说�
   const settings = settingsWith([profile({ id: 'a', tasks: ['summary'] })]);
   assert.deepEqual(candidatesFor(settings, 'chat'), []);
   assert.deepEqual(
-    candidatesFor(settings, 'summary').map((item) => item.id),
-    ['a'],
+    candidatesFor(settings, 'summary').map((item) => item.id),    ['a'],
   );
 });
 
@@ -129,4 +128,18 @@ test('路由：候选的展示名能区分"任务匹配"与"兜底"', () => {
   assert.equal(targetLabel(profile({ name: 'A', model: 'm', tasks: ['chat'] })), 'A（m）');
   assert.equal(targetLabel(profile({ name: 'B', model: 'm', tasks: [] })), 'B（m·兜底）');
   assert.equal(targetLabel(profile({ id: '', name: '默认', model: 'm' })), '默认（m）');
+});
+
+test('B27：embed / agent 任务能路由，readProfiles 读回它们（未知任务仍被过滤）', () => {
+  const settings = settingsWith([profile({ id: 'e', tasks: ['embed'] }), profile({ id: 'g', tasks: ['agent'] })]);
+  assert.deepEqual(candidatesFor(settings, 'embed').map((item) => item.id), ['e']);
+  assert.deepEqual(candidatesFor(settings, 'agent').map((item) => item.id), ['g']);
+  const parsed = readProfiles(settings);
+  assert.deepEqual(parsed.find((item) => item.id === 'e')?.tasks, ['embed']);
+  assert.deepEqual(parsed.find((item) => item.id === 'g')?.tasks, ['agent']);
+  assert.deepEqual(
+    readProfiles(settingsWith([profile({ id: 'x', tasks: ['nonsense' as never] })])).find((item) => item.id === 'x')?.tasks,
+    [],
+    '不认识的任务值不能冒充已知任务',
+  );
 });

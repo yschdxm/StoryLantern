@@ -4,7 +4,9 @@ import type { ActivationEntry } from '../../../../packages/cards/src/index.ts';
 import type { ChatCall, ChatPreview } from '../data/chat-client.ts';
 import type { PromptTraceV2 } from '../data/prompt-v2.ts';
 import { Button, Sheet } from '../ui/components.tsx';
+import type { RequestLogEntry } from '../data/request-log.ts';
 import { RequestDetail } from './chat/RequestDetail.tsx';
+import { RequestHistory, type RequestHistoryLabels } from './chat/RequestHistory.tsx';
 
 /**
  * 「本次请求」面板：把"模型到底看到了什么、裁了什么、为什么"如实摊开。
@@ -43,15 +45,31 @@ export function RequestTracePanel({
   state,
   modelLabel,
   onClose,
+  history,
+  historyError,
+  onClearHistory,
 }: {
   open: boolean;
   state: RequestTraceState | undefined;
   /** 当前默认模型名（设置里的值）；面板只在没走具体配置时用它兜底。 */
   modelLabel: string;
   onClose: () => void;
+  /** B25 本机审计：最近 20 次请求（新的在前）；不传就没有历史入口。 */
+  history?: readonly RequestLogEntry[] | undefined;
+  historyError?: string | undefined;
+  onClearHistory?: (() => void) | undefined;
 }): ReactNode {
   const t = useT();
   const [detailOpen, setDetailOpen] = useState(false);
+  const historyLabels: RequestHistoryLabels = {
+    title: t('chat.request.history.title'),
+    empty: t('chat.request.history.empty'),
+    clear: t('chat.request.history.clear'),
+    ok: t('chat.request.history.ok'),
+    error: t('chat.request.history.error'),
+    bytes: t('chat.request.history.bytes'),
+    timing: t('chat.request.history.timing'),
+  };
 
   return (
     <Sheet open={open} title={t('chat.trace.title')} onClose={onClose}>
@@ -187,6 +205,14 @@ export function RequestTracePanel({
           )}
           {state.trace.loreDropped > 0 && (
             <p className="trace__meta">{t('chat.trace.loreDropped', { count: state.trace.loreDropped })}</p>
+          )}
+          {historyError !== undefined && (
+            <p className="notice notice--warn">{t('chat.request.history.failed', { message: historyError })}</p>
+          )}
+          {history !== undefined && (
+            <div data-testid="request-history">
+              <RequestHistory entries={history} labels={historyLabels} onClear={onClearHistory ?? (() => undefined)} />
+            </div>
           )}
         </div>
       )}

@@ -204,10 +204,8 @@ test('导出往返：卡片 + 草稿 → 酒馆 v2，能拿回 name/description/
   assert.equal(payload.data['mes_example'], '{{user}}: 你守了多久？\n{{char}}: 久到忘了数。');
   assert.equal(payload.data['character_version'], '1.0');
   assert.equal(payload.data['creator'], 'storylantern-fixtures');
-
   // 导入出来的卡还没补全我们的专属字段：这一步没有可丢的，losses 应为空
   assert.deepEqual(exported.losses, []);
-
   // 补上我们的专属字段后再导出：无法映射的要逐条列出（不能假装无损）
   const rich = {
     ...plan.card,
@@ -223,7 +221,6 @@ test('导出往返：卡片 + 草稿 → 酒馆 v2，能拿回 name/description/
   assert.ok(richExport.losses.includes('persona.ability_boundary'));
   assert.ok(richExport.losses.includes('speech.style'));
   assert.ok(richExport.losses.includes('state'));
-
   // 再导入一次：成品文本从拆开的 v2 字段回到草稿
   const again = planCharacterImport(importText('again.json', exported.json) as ImportedCharacter, { now: NOW });
   assert.equal(again.card.identity.name, '星野');
@@ -234,7 +231,6 @@ test('导出往返：卡片 + 草稿 → 酒馆 v2，能拿回 name/description/
     '「进来吧，风会替你关门。」\n\n---\n\n「灯还亮着，你就还没走错路。」',
   );
 });
-
 test('导入：独立世界书 → 包 + 典籍卡（含关闭条目与 order/depth/recursive）', () => {
   const file = importText(
     'world.json',
@@ -269,7 +265,6 @@ test('导入：独立世界书 → 包 + 典籍卡（含关闭条目与 order/de
     }),
   ) as ImportedLorebookFile;
   const plan = planLorebookImport(file.lorebook, { now: NOW, id: 'book-1' });
-
   assert.equal(plan.pack.id, 'book-1');
   assert.equal(plan.pack.name, 'world'); // importText 用文件名兜底
   assert.equal(plan.pack.description, '');
@@ -277,7 +272,6 @@ test('导入：独立世界书 → 包 + 典籍卡（含关闭条目与 order/de
   assert.equal(plan.pack.language, 'zh-CN');
   assert.equal(plan.cards.length, 2);
   assert.deepEqual([...plan.pack.card_ids], ['book-1-lore-1', 'book-1-lore-2']);
-
   const first = plan.cards[0];
   assert.ok(first !== undefined);
   assert.equal(first.trigger?.priority, 100);
@@ -286,7 +280,6 @@ test('导入：独立世界书 → 包 + 典籍卡（含关闭条目与 order/de
   assert.equal(first.trigger?.match_whole_words, true, 'matchWholeWords → trigger.match_whole_words');
   assert.equal(first.trigger?.token_budget, 320, 'token_budget → trigger.token_budget');
   assert.deepEqual([...(first.secondary_keys ?? [])], ['夜']);
-
   const disabled = plan.cards[1];
   assert.ok(disabled !== undefined);
   assert.equal(disabled.enabled, false, 'disable=true → enabled:false');
@@ -294,7 +287,6 @@ test('导入：独立世界书 → 包 + 典籍卡（含关闭条目与 order/de
   assert.equal(disabled.trigger?.token_budget, 128, 'extensions.storylantern.token_budget 也能读回');
   assert.ok(plan.notes.some((note) => note.includes('关闭')));
 });
-
 test('导出世界书：ST 原生 entries（含禁用条目）+ 无法映射字段清单', () => {
   const plan = planLorebookImport(
     {
@@ -323,7 +315,6 @@ test('导出世界书：ST 原生 entries（含禁用条目）+ 无法映射字�
   assert.equal(payload.entries['1']?.['disable'], true, '条目级启停要能往返');
   assert.ok(exported.losses.includes('lore.meta.id'), '卡片 id 不能往返，要提示');
 });
-
 test('导入导出映射：整词匹配与单条预算往返；ST 无原生字段走 extensions 且不计入 losses', () => {
   const plan = planLorebookImport(
     {
@@ -347,7 +338,6 @@ test('导入导出映射：整词匹配与单条预算往返；ST 无原生字�
   );
   assert.equal(plan.cards[0]?.trigger?.match_whole_words, true);
   assert.equal(plan.cards[0]?.trigger?.token_budget, 320);
-
   const exported = exportLorebook(plan.pack, plan.cards);
   const payload = JSON.parse(exported.json) as { entries: Record<string, Record<string, unknown>> };
   const entry = payload.entries['0'];
@@ -361,7 +351,6 @@ test('导入导出映射：整词匹配与单条预算往返；ST 无原生字�
   assert.equal(again.cards[0]?.trigger?.match_whole_words, true);
   assert.equal(again.cards[0]?.trigger?.token_budget, 320);
 });
-
 test('落库：导入计划能直接过校验并写进卡片仓储（过渡态字段只 warning）', async () => {
   const plan = planCharacterImport(typical(), { now: NOW, id: 'card-1' });
   // 导入卡必然带"待补全"字段：校验器必须放行（否则 ImportScreen 永远失败）
@@ -369,7 +358,6 @@ test('落库：导入计划能直接过校验并写进卡片仓储（过渡态�
   assert.equal(validation.ok, true);
   assert.ok(validation.issues.some((issue) => issue.path === 'speech.style' && issue.severity === 'warning'));
   for (const loreCard of plan.loreCards) assert.equal(validateCard(loreCard).ok, true);
-
   const ports = createLocalOpPorts(createMemoryKeyValue());
   const repository = createOpLogRepository({ ops: ports.ops, settings: ports.settings, deviceId: 'device-a' });
   await repository.ready;
@@ -377,23 +365,35 @@ test('落库：导入计划能直接过校验并写进卡片仓储（过渡态�
   for (const entry of plan.stash) await repository.stash.save(entry);
   if (plan.pack !== undefined) await repository.packs.save(plan.pack);
   for (const loreCard of plan.loreCards) await repository.cards.save(loreCard);
-
   assert.equal((await repository.cards.get('card-1'))?.meta.name, '星野');
   assert.equal((await repository.stash.list('card-1')).length, 2, 'scenario / 开场白两条草稿都落库');
   assert.equal((await repository.packs.list()).length, 1);
   assert.equal((await repository.cards.list('lore')).length, 2);
 });
-
 test('确定性：给定 id 与 now，同一份输入两次得到完全相同的计划', () => {
   const first = planCharacterImport(typical(), { now: NOW, id: 'card-1' });
   const second = planCharacterImport(typical(), { now: NOW, id: 'card-1' });
   assert.equal(JSON.stringify(first), JSON.stringify(second));
   assert.equal(first.pack?.id, 'card-1-worldbook');
   assert.deepEqual(first.loreCards.map((card) => card.meta.id), ['card-1-worldbook-lore-1', 'card-1-worldbook-lore-2']);
-
   // 不给 id 时用 ULID：非空、两次不同（跨次导入不该互相覆盖）
   const a = planCharacterImport(typical(), { now: NOW });
   const b = planCharacterImport(typical(), { now: NOW });
   assert.ok(a.card.meta.id.length > 0);
   assert.notEqual(a.card.meta.id, b.card.meta.id);
+});
+test('B3–B6 冒烟：ST 高级字段进 trigger 并可导出（全字段见 import-cards-mapping.test.ts）', () => {
+  const plan = planLorebookImport(
+    { name: 'x', description: '', entries: [{ keys: ['k'], secondaryKeys: [], content: 'c', name: 'n', enabled: true, constant: false, order: 1, selectiveLogic: 1, preventRecursion: true, delayUntilRecursion: true, group: 'g', groupWeight: 5, sticky: 2, cooldown: 3, delay: 4 }] },
+    { now: NOW, id: 'b' },
+  );
+  const trigger = plan.cards[0]?.trigger;
+  assert.equal(trigger?.selective_logic, 1);
+  assert.equal(trigger?.prevent_recursion, true);
+  assert.equal(trigger?.delay_until_recursion, 1);
+  assert.equal(trigger?.group, 'g');
+  assert.equal(trigger?.group_weight, 5);
+  const payload = JSON.parse(exportLorebook(plan.pack, plan.cards).json) as { entries: Record<string, Record<string, unknown>> };
+  assert.equal(payload.entries['0']?.['selectiveLogic'], 1);
+  assert.equal(payload.entries['0']?.['delayUntilRecursion'], 1);
 });

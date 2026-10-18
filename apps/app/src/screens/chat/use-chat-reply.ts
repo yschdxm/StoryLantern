@@ -13,6 +13,8 @@ import { buildChatRequestV2 } from '../../data/prompt-v2.ts';
 import { selectSummariesForChat } from '../../data/summary-vector-select.ts';
 import { estimateTokens } from '../../data/tokens.ts';
 import { tokensMetaOf, type RealUsage } from '../../data/message-append.ts';
+import { makeRequestLogEntry, type RequestLogPort } from '../../data/request-log.ts';
+import { withBackoffRetry } from '../../data/backoff.ts';
 import { SETTING_KEYS, type MessageCitation, type MessageMeta } from '../../data/types.ts';
 import { createUsageStore } from '../../data/usage-store.ts';
 import { useT } from '../../i18n/context.tsx';
@@ -40,6 +42,8 @@ export function useChatReply(input: {
   assemble?: AssembleFn | undefined;
   transport?: WireTransport | undefined;
   workspace: WorkspaceSnapshot | undefined;
+  /** 本机请求审计（B25）：只在传了端口时写；不参与同步。 */
+  requestLog?: RequestLogPort | undefined;
 }): {
   streaming: StreamingReply | null;
   chatError: string | undefined;
@@ -137,6 +141,26 @@ export function useChatReply(input: {
     } catch (cause) {
       previewError = describeError(cause);
     }
+    // B25：本机请求审计。一次 run 只写一条（预览失败算失败条目，发送失败再覆盖为 error）。
+    let requestLogged = false;
+    const logRequest = async (status: 'ok' | 'error', extra: { firstDeltaMs?: number; totalMs?: number } = {}): Promise<void> => {
+      if (input.requestLog === undefined || requestLogged) return;
+      requestLogged = true;
+      await input.requestLog
+        .append(
+          makeRequestLogEntry({
+            sessionId,
+            model: preview?.model ?? (candidates[0] === undefined ? '' : targetLabel(candidates[0])),
+            url: preview?.url ?? '',
+            byteLength: preview?.byteLength ?? 0,
+            body: preview?.body ?? '',
+            status,
+            ...extra,
+          }),
+        )
+        .catch(() => undefined);
+    };
+    if (previewError !== undefined) await logRequest('error');
     const previousBody = previousBodyRef.current;
     if (preview !== undefined) previousBodyRef.current = preview.body;
     setTrace({
@@ -202,21 +226,41 @@ export function useChatReply(input: {
         streamedReasoning = '';
         const attemptStarted = Date.now();
         try {
-          outcome = await chat.reply(
-            candidate.id === '' ? baseCall : { ...baseCall, profileId: candidate.id },
+          // B27：可重试失败（传输/5xx/超时）退避后重试一次；配置错/主动停止不重试。
+          outcome = await withBackoffRetry(
+            () =>
+              chat.reply(candidate.id === '' ? baseCall : { ...baseCall, profileId: candidate.id }, {
+                signal: controller.signal,
+                onDelta: (delta) => {
+                  if (delta.delta !== undefined && delta.delta !== '') {
+                    if (firstDeltaAt === undefined) firstDeltaAt = Date.now();
+                    streamedText += delta.delta;
+                  }
+                  if (delta.reasoning !== undefined && delta.reasoning !== '') {
+                    if (firstDeltaAt === undefined) firstDeltaAt = Date.now();
+                    streamedReasoning += delta.reasoning;
+                  }
+                  if (delta.usage !== undefined) realUsage = delta.usage;
+                  setStreaming({ text: streamedText, reasoning: streamedReasoning });
+                },
+              }),
             {
-              signal: controller.signal,
-              onDelta: (delta) => {
-                if (delta.delta !== undefined && delta.delta !== '') {
-                  if (firstDeltaAt === undefined) firstDeltaAt = Date.now();
-                  streamedText += delta.delta;
-                }
-                if (delta.reasoning !== undefined && delta.reasoning !== '') {
-                  if (firstDeltaAt === undefined) firstDeltaAt = Date.now();
-                  streamedReasoning += delta.reasoning;
-                }
-                if (delta.usage !== undefined) realUsage = delta.usage;
-                setStreaming({ text: streamedText, reasoning: streamedReasoning });
+              maxRetries: 1,
+              random: Math.random,
+              // 等待也要进 trace：否则用户只看到"卡了一下"，不知道是退避还是网络慢
+              onRetry: (cause, waitMs, retryAttempt) => {
+                // 上一轮可能已经流出半截正文/思考：重试前清掉，避免把两次尝试拼在一起
+                streamedText = '';
+                streamedReasoning = '';
+                firstDeltaAt = undefined;
+                realUsage = undefined;
+                setStreaming({ text: '', reasoning: '' });
+                attempts.push({
+                  label: targetLabel(candidate),
+                  ok: false,
+                  ms: Date.now() - attemptStarted,
+                  error: `${describeError(cause)} · 退避 ${waitMs}ms 后重试（第 ${retryAttempt} 次）`,
+                });
               },
             },
           );
@@ -275,9 +319,18 @@ export function useChatReply(input: {
               totalMs: Date.now() - startedAt,
             },
       );
+      await logRequest('ok', {
+        ...(firstDeltaAt === undefined ? {} : { firstDeltaMs: firstDeltaAt - startedAt }),
+        totalMs: Date.now() - startedAt,
+      });
     } catch (cause) {
       setTrace((current) => (current === undefined ? current : { ...current, attempts, totalMs: Date.now() - startedAt }));
+      const timing = {
+        ...(firstDeltaAt === undefined ? {} : { firstDeltaMs: firstDeltaAt - startedAt }),
+        totalMs: Date.now() - startedAt,
+      };
       if (controller.signal.aborted) {
+        await logRequest('ok', timing);
         // 用户停止：把已经收到的半截内容按 stopped 落库，不显示错误
         const resolved = resolveCitations(streamedText, request.citationWindow);
         if (resolved.text !== '') {
@@ -306,6 +359,7 @@ export function useChatReply(input: {
         }
       } else {
         const message = describeError(cause);
+        await logRequest('error', timing);
         setChatError(message);
         await store.actions
           .appendMessage(sessionId, 'assistant', message, { status: 'error' })

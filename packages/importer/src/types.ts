@@ -29,6 +29,21 @@ export interface ImportedLorebookEntry {
    * 从条目根上的 `token_budget` / `budget`，或我们导出时写的 `extensions.storylantern.token_budget` 读回。
    */
   tokenBudget?: number;
+  /** ST `selectiveLogic`（0–3，原样保留）；app 映射到 `LoreTrigger.selective_logic`。 */
+  selectiveLogic?: 0 | 1 | 2 | 3;
+  /** ST `excludeRecursion` 原始值（`recursive` 已表达其取反；保留原字段供导入层精确映射）。 */
+  excludeRecursion?: boolean;
+  /** ST `preventRecursion`。 */
+  preventRecursion?: boolean;
+  /** ST `delayUntilRecursion`（布尔或数字，原样保留）。 */
+  delayUntilRecursion?: boolean | number;
+  /** ST `group` / `groupWeight`。 */
+  group?: string;
+  groupWeight?: number;
+  /** ST `sticky` / `cooldown` / `delay`（轮次）。 */
+  sticky?: number;
+  cooldown?: number;
+  delay?: number;
 }
 
 export interface ImportedLorebook {

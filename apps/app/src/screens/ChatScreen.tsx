@@ -1,4 +1,7 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createDefaultLocalOpPorts, createWireOpPorts } from '../data/op-ports.ts';
+import { createDeviceRequestLog, type RequestLogEntry } from '../data/request-log.ts';
+import { describeError } from '../data/error-text.ts';
 import { formatTime, isModelConfigured } from '../data/repository.ts';
 import { loadWorkspace, type WorkspaceSnapshot } from '../app/workspace.ts';
 import { useT } from '../i18n/context.tsx';
@@ -34,6 +37,16 @@ export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings, t
   const [detailFor, setDetailFor] = useState<string | undefined>(undefined);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const heightBeforeRef = useRef(0);
+  // B25：请求审计只在本机设备 kv（不新增全局单例）；浏览器/宿主复用同一份端口实现。
+  const requestLog = useMemo(
+    () =>
+      createDeviceRequestLog(
+        (transport === undefined ? createDefaultLocalOpPorts() : createWireOpPorts(transport)).device,
+      ),
+    [transport],
+  );
+  const [history, setHistory] = useState<RequestLogEntry[]>([]);
+  const [historyError, setHistoryError] = useState<string | undefined>(undefined);
 
   useAsync(() => store.actions.loadMessages(sessionId), [sessionId, store]);
   /** 本会话的卡片设定视图（开局配置 / 卡片 / 运行时）：聊天页自己取，避免塞进全局状态。 */
@@ -41,7 +54,7 @@ export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings, t
     setWorkspace(await loadWorkspace(store.repository, store.getState(), sessionId));
   }, [sessionId, store, state.characters, state.lorebooks]);
 
-  const reply = useChatReply({ store, sessionId, chat, assemble, transport, workspace });
+  const reply = useChatReply({ store, sessionId, chat, assemble, transport, workspace, requestLog });
   const { streaming, chatError, injectedLore, trace } = reply;
   const { visible, hidden, sentinel } = useWindowedList(state.messages, { pageSize: 40, from: 'end' });
 
@@ -52,6 +65,35 @@ export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings, t
   const detailMessage = detailFor === undefined ? undefined : state.messages.find((message) => message.id === detailFor);
   const sourceOf = (messageId: string): string | undefined =>
     state.messages.find((message) => message.id === messageId)?.content;
+
+  // 打开 Inspector 或一次生成结束时刷新审计列表；失败要看得见，不静默吞
+  useEffect(() => {
+    if (!traceOpen) return;
+    let alive = true;
+    void requestLog
+      .list()
+      .then((entries) => {
+        if (!alive) return;
+        setHistory(entries);
+        setHistoryError(undefined);
+      })
+      .catch((cause: unknown) => {
+        if (alive) setHistoryError(describeError(cause));
+      });
+    return () => {
+      alive = false;
+    };
+  }, [traceOpen, requestLog, trace?.totalMs]);
+
+  const clearHistory = async (): Promise<void> => {
+    try {
+      await requestLog.clear();
+      setHistory(await requestLog.list());
+      setHistoryError(undefined);
+    } catch (cause) {
+      setHistoryError(describeError(cause));
+    }
+  };
 
   // 在提交前记录滚动高度：向前加载历史后要补偿，否则视野会跳
   heightBeforeRef.current = scrollRef.current?.scrollHeight ?? heightBeforeRef.current;
@@ -254,6 +296,9 @@ export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings, t
         state={trace}
         modelLabel={trace?.attempts.find((attempt) => attempt.ok)?.label ?? store.getState().settings['model.name'] ?? '—'}
         onClose={() => setTraceOpen(false)}
+        history={history}
+        historyError={historyError}
+        onClearHistory={() => void clearHistory()}
       />
     </div>
   );

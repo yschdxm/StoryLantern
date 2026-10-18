@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { useAppState, type ScreenProps } from './screen-props.ts';
 import { useT } from '../i18n/context.tsx';
 import { formatTime, previewOf } from '../data/repository.ts';
+import { stripCitationMarkers } from '../data/citations.ts';
 import {
   Banner,
   Button,
@@ -67,7 +68,7 @@ export function SessionsScreen({ store, router }: ScreenProps): ReactNode {
             <ListRow
               key={session.id}
               title={session.title}
-              subtitle={previewOf(session.lastMessage)}
+              subtitle={previewOf(stripCitationMarkers(session.lastMessage))}
               meta={formatTime(session.updatedAt)}
               onClick={() => router.navigate({ name: 'chat', sessionId: session.id })}
               onLongPress={() => setMenuFor(session.id)}

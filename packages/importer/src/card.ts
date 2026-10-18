@@ -36,6 +36,25 @@ export function parseLorebook(value: unknown, fallbackName: string): ImportedLor
     const excluded = entry['excludeRecursion'] ?? entry['exclude_recursion'];
     // 整词匹配：ST 原生是 matchWholeWords；CCv3/其它导出器可能写 match_whole_words
     const wholeWords = entry['matchWholeWords'] ?? entry['match_whole_words'];
+    // ST 高级世界书字段：原样保留（映射到 LoreTrigger 由导入层决定）
+    const selectiveLogicRaw = asInteger(entry['selectiveLogic'] ?? entry['selective_logic']);
+    const selectiveLogic =
+      selectiveLogicRaw === 0 || selectiveLogicRaw === 1 || selectiveLogicRaw === 2 || selectiveLogicRaw === 3
+        ? selectiveLogicRaw
+        : undefined;
+    const preventRecursion = entry['preventRecursion'] ?? entry['prevent_recursion'];
+    const delayUntilRaw = entry['delayUntilRecursion'] ?? entry['delay_until_recursion'];
+    const delayUntilRecursion =
+      typeof delayUntilRaw === 'number' && Number.isFinite(delayUntilRaw)
+        ? Math.trunc(delayUntilRaw)
+        : typeof delayUntilRaw === 'boolean'
+          ? delayUntilRaw
+          : undefined;
+    const group = asString(entry['group']).trim();
+    const groupWeight = asInteger(entry['groupWeight'] ?? entry['group_weight']);
+    const sticky = asInteger(entry['sticky']);
+    const cooldown = asInteger(entry['cooldown']);
+    const delay = asInteger(entry['delay']);
     // 单条预算没有 ST 原生字段：读条目根上的 token_budget/budget，或我们导出时写的 extensions 命名空间
     const extensions = isRecord(entry['extensions']) ? entry['extensions'] : undefined;
     const sl = extensions !== undefined && isRecord(extensions['storylantern']) ? extensions['storylantern'] : undefined;
@@ -55,6 +74,15 @@ export function parseLorebook(value: unknown, fallbackName: string): ImportedLor
         ...(excluded === undefined ? {} : { recursive: excluded !== true }),
         ...(typeof wholeWords === 'boolean' ? { matchWholeWords: wholeWords } : {}),
         ...(tokenBudget === undefined ? {} : { tokenBudget }),
+        ...(selectiveLogic === undefined ? {} : { selectiveLogic }),
+        ...(typeof excluded === 'boolean' ? { excludeRecursion: excluded } : {}),
+        ...(typeof preventRecursion === 'boolean' ? { preventRecursion } : {}),
+        ...(delayUntilRecursion === undefined ? {} : { delayUntilRecursion }),
+        ...(group === '' ? {} : { group }),
+        ...(groupWeight === undefined ? {} : { groupWeight }),
+        ...(sticky === undefined ? {} : { sticky }),
+        ...(cooldown === undefined ? {} : { cooldown }),
+        ...(delay === undefined ? {} : { delay }),
       },
       entry,
     );

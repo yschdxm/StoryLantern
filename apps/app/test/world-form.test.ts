@@ -173,6 +173,72 @@ test('典籍触发策略：整词匹配与单条预算往返（空 = 不限制�
   assert.equal(offAgain.trigger.tokenBudget, '');
 });
 
+test('典籍触发策略 B3–B6：次键逻辑/递归/分组/轮次往返，0 与空保留语义', () => {
+  const draft: LoreDraft = {
+    ...minimalLore(),
+    trigger: {
+      ...minimalLore().trigger,
+      selectiveLogic: '3',
+      excludeRecursion: true,
+      preventRecursion: true,
+      delayUntilRecursion: '2',
+      group: '月相',
+      groupWeight: '80',
+      sticky: '3',
+      cooldown: '4',
+      delay: '1',
+    },
+  };
+  const card = buildCard(undefined, draft) as LoreCard;
+  assert.equal(card.trigger?.selective_logic, 3);
+  assert.equal(card.trigger?.exclude_recursion, true);
+  assert.equal(card.trigger?.prevent_recursion, true);
+  assert.equal(card.trigger?.delay_until_recursion, 2);
+  assert.equal(card.trigger?.group, '月相');
+  assert.equal(card.trigger?.group_weight, 80);
+  assert.equal(card.trigger?.sticky, 3);
+  assert.equal(card.trigger?.cooldown, 4);
+  assert.equal(card.trigger?.delay, 1);
+  const again = draftOfCard(card) as LoreDraft;
+  assert.equal(again.trigger.selectiveLogic, '3');
+  assert.equal(again.trigger.groupWeight, '80');
+  assert.equal(again.trigger.sticky, '3');
+
+  // 0 是合法值；空/关 = 未设（从卡片上消失）
+  const zero = buildCard(undefined, {
+    ...minimalLore(),
+    trigger: { ...minimalLore().trigger, selectiveLogic: '0', groupWeight: '0', sticky: '0', cooldown: '0', delay: '0' },
+  }) as LoreCard;
+  assert.equal(zero.trigger?.selective_logic, 0);
+  assert.equal(zero.trigger?.group_weight, 0);
+  assert.equal(zero.trigger?.sticky, 0);
+  assert.equal(zero.trigger?.cooldown, 0);
+  assert.equal(zero.trigger?.delay, 0);
+
+  const empty = buildCard(undefined, {
+    ...minimalLore(),
+    trigger: {
+      ...minimalLore().trigger,
+      group: '',
+      groupWeight: '',
+      sticky: '',
+      cooldown: '',
+      delay: '',
+      delayUntilRecursion: '',
+      excludeRecursion: false,
+      preventRecursion: false,
+    },
+  }) as LoreCard;
+  for (const key of ['group', 'group_weight', 'sticky', 'cooldown', 'delay', 'delay_until_recursion', 'exclude_recursion', 'prevent_recursion'] as const) {
+    assert.equal(key in (empty.trigger ?? {}), false, `${key} 不应写入空值`);
+  }
+
+  // 表单外的 trigger 未知字段保留
+  const withExtra = { ...card, trigger: { ...(card.trigger ?? {}), 'vendor.x': true } } as unknown as LoreCard;
+  const preserved = buildCard(withExtra, draftOfCard(withExtra) as LoreDraft) as LoreCard;
+  assert.equal((preserved.trigger as unknown as Record<string, unknown>)['vendor.x'], true);
+});
+
 test('name 为空时校验报 error（编辑器能逐条展示）', () => {
   const card = buildCard(undefined, { ...minimalScene(), name: '   ' });
   const result = validateCard(card);

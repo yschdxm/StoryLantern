@@ -195,6 +195,13 @@ function loreCardOf(
   const keys = cleaned(entry.keys);
   const name = entry.name.trim() !== '' ? entry.name.trim() : (keys[0] ?? '条目');
   const firstContentLine = entry.content.split(/\r?\n/).find((line) => line.trim() !== '')?.trim() ?? '';
+  // ST delayUntilRecursion 既可能是布尔也可能是轮次数：true 记 1，false 不写，数字取整且 ≥0
+  const delayUntil =
+    entry.delayUntilRecursion === undefined || entry.delayUntilRecursion === false
+      ? undefined
+      : entry.delayUntilRecursion === true
+        ? 1
+        : Math.max(0, Math.trunc(entry.delayUntilRecursion));
   return {
     card_type: 'lore',
     meta: {
@@ -223,6 +230,16 @@ function loreCardOf(
       // 整词匹配 / 单条预算：解析器给了才写（没给不写，不猜）
       ...(entry.matchWholeWords === undefined ? {} : { match_whole_words: entry.matchWholeWords }),
       ...(entry.tokenBudget === undefined ? {} : { token_budget: entry.tokenBudget }),
+      // ST 高级世界书字段（B3–B6）：原样搬到 snake_case；没给就不写
+      ...(entry.selectiveLogic === undefined ? {} : { selective_logic: entry.selectiveLogic }),
+      ...(entry.excludeRecursion === undefined ? {} : { exclude_recursion: entry.excludeRecursion }),
+      ...(entry.preventRecursion === undefined ? {} : { prevent_recursion: entry.preventRecursion }),
+      ...(delayUntil === undefined ? {} : { delay_until_recursion: delayUntil }),
+      ...(entry.group === undefined || entry.group === '' ? {} : { group: entry.group }),
+      ...(entry.groupWeight === undefined ? {} : { group_weight: entry.groupWeight }),
+      ...(entry.sticky === undefined ? {} : { sticky: entry.sticky }),
+      ...(entry.cooldown === undefined ? {} : { cooldown: entry.cooldown }),
+      ...(entry.delay === undefined ? {} : { delay: entry.delay }),
     },
     // 条目级启停属于作者的设定语义（LoreCard 已有该字段）：关掉的照常导入，只是不参与扫描
     ...(entry.enabled ? {} : { enabled: false }),

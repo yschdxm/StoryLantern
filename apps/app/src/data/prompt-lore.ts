@@ -63,6 +63,15 @@ export function loreBooksOf(cards: readonly LoreCard[]): ScanBook[] {
         recursive: card.trigger?.recursive ?? true,
         depth: card.trigger?.depth ?? 0,
         constant: card.trigger?.constant ?? false,
+        ...(card.trigger?.selective_logic === undefined ? {} : { selectiveLogic: card.trigger.selective_logic }),
+        ...(card.trigger?.exclude_recursion === true ? { excludeRecursion: true } : {}),
+        ...(card.trigger?.prevent_recursion === true ? { preventRecursion: true } : {}),
+        ...(card.trigger?.delay_until_recursion === undefined ? {} : { delayUntilRecursion: card.trigger.delay_until_recursion }),
+        ...(card.trigger?.group === undefined || card.trigger.group.trim() === '' ? {} : { group: card.trigger.group }),
+        ...(card.trigger?.group_weight === undefined ? {} : { groupWeight: card.trigger.group_weight }),
+        ...(card.trigger?.sticky === undefined ? {} : { sticky: card.trigger.sticky }),
+        ...(card.trigger?.cooldown === undefined ? {} : { cooldown: card.trigger.cooldown }),
+        ...(card.trigger?.delay === undefined ? {} : { delay: card.trigger.delay }),
       },
     ],
   }));
@@ -135,8 +144,8 @@ export function loreTextOf(data: PromptBlockDataV2): string | undefined {
   });
   const byId = new Map(eligible.cards.map((card) => [card.meta.id, card]));
   const kept: ScoredEntry[] = [];
-  // trace 的 loreDropped = 条目停用/条件不满足 + 概率未命中 + 预算挤掉
-  let dropped = eligible.dropped + result.dropped.length;
+  // trace 的 loreDropped = 条目停用/条件不满足 + 概率未命中 + 预算挤掉 + group/冷却/延迟抑制
+  let dropped = eligible.dropped + result.dropped.length + result.suppressed;
   for (const entry of result.matched) {
     const trigger = byId.get(entry.entryId)?.trigger;
     if (trigger?.constant === true || passesProbability(entry.entryId, trigger?.probability, data.lastMessageKey)) {

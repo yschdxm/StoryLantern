@@ -11,9 +11,9 @@ import { SETTING_KEYS } from './types.ts';
  *     只需要知道"排在前面的先用，用不了就用下一个"。
  */
 
-export type ModelTask = 'chat' | 'summary' | 'extract';
+export type ModelTask = 'chat' | 'summary' | 'extract' | 'embed' | 'agent';
 
-export const MODEL_TASKS: ModelTask[] = ['chat', 'summary', 'extract'];
+export const MODEL_TASKS: ModelTask[] = ['chat', 'summary', 'extract', 'embed', 'agent'];
 
 export interface ModelProfile {
   id: string;

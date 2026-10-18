@@ -131,17 +131,32 @@ function loreEntryJson(card: LoreCard, index: number): Record<string, unknown> {
     disable: card.enabled === false,
     order: trigger.priority ?? 100,
     depth: trigger.depth ?? 0,
-    exclude_recursion: trigger.recursive === false,
+    // excludeRecursion 是 ST 原生字段：显式值优先，否则沿用 recursive 的取反（旧语义）
+    exclude_recursion: trigger.exclude_recursion ?? trigger.recursive === false,
     probability: trigger.probability ?? 100,
     // 整词匹配：ST 原生字段；没设就不写（false 与缺省语义相同，写出来只是噪音）
     ...(trigger.match_whole_words === undefined ? {} : { matchWholeWords: trigger.match_whole_words }),
+    // B3–B6：ST 高级世界书字段反向写回（未设不写）
+    ...(trigger.selective_logic === undefined ? {} : { selectiveLogic: trigger.selective_logic }),
+    ...(trigger.prevent_recursion === undefined ? {} : { preventRecursion: trigger.prevent_recursion }),
+    ...(trigger.delay_until_recursion === undefined
+      ? {}
+      : { delayUntilRecursion: trigger.delay_until_recursion }),
+    ...(trigger.group === undefined ? {} : { group: trigger.group }),
+    ...(trigger.group_weight === undefined ? {} : { groupWeight: trigger.group_weight }),
+    ...(trigger.sticky === undefined ? {} : { sticky: trigger.sticky }),
+    ...(trigger.cooldown === undefined ? {} : { cooldown: trigger.cooldown }),
+    ...(trigger.delay === undefined ? {} : { delay: trigger.delay }),
     // 单条预算：ST 没有原生字段。写进扩展命名空间（导入时从同一位置读回），不当作 ST 原生字段。
     ...(trigger.token_budget === undefined
       ? {}
       : { extensions: { storylantern: { token_budget: trigger.token_budget } } }),
-    ...(secondary.length === 0
+    ...(secondary.length === 0 && trigger.selective_logic === undefined
       ? {}
-      : { selective: true, selectiveLogic: logic === 'all' ? 0 : logic === 'not' ? 1 : 2 }),
+      : {
+          selective: true,
+          selectiveLogic: trigger.selective_logic ?? (logic === 'all' ? 0 : logic === 'not' ? 1 : 2),
+        }),
   };
 }
 
