@@ -68,13 +68,17 @@ pnpm --filter @storylantern/app exec vite preview --port 15199 --strictPort
   **引用**默认关（`chat.cite`），开启后编号只用于引用窗口、回复落库前 strip 标记、存 `meta.citations`、UI 显示 chip；
   **Inspector** 用 `chat.preview` 的真实 body（不重拼），支持复制 JSON/cURL 与上一轮 diff。消息 meta 走
   `message.append`，**append 的位置参数用 `data/message-append.ts` 的 helper**（漏 createdAt 会写坏时间戳）。
+- Agent 调优（侧信道，不进生成热路径）：`screens/agent/AgentPanel.tsx` + `data/agent-session.ts`（run/resume/cancel/approve/reject）+
+  `data/agent-{engine,tools,apply}.ts`；宿主已支持 function calling（`ChatCall.tools/toolChoice` → `chat.rs`），
+  工具 10 个（6 只读 restrict + 4 提案 guard，提案只创建 pending），审批通过才落 op；**不要把 Agent 塞进聊天热路径**。
+- 酒馆预设：`data/prompt-presets.ts` 仅导入/导出存档（`prompt.presets.v1`，不参与运行时装配）；设置→数据与备份→「酒馆预设（仅存档）」。
 - 同步口令派生：**v2 = PBKDF2-SHA256（30 万次）→ HKDF**；升级后首次同步从本地日志全量重传（内容密钥在 keyring，不受影响、本地数据不丢）；
   旧 v1 只用于读旧加入证明；加入请求**接纳后删除**，旧格式证明同步时清理。新增同步加密相关代码必须走 `data/sync/crypto.ts`，不要自己派生口令密钥。
 - 已知限制：资产索引**不签名**（信任根是共享口令 + AES-GCM，内容靠落库前 sha256 校验）；设备签名/恢复密钥/名单盖章已整体删除
   （真机 WebView 没有可用的非对称签名能力）；`.slbak` 含资产所以会变大（base64 +33%）；规则条件的"语义"只在运行时求值
   （编辑器另提供"试算"用示例变量验证）；L3 无独立 URL（设置分区）；详见 ADR-0011 与 `docs/SETTINGS-IA.md §8`。
-- 行数已贴上限，加东西先拆：`repository.ts`/`op.ts` 400、`SessionCreateScreen`/`op-repository.ts` 399、
-  `state.ts` 394、`ChatScreen` 261（回复逻辑在 `chat/use-chat-reply.ts` 333）；
+- 行数已贴上限，加东西先拆：`repository.ts`/`op.ts`/`op-repository.ts`/`state.ts`/`use-chat-reply.ts` 400、
+  `ChatScreen` 398、`SessionCreateScreen` 399、`AgentPanel` 357、`agent-session` 349；
   `main.tsx` 391、`sync/service.ts` 372、`assets-sync.ts` 362、`app-sync.ts` 388。
 - **hash 路由必须对实体 id 编解码**（`router.ts` 的 `encodePart`/`decodePart`）：id 不保证是 ASCII，漏了会出现"找不到这张卡片"。
 
