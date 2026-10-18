@@ -366,11 +366,14 @@ export function TextInput({
 export function TextArea({
   value,
   onChange,
+  onBlur,
   placeholder,
   rows = 4,
   testId,
 }: {
   value: string; onChange: (value: string) => void;
+  /** 文本类设置用它落库（与 TextInput 的 onBlur 对齐）。 */
+  onBlur?: () => void;
   placeholder?: string; rows?: number;
   /** 端到端测试用的稳定选择器。 */
   testId?: string;
@@ -382,6 +385,7 @@ export function TextArea({
       value={value}
       placeholder={placeholder}
       onChange={(event) => onChange(event.target.value)}
+      {...(onBlur === undefined ? {} : { onBlur })}
       {...(testId === undefined ? {} : { 'data-testid': testId })}
     />
   );

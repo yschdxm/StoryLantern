@@ -166,6 +166,9 @@ function loreEntryJson(card: LoreCard, index: number): Record<string, unknown> {
     disable: card.enabled === false,
     order: trigger.priority ?? 100,
     depth: trigger.depth ?? 0,
+    // B2/B10：ST 原生 position / outlet 反向写回（未设不写）
+    ...(trigger.position === undefined ? {} : { position: trigger.position }),
+    ...(trigger.outlet === undefined || trigger.outlet === '' ? {} : { outlet: trigger.outlet }),
     // excludeRecursion 是 ST 原生字段：显式值优先，否则沿用 recursive 的取反（旧语义）
     exclude_recursion: trigger.exclude_recursion ?? trigger.recursive === false,
     probability: trigger.probability ?? 100,

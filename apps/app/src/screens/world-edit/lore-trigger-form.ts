@@ -14,6 +14,10 @@ export interface LoreTriggerDraft {
   priority: string;
   probability: string;
   recursive: boolean;
+  /** 注入位置 0–7；空 = 未设置（沿用旧块）。 */
+  position: string;
+  /** outlet 名字；仅 position=7 且有宿主消费者时生效，目前只保存。 */
+  outlet: string;
   depth: string;
   conditions: string;
   matchWholeWords: boolean;
@@ -42,6 +46,8 @@ export function emptyLoreTriggerDraft(): LoreTriggerDraft {
     priority: '5',
     probability: '100',
     recursive: true,
+    position: '',
+    outlet: '',
     depth: '',
     conditions: '',
     matchWholeWords: false,
@@ -66,6 +72,8 @@ export function loreTriggerDraftOf(trigger: LoreTrigger | undefined): LoreTrigge
     priority: trigger?.priority === undefined ? '5' : String(trigger.priority),
     probability: trigger?.probability === undefined ? '100' : String(trigger.probability),
     recursive: trigger?.recursive !== false,
+    position: numberText(trigger?.position),
+    outlet: trigger?.outlet ?? '',
     depth: numberText(trigger?.depth),
     conditions: (trigger?.conditions ?? []).join('\n'),
     matchWholeWords: trigger?.match_whole_words === true,
@@ -113,13 +121,21 @@ export function buildLoreTrigger(existing: LoreTrigger | undefined, draft: LoreT
     selective_logic: selectiveOf(draft.selectiveLogic),
   };
   for (const key of [
-    'depth', 'conditions', 'match_whole_words', 'token_budget', 'exclude_recursion', 'prevent_recursion',
-    'delay_until_recursion', 'group', 'group_weight', 'sticky', 'cooldown', 'delay',
+    'position', 'outlet', 'depth', 'conditions', 'match_whole_words', 'token_budget', 'exclude_recursion',
+    'prevent_recursion', 'delay_until_recursion', 'group', 'group_weight', 'sticky', 'cooldown', 'delay',
   ] as const) {
     delete trigger[key];
   }
+  const position = numberOf(draft.position);
+  const positionValue = position !== undefined && Number.isInteger(position) && position >= 0 && position <= 7
+    ? (position as 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7)
+    : undefined;
+  if (positionValue !== undefined) trigger.position = positionValue;
+  const outlet = draft.outlet.trim();
+  if (outlet !== '') trigger.outlet = outlet;
   const depth = numberOf(draft.depth);
-  if (depth !== undefined) trigger.depth = Math.max(0, Math.round(depth));
+  if (positionValue === 4) trigger.depth = Math.max(0, Math.round(depth ?? 4));
+  else if (depth !== undefined) trigger.depth = Math.max(0, Math.round(depth));
   const conditions = draft.conditions.split(/\r?\n/).map((item) => item.trim()).filter((item) => item !== '');
   if (conditions.length > 0) trigger.conditions = conditions;
   if (draft.matchWholeWords) trigger.match_whole_words = true;

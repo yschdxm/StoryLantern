@@ -93,6 +93,36 @@ export function LoreSections({
         />
         <span>{t('world.editor.lore.trigger.constant')}</span>
       </label>
+      <Field label={t('world.editor.lore.trigger.position')} hint={t('world.editor.lore.trigger.position.hint')}>
+        <select
+          className="input"
+          value={draft.trigger.position}
+          aria-label={t('world.editor.lore.trigger.position')}
+          onChange={(event) => update({ trigger: { ...draft.trigger, position: event.target.value } })}
+        >
+          <option value="">{t('world.editor.lore.trigger.position.unset')}</option>
+          {['0', '1', '2', '3', '4', '5', '6', '7'].map((value) => (
+            <option key={value} value={value}>
+              {t(`world.editor.lore.trigger.position.${value}`)}
+            </option>
+          ))}
+        </select>
+      </Field>
+      <Field label={t('world.editor.lore.trigger.outlet')} hint={t('world.editor.lore.trigger.outlet.hint')}>
+        <TextInput
+          value={draft.trigger.outlet}
+          onChange={(value) => update({ trigger: { ...draft.trigger, outlet: value } })}
+        />
+      </Field>
+      {draft.trigger.position === '4' && (
+        <Field label={t('world.editor.lore.trigger.depth')} hint={t('world.editor.lore.trigger.depth.hint')}>
+          <TextInput
+            type="number"
+            value={draft.trigger.depth === '' ? '4' : draft.trigger.depth}
+            onChange={(value) => update({ trigger: { ...draft.trigger, depth: value } })}
+          />
+        </Field>
+      )}
       <div className="world-pair">
         <Field label={t('world.editor.lore.trigger.priority')}>
           <TextInput
@@ -168,13 +198,6 @@ export function LoreSections({
         <span>{t('world.editor.lore.trigger.matchWholeWords')}</span>
       </label>
       <p className="field__hint">{t('world.editor.lore.trigger.matchWholeWords.hint')}</p>
-      <Field label={t('world.editor.lore.trigger.depth')}>
-        <TextInput
-          type="number"
-          value={draft.trigger.depth}
-          onChange={(value) => update({ trigger: { ...draft.trigger, depth: value } })}
-        />
-      </Field>
       <Field label={t('world.editor.lore.trigger.tokenBudget')} hint={t('world.editor.lore.trigger.tokenBudget.hint')}>
         <TextInput
           type="number"

@@ -231,6 +231,8 @@ export const SETTING_KEYS = {
   historyLimit: 'chat.history_limit',
   /** 引用模式：'on' = 历史编号并要求模型标注来源；默认 off（普通角色扮演不出现 [16]）。 */
   cite: 'chat.cite',
+  /** 作者注（自由文本，装配进独立块；默认空 = 不注入）。 */
+  authorsNote: 'chat.authors_note',
   /** 世界书扫描深度：只在最近 N 条消息里找关键词（1–20，未设 = 4）。 */
   loreScanDepth: 'chat.lore_scan_depth',
   /** 真实用量回传：'off' = 不请求 stream_options.include_usage，改用估算；默认 on。 */

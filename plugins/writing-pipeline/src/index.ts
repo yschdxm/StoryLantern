@@ -1,6 +1,6 @@
 import { defineConfig } from '../../../packages/plugin-api/src/index.ts';
 import type { LocaleService, PluginContext } from '../../../packages/plugin-api/src/index.ts';
-import type { BlockContext, BlockDefinition, BlockPlacement, BlockRegistry } from '../../context-blocks/src/index.ts';
+import type { BlockContext, BlockDefinition, BlockPlacement, BlockRegistry, BlockSource } from '../../context-blocks/src/index.ts';
 import { fallbackTranslator, MESSAGES, MESSAGE_NAMESPACE, type Translator } from './messages.ts';
 
 export const name = 'writing-pipeline';
@@ -28,6 +28,14 @@ export interface PromptNode {
   included: boolean;
   /** 可解释性：为什么纳入 / 为什么被裁掉（走 locale service）。 */
   reason: string;
+  /** B21：实体级来源（块内容来自哪张卡/哪个会话）。 */
+  source?: BlockSource;
+  /** B20：本块被块内截断过（末尾 `…`）。 */
+  truncated?: boolean;
+  /** B20：块内截断时丢掉的 Unicode 码点数。 */
+  droppedChars?: number;
+  /** B20：本块的 token 预算（没设就缺省）。 */
+  tokenBudget?: number;
   text?: string;
 }
 
@@ -47,10 +55,50 @@ export function estimateTokens(text: string): number {
 }
 
 /**
+ * 块内截断（B20）：按 **Unicode 码点** 截到本块 token 预算以内，末尾补 `…`。
+ *
+ * 为什么先块内截断、而不是直接整块丢：角色设定/世界书条目是"同一件事的完整描述"，
+ * 整块丢掉等于让模型完全不知道它；截断至少保住开头（名字、背景、触发内容）。全局预算仍在其后按优先级丢块。
+ * `tokenBudget` 缺省 / ≤0 表示本块不设独立预算（仍受全局预算约束），原样返回。
+ */
+export function truncateToTokenBudget(
+  text: string,
+  tokenBudget: number | undefined,
+): { text: string; tokens: number; truncated: boolean; droppedChars: number } {
+  const tokens = estimateTokens(text);
+  if (tokenBudget === undefined || tokenBudget <= 0 || tokens <= tokenBudget) {
+    return { text, tokens, truncated: false, droppedChars: 0 };
+  }
+  const chars = Array.from(text);
+  const withEllipsis = (count: number): string => `${chars.slice(0, count).join('')}…`;
+  // estimateTokens 对长度单调不减，二分找"加上省略号仍放得下"的最大前缀。
+  let low = 0;
+  let high = chars.length;
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2);
+    if (estimateTokens(withEllipsis(mid)) <= tokenBudget) low = mid;
+    else high = mid - 1;
+  }
+  const output = withEllipsis(low);
+  return { text: output, tokens: estimateTokens(output), truncated: true, droppedChars: chars.length - low };
+}
+
+function sourceOfBlock(block: BlockDefinition, context: BlockContext): BlockSource | undefined {
+  if (block.source === undefined) return undefined;
+  return typeof block.source === 'function' ? block.source(context) : block.source;
+}
+
+/**
  * 把块编译成 PromptGraph。
  *
  * 这是"写作走确定性管线"的最小骨架：每个块都有优先级与 token 预算，
  * 被纳入与被裁掉都要留下可读理由——Request Inspector 展示的就是这份图。
+ *
+ * **预算顺序（B20，有意为之）**：
+ *  1. 先按每块 `tokenBudget` 做**块内截断**（保住每块核心信息，trace 标 `truncated/droppedChars`）；
+ *  2. 再按 placement → priority 做**全局预算**，放不下的块整块丢（trace 记理由）；
+ *  3. `mustKeep` 块（角色设定/本局处境）**不参与全局裁剪**：即使全局预算已满也纳入
+ *     （`usedTokens` 允许因此超预算，面板会看到"必须保留"的理由）。
  *
  * `translate` 可注入：插件在运行时会换成 `locale.t`，缺省则用内置中文兜底，
  * 因此这个函数仍是可独立调用的纯函数。
@@ -62,9 +110,12 @@ export function assembleBlocks(
   translate: Translator = fallbackTranslator(),
 ): PromptGraph {
   const rendered = blocks
-    .map((block) => ({ block, text: block.render(context) }))
-    .filter((item): item is { block: BlockDefinition; text: string } => typeof item.text === 'string' && item.text.length > 0)
-    .map((item) => ({ block: item.block, text: item.text, tokens: estimateTokens(item.text) }));
+    .map((block) => {
+      const raw = block.render(context);
+      if (typeof raw !== 'string' || raw.length === 0) return undefined;
+      return { block, source: sourceOfBlock(block, context), ...truncateToTokenBudget(raw, block.tokenBudget) };
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== undefined);
 
   rendered.sort((a, b) => {
     const byPlacement = PLACEMENT_ORDER.indexOf(a.block.placement) - PLACEMENT_ORDER.indexOf(b.block.placement);
@@ -76,16 +127,23 @@ export function assembleBlocks(
   const nodes: PromptNode[] = [];
   let used = 0;
   for (const item of rendered) {
-    const fits = used + item.tokens <= budgetTokens;
+    const reserved = item.block.mustKeep === true;
+    const fits = reserved || used + item.tokens <= budgetTokens;
+    let reason: string;
+    if (!fits) reason = translate('pipeline.node.omitted', { used, budget: budgetTokens, tokens: item.tokens });
+    else if (item.truncated) reason = translate('pipeline.node.truncated', { budget: item.block.tokenBudget ?? 0, dropped: item.droppedChars, tokens: item.tokens });
+    else if (reserved) reason = translate('pipeline.node.mustKeep', { used, budget: budgetTokens, tokens: item.tokens });
+    else reason = translate('pipeline.node.included', { priority: item.block.priority, tokens: item.tokens });
     const node: PromptNode = {
       id: item.block.id,
       placement: item.block.placement,
       priority: item.block.priority,
       tokens: item.tokens,
       included: fits,
-      reason: fits
-        ? translate('pipeline.node.included', { priority: item.block.priority, tokens: item.tokens })
-        : translate('pipeline.node.omitted', { used, budget: budgetTokens, tokens: item.tokens }),
+      reason,
+      ...(item.source === undefined ? {} : { source: item.source }),
+      ...(item.truncated ? { truncated: true, droppedChars: item.droppedChars } : {}),
+      ...(item.block.tokenBudget === undefined ? {} : { tokenBudget: item.block.tokenBudget }),
       ...(fits ? { text: item.text } : {}),
     };
     if (fits) used += item.tokens;

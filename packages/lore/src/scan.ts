@@ -89,6 +89,11 @@ export interface ScanOptions {
   budgetChars?: number;
   /** 额外参与匹配的文本：通常是"用户正在输入但还没发出去"的那句话。 */
   extraText?: string;
+  /**
+   * 角色名键（ST 的 `\x01` 角色名键，B9）：以 `\x01` 拼在扫描文本最前面。
+   * 至少传成员角色名；场景/物品名不自动加入（避免改变既有命中语义）。
+   */
+  names?: readonly string[];
 }
 
 /** `sticky` 是"命中后继续注入"；其余是关键词/常量/递归来源。 */
@@ -123,7 +128,6 @@ interface Candidate {
   entry: ScanEntry;
   order: number;
 }
-
 /** FNV-1a：跨设备一致的整数哈希（组权重抽取用，禁止 Math.random）。 */
 function stableHash(text: string): number {
   let hash = 0x811c9dc5;
@@ -192,12 +196,13 @@ function matchEntry(entry: ScanEntry, haystack: string): { hit: boolean; keys: s
   return { hit: pass, keys: [...primary, ...secondaryHits] };
 }
 
-/** 取某个历史前缀（`upto` 条）按 entry.depth 截出的扫描文本；只有当前轮才带 `extraText`。 */
-function textAt(messages: readonly ScanMessage[], entry: ScanEntry, upto: number, scanDepth: number, extraText: string): string {
+/** 取某个历史前缀（`upto` 条）按 entry.depth 截出的扫描文本；只有当前轮才带 `extraText` / 角色名前缀。 */
+function textAt(messages: readonly ScanMessage[], entry: ScanEntry, upto: number, scanDepth: number, extraText: string, names: readonly string[]): string {
   const count = (entry.depth ?? 0) > 0 ? (entry.depth as number) : scanDepth;
   const slice = messages.slice(Math.max(0, upto - count), upto).map((message) => message.content);
   if (upto === messages.length && extraText !== '') slice.push(extraText);
-  return slice.join('\n');
+  const prefix = names.length === 0 ? '' : `${names.join('\u0001')}\u0001`;
+  return `${prefix}${slice.join('\n')}`;
 }
 
 /**
@@ -268,6 +273,7 @@ export function scanLore(options: ScanOptions): ScanResult {
   const messages = options.messages;
   const turn = messages.length;
   const extraText = options.extraText ?? '';
+  const names = options.names ?? [];
 
   const candidates: Candidate[] = [];
   for (const book of options.books) {
@@ -328,7 +334,7 @@ export function scanLore(options: ScanOptions): ScanResult {
       }
 
       // 第一轮：只看当前窗口；之后每轮把命中的条目正文也算进来
-      const current = textAt(messages, entry, turn, scanDepth, extraText);
+      const current = textAt(messages, entry, turn, scanDepth, extraText, names);
       const haystack = round === 0 ? current : `${current}\n${buffer}`;
       const result = matchEntry(entry, haystack);
       if (result.hit) {

@@ -15,6 +15,7 @@ import type { LoreCard, SessionRuntime } from '../../../../packages/cards/src/in
 import { applyRegexScripts, type RegexSkipped } from './regex-scripts.ts';
 import { regexScriptsOfWorld } from './chat-regex.ts';
 import { expandMacros } from './macros.ts';
+import type { LoreAtDepthEntry } from './prompt-lore-positions.ts';
 import type { PromptBlockDataV2 } from './prompt-blocks-v2.ts';
 import { SETTING_KEYS } from './types.ts';
 
@@ -137,7 +138,24 @@ export function applyTokenBudget(content: string, budget: number | undefined): s
   return points.length <= limit ? content : `${points.slice(0, limit).join('')}…`;
 }
 
-/** 渲染【相关设定】块；顺带把命中/丢弃写回 `data.outcomes`（请求面板用）。 */
+/** 扫描文本前缀的角色名（ST `\x01` 角色名键，B9）：至少会话成员名；场景/物品名不自动加入。 */
+function namesOf(data: PromptBlockDataV2): string[] {
+  const names: string[] = [];
+  for (const member of data.world.members) {
+    const name = (member.identity.name.trim() || member.meta.name.trim()).trim();
+    if (name !== '' && !names.includes(name)) names.push(name);
+  }
+  return names;
+}
+
+function loreBlockText(entries: readonly ScoredEntry[]): string {
+  return `【相关设定】\n${entries.map((entry) => entry.content.trim()).join('\n')}`;
+}
+
+/**
+ * 渲染【相关设定】块；顺带把命中/丢弃/位置分布写回 `data.outcomes`（请求面板用）。
+ * 返回值只含**旧块**（无 position / position 未设）的文本；显式 position 走各自的块或 @depth。
+ */
 export function loreTextOf(data: PromptBlockDataV2): string | undefined {
   if (data.world.loreCards.length === 0) return undefined;
   const eligible = eligibleLoreCards(data.world.loreCards, data.runtime, data.setup.characters);
@@ -150,6 +168,7 @@ export function loreTextOf(data: PromptBlockDataV2): string | undefined {
     messages: data.history.map((item) => ({ role: item.role, content: item.content })),
     ...(data.loreScanDepth === undefined ? {} : { scanDepth: data.loreScanDepth }),
     ...(data.loreBudgetChars === undefined ? {} : { budgetChars: data.loreBudgetChars }),
+    names: namesOf(data),
   });
   const byId = new Map(eligible.cards.map((card) => [card.meta.id, card]));
   const kept: ScoredEntry[] = [];
@@ -157,7 +176,7 @@ export function loreTextOf(data: PromptBlockDataV2): string | undefined {
   const worldScripts = regexScriptsOfWorld(data.world);
   let regexApplied = 0;
   const regexSkipped: RegexSkipped[] = [];
-  // trace 的 loreDropped = 条目停用/条件不满足 + 概率未命中 + 预算挤掉 + group/冷却/延迟抑制
+  // trace 的 loreDropped = 条目停用/条件不满足 + 概率未命中 + 预算挤掉 + group/冷却/延迟/outlet 抑制
   let dropped = eligible.dropped + result.dropped.length + result.suppressed;
   for (const entry of result.matched) {
     const trigger = byId.get(entry.entryId)?.trigger;
@@ -178,10 +197,53 @@ export function loreTextOf(data: PromptBlockDataV2): string | undefined {
       dropped += 1;
     }
   }
-  data.outcomes.matchedLore = kept;
-  data.outcomes.loreDropped = dropped;
+
+  // B2/B19：按 position 分流；未设 = 旧块（兼容既有行为，不回归）
+  const legacy: ScoredEntry[] = [];
+  const byPosition = new Map<0 | 1 | 2 | 3 | 5 | 6, ScoredEntry[]>();
+  const atDepth: LoreAtDepthEntry[] = [];
+  const visible: ScoredEntry[] = [];
+  const outlets: string[] = [];
+  let outletDropped = 0;
+  const positionCounts = Array.from({ length: 9 }, () => 0);
+  for (const entry of kept) {
+    const trigger = byId.get(entry.entryId)?.trigger;
+    const position = trigger?.position;
+    if (position === 7) {
+      outletDropped += 1;
+      const outlet = (trigger?.outlet ?? '').trim();
+      if (outlet !== '' && !outlets.includes(outlet)) outlets.push(outlet);
+      continue;
+    }
+    visible.push(entry);
+    if (position === 4) {
+      atDepth.push({ id: entry.entryId, text: entry.content.trim(), depth: Math.trunc(trigger?.depth ?? 4) });
+      positionCounts[4] = (positionCounts[4] ?? 0) + 1;
+    } else if (position === 0 || position === 1 || position === 2 || position === 3 || position === 5 || position === 6) {
+      const list = byPosition.get(position);
+      if (list === undefined) byPosition.set(position, [entry]);
+      else list.push(entry);
+      positionCounts[position] = (positionCounts[position] ?? 0) + 1;
+    } else {
+      legacy.push(entry);
+      positionCounts[8] = (positionCounts[8] ?? 0) + 1;
+    }
+  }
+
+  data.outcomes.matchedLore = visible;
+  data.outcomes.loreDropped = dropped + outletDropped;
+  data.outcomes.lorePositionCounts = positionCounts;
+  data.outcomes.loreOutletDropped = outletDropped;
+  data.outcomes.loreOutletsIgnored = outlets;
+  if (legacy.length > 0) data.retrieval.lore = loreBlockText(legacy);
+  if (byPosition.size > 0) {
+    const lorePositions: Partial<Record<0 | 1 | 2 | 3 | 5 | 6, string>> = {};
+    for (const [position, entries] of byPosition) lorePositions[position] = loreBlockText(entries);
+    data.retrieval.lorePositions = lorePositions;
+  }
+  if (atDepth.length > 0) data.retrieval.loreAtDepth = atDepth;
   if (regexApplied > 0 || regexSkipped.length > 0) {
     data.outcomes.loreRegex = { applied: regexApplied, skipped: regexSkipped };
   }
-  return kept.length === 0 ? undefined : `【相关设定】\n${kept.map((entry) => entry.content.trim()).join('\n')}`;
+  return legacy.length === 0 ? undefined : loreBlockText(legacy);
 }

@@ -239,6 +239,37 @@ test('典籍触发策略 B3–B6：次键逻辑/递归/分组/轮次往返，0 �
   assert.equal((preserved.trigger as unknown as Record<string, unknown>)['vendor.x'], true);
 });
 
+test('典籍注入位置/outlet/depth：往返与未设置语义', () => {
+  const draft: LoreDraft = {
+    ...minimalLore(),
+    trigger: { ...minimalLore().trigger, position: '4', outlet: 'prompt.outlet', depth: '6' },
+  };
+  const card = buildCard(undefined, draft) as LoreCard;
+  assert.equal(card.trigger?.position, 4);
+  assert.equal(card.trigger?.outlet, 'prompt.outlet');
+  assert.equal(card.trigger?.depth, 6);
+  const again = draftOfCard(card) as LoreDraft;
+  assert.equal(again.trigger.position, '4');
+  assert.equal(again.trigger.outlet, 'prompt.outlet');
+  assert.equal(again.trigger.depth, '6');
+
+  // position=4 且 depth 留空 → 默认 4
+  const defaultDepth = buildCard(undefined, {
+    ...minimalLore(),
+    trigger: { ...minimalLore().trigger, position: '4', depth: '' },
+  }) as LoreCard;
+  assert.equal(defaultDepth.trigger?.depth, 4);
+
+  // 未设置 position → 不写字段；空 outlet 删除
+  const unset = buildCard(undefined, {
+    ...minimalLore(),
+    trigger: { ...minimalLore().trigger, position: '', outlet: '', depth: '' },
+  }) as LoreCard;
+  assert.equal('position' in (unset.trigger ?? {}), false);
+  assert.equal('outlet' in (unset.trigger ?? {}), false);
+  assert.equal('depth' in (unset.trigger ?? {}), false);
+});
+
 test('name 为空时校验报 error（编辑器能逐条展示）', () => {
   const card = buildCard(undefined, { ...minimalScene(), name: '   ' });
   const result = validateCard(card);

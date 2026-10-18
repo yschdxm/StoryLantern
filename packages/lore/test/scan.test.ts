@@ -218,6 +218,13 @@ test('delay：总轮次 < N 时不参与（到点后正常命中）', () => {
   assert.equal(scanLore({ books, messages: history('铜铃', '铜铃', '铜铃') }).matched.length, 1);
 });
 
+test('角色名键（B9）：names 以 \\x01 拼在扫描文本前，历史没提也能触发', () => {
+  const books = [book([entry('e1', ['星野'], '主角的设定。')])];
+  assert.equal(scanLore({ books, messages: history('随便聊聊') }).matched.length, 0);
+  assert.equal(scanLore({ books, messages: history('随便聊聊'), names: ['星野', '林霜'] }).matched.length, 1);
+  assert.equal(scanLore({ books, messages: [], extraText: '你好', names: ['星野'] }).matched.length, 1);
+});
+
 test('注入文本块：按顺序拼接，空结果返回空串', () => {
   const books = [book([entry('e1', ['触发'], '第一条', { order: 1 }), entry('e2', ['触发'], '第二条', { order: 2 })])];
   assert.equal(formatLoreBlock(scanLore({ books, messages: history('触发') }).matched), '第一条\n第二条');

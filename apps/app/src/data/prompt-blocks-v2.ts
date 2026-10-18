@@ -7,96 +7,70 @@
  * 记忆/摘要/典籍的检索在 `prompt-v2.ts` 装配前算好写进 `data.retrieval`，这里只负责排版。
  */
 
-import type { BlockContext, BlockDefinition, BlockPlacement, BlockRegistry } from '../../../../plugins/context-blocks/src/index.ts';
-import type {
-  Atmosphere,
-  CharacterCard,
-  ItemCard,
-  ItemInstance,
-  LoreCard,
-  OccupantPresence,
-  SceneCard,
-  SessionRuntime,
-  SessionSetup,
-  StateValue,
-  StateVarDef,
-  Tone,
-} from '../../../../packages/cards/src/index.ts';
+import type { BlockContext, BlockDefinition, BlockPlacement, BlockRegistry, BlockSource } from '../../../../plugins/context-blocks/src/index.ts';
+import { truncateToTokenBudget } from '../../../../plugins/writing-pipeline/src/index.ts';
+import type { Atmosphere, CharacterCard, ItemCard, ItemInstance, LoreCard, OccupantPresence, SceneCard, SessionRuntime, SessionSetup, StateValue, StateVarDef, Tone } from '../../../../packages/cards/src/index.ts';
 import type { ScoredEntry } from '../../../../packages/lore/src/index.ts';
 import { expandMacros, type MacroContext } from './macros.ts';
 import type { RetrievedMemory } from './memory-retrieval.ts';
+import { blockBudgetOf, blockMetaOf, sourceOfBlock } from './prompt-block-meta.ts';
+import { authorsNoteDisplay } from './prompt-authors-note.ts';
 import { appendVisualCaptions } from './prompt-visuals.ts';
+import { LORE_POSITION_PRIORITIES, type LoreAtDepthEntry } from './prompt-lore-positions.ts';
+import { joinParts, labeled, pushList, pushText, trimmed } from './prompt-blocks-text.ts';
 import type { Memory, MessageRole } from './types.ts';
 
 /** 分层摘要块需要的最小形状（由调用方从应用层的 Summary 映射过来）。 */
-export interface PromptSummary {
-  id: string;
-  text: string;
-  level: string;
-  covers: readonly string[];
-}
+export interface PromptSummary { id: string; text: string; level: string; covers: readonly string[] }
 
 /** 装配时用到的卡片索引（按 id 排序建，保证与输入数组顺序无关）。 */
 export interface PromptWorldV2 {
   /** 成员角色（顺序由 `setup.characters` 决定；空 setup 时按 id）。 */
   readonly members: readonly CharacterCard[];
-  readonly characterById: ReadonlyMap<string, CharacterCard>;
-  readonly sceneById: ReadonlyMap<string, SceneCard>;
-  readonly itemById: ReadonlyMap<string, ItemCard>;
-  readonly loreCards: readonly LoreCard[];
+  readonly characterById: ReadonlyMap<string, CharacterCard>; readonly sceneById: ReadonlyMap<string, SceneCard>;
+  readonly itemById: ReadonlyMap<string, ItemCard>; readonly loreCards: readonly LoreCard[];
 }
 
 /** 本次实际注入的检索结果（装配前写入，供 trace 读取）。 */
 export interface PromptOutcomesV2 {
-  matchedLore: ScoredEntry[];
-  loreDropped: number;
-  matchedMemories: RetrievedMemory[];
-  matchedSummaries: PromptSummary[];
-  rulesOmitted: number;
+  matchedLore: ScoredEntry[]; loreDropped: number;
+  matchedMemories: RetrievedMemory[]; matchedSummaries: PromptSummary[]; rulesOmitted: number;
+  /** 每个 position 注入条数：索引 0–7 = position，8 = 未设/旧块（测试/面板用）。 */
+  lorePositionCounts?: number[];
+  /** position=7（outlet）被忽略的条目数；名字按出现顺序去重。 */
+  loreOutletDropped?: number; loreOutletsIgnored?: string[];
 }
 
 /** 检索块渲染用的文本：由 prompt-v2 预计算；未设表示本块这次不出。 */
 export interface PromptRetrievalTextV2 {
-  memory?: string;
-  summary?: string;
-  lore?: string;
+  memory?: string; summary?: string; lore?: string;
+  /** 显式 position 0/1/2/3/5/6 的文本（缺省 position 仍进 `lore` 旧块）。 */
+  lorePositions?: Partial<Record<0 | 1 | 2 | 3 | 5 | 6, string>>;
+  /** position=4 的 @depth 条目（不进 system 块，作为 system 消息插入）。 */
+  loreAtDepth?: readonly LoreAtDepthEntry[];
 }
 
 /** 块的类型化数据视图（唯一收口在 `dataOf`）。 */
 export interface PromptBlockDataV2 {
-  custom: string;
-  setup: SessionSetup;
-  world: PromptWorldV2;
-  runtime: SessionRuntime;
+  custom: string; setup: SessionSetup; world: PromptWorldV2; runtime: SessionRuntime;
   history: ReadonlyArray<{ role: MessageRole; content: string }>;
-  memories: readonly Memory[];
-  summaries: readonly PromptSummary[];
-  preselectedSummaries?: readonly PromptSummary[];
+  memories: readonly Memory[]; summaries: readonly PromptSummary[]; preselectedSummaries?: readonly PromptSummary[];
+  /** 会话标题：块来源（B21）里 custom/setup 标 session 时用作 label。 */
+  sessionTitle?: string;
   /** 作者文本里的 `{{char}}`/`{{user}}` 展开上下文（缺省 = 不展开任何宏）。 */
   macros?: MacroContext;
   /** 世界书扫描深度（设置 `chat.lore_scan_depth`；缺省 = 扫描器默认 4）。 */
-  loreScanDepth?: number;
-  loreBudgetChars?: number;
+  loreScanDepth?: number; loreBudgetChars?: number;
+  /** 作者注（独立块，priority 81；空/未设时块不出现在 systemPrompt）。 */
+  authorsNote?: string;
   /** 概率判定的确定性种子：最后一条历史消息的 id（缺 id 时见 prompt-v2 的替代）。 */
-  lastMessageKey: string;
-  retrieval: PromptRetrievalTextV2;
-  outcomes: PromptOutcomesV2;
+  lastMessageKey: string; retrieval: PromptRetrievalTextV2; outcomes: PromptOutcomesV2;
 }
 
 const TONE_LABELS: Readonly<Record<Tone, string>> = { light: '轻松', serious: '严肃', dark: '黑暗', mystery: '悬疑' };
-const PRESENCE_LABELS: Readonly<Record<OccupantPresence, string>> = {
-  resident: '常驻',
-  frequent: '常来',
-  occasional: '偶尔',
-  rare: '罕见',
-};
+const PRESENCE_LABELS: Readonly<Record<OccupantPresence, string>> = { resident: '常驻', frequent: '常来', occasional: '偶尔', rare: '罕见' };
 const ATMOSPHERE_FIELDS: ReadonlyArray<readonly [Exclude<keyof Atmosphere, 'other'>, string]> = [
-  ['light', '光'],
-  ['sound', '声'],
-  ['smell', '气味'],
-  ['temperature', '温度'],
-  ['crowd', '人群'],
-  ['mood', '气氛'],
+  ['light', '光'], ['sound', '声'], ['smell', '气味'], ['temperature', '温度'], ['crowd', '人群'], ['mood', '气氛'],
 ];
 const PLACEMENT_ORDER: readonly BlockPlacement[] = ['system', 'before-history', 'at-depth', 'after-history'];
 
@@ -107,33 +81,12 @@ function dataOf(context: BlockContext): PromptBlockDataV2 {
 function expandText(text: string | undefined, macros: MacroContext | undefined): string | undefined {
   return text === undefined || text === '' ? text : expandMacros(text, macros);
 }
-function trimmed(value: string | undefined): string {
-  return (value ?? '').trim();
-}
 function isStringArray(value: StateValue): value is readonly string[] {
   return Array.isArray(value);
 }
 function formatValue(value: StateValue): string {
   if (value === null) return '无';
   return isStringArray(value) ? value.join('、') : String(value);
-}
-function labeled(label: string, value: string | undefined): string {
-  const text = trimmed(value);
-  return text === '' ? '' : `${label}：${text}`;
-}
-function joinParts(parts: readonly string[]): string {
-  return parts.filter((part) => part !== '').join('；');
-}
-function pushText(lines: string[], label: string, value: string | undefined): void {
-  const text = trimmed(value);
-  if (text !== '') lines.push(`【${label}】${text}`);
-}
-function pushList(lines: string[], label: string, values: readonly string[] | undefined): void {
-  const text = (values ?? [])
-    .map((value) => value.trim())
-    .filter((value) => value !== '')
-    .join('、');
-  if (text !== '') lines.push(`【${label}】${text}`);
 }
 
 /** 角色卡 → 角色块正文。空字段不留标题。 */
@@ -326,7 +279,8 @@ function defineBlock(
   priority: number,
   render: (context: BlockContext) => string | undefined,
 ): BlockDefinition {
-  return { id, placement, priority, render };
+  // B20 预算/保留 + B21 来源都由块 id 决定（预算表与来源映射在 prompt-block-meta.ts 一处维护）。
+  return { id, placement, priority, render, ...blockMetaOf(id), source: (context) => sourceOfBlock(id, dataOf(context)) };
 }
 
 /**
@@ -346,7 +300,11 @@ export function registerPromptBlocksV2(blocks: BlockRegistry): () => void {
     defineBlock('app.scene', 'system', 88, (context) => renderSceneSection(dataOf(context))),
     defineBlock('app.items', 'system', 86, (context) => renderItemsSection(dataOf(context))),
     defineBlock('app.examples', 'system', 84, (context) => renderExamplesSection(dataOf(context))),
+    ...LORE_POSITION_PRIORITIES.map(([position, priority]) => (
+      defineBlock(`app.lore.pos${position}`, 'system', priority, (context) => dataOf(context).retrieval.lorePositions?.[position])
+    )),
     defineBlock('app.memory.matched', 'before-history', 82, (context) => dataOf(context).retrieval.memory),
+    defineBlock('app.authors_note', 'before-history', 81, (context) => authorsNoteDisplay(dataOf(context).authorsNote, dataOf(context).macros)),
     defineBlock('app.summary.matched', 'before-history', 80, (context) => dataOf(context).retrieval.summary),
     defineBlock('app.lore.matched', 'before-history', 78, (context) => dataOf(context).retrieval.lore),
   ];
@@ -359,11 +317,19 @@ export function registerPromptBlocksV2(blocks: BlockRegistry): () => void {
 export interface PromptSectionV2 {
   id: string;
   text: string;
+  /** B21：本段内容的实体级来源。 */
+  source?: BlockSource;
+  /** B20：本段被块内截断过（末尾 `…`）。 */
+  truncated?: boolean;
+  /** B20：截断丢掉的 Unicode 码点数。 */
+  droppedChars?: number;
+  /** B20：本段的 token 预算（没设就缺省）。 */
+  tokenBudget?: number;
 }
 
 /**
- * 兜底路径的固定顺序拼接（无预算、不裁剪）——与旧实现同构。
- * 与 `assembleBlocks` 用同一套排序规则（placement → priority 降序 → id），两条路径块顺序一致。
+ * 兜底路径的固定顺序拼接：**全局预算不生效**（无 assemble 插件），
+ * 但每块预算/实体级来源与管线路径一致（B20/B21）；块顺序仍按 placement → priority 降序 → id。
  */
 export function renderAllSections(data: PromptBlockDataV2): PromptSectionV2[] {
   const entries: Array<{ id: string; placement: BlockPlacement; priority: number; text: () => string | undefined }> = [
@@ -380,7 +346,14 @@ export function renderAllSections(data: PromptBlockDataV2): PromptSectionV2[] {
     { id: 'app.scene', placement: 'system', priority: 88, text: () => renderSceneSection(data) },
     { id: 'app.items', placement: 'system', priority: 86, text: () => renderItemsSection(data) },
     { id: 'app.examples', placement: 'system', priority: 84, text: () => renderExamplesSection(data) },
+    ...LORE_POSITION_PRIORITIES.map(([position, priority]) => ({
+      id: `app.lore.pos${position}`,
+      placement: 'system' as BlockPlacement,
+      priority,
+      text: () => data.retrieval.lorePositions?.[position],
+    })),
     { id: 'app.memory.matched', placement: 'before-history', priority: 82, text: () => data.retrieval.memory },
+    { id: 'app.authors_note', placement: 'before-history', priority: 81, text: () => authorsNoteDisplay(data.authorsNote, data.macros) },
     { id: 'app.summary.matched', placement: 'before-history', priority: 80, text: () => data.retrieval.summary },
     { id: 'app.lore.matched', placement: 'before-history', priority: 78, text: () => data.retrieval.lore },
   ];
@@ -393,7 +366,17 @@ export function renderAllSections(data: PromptBlockDataV2): PromptSectionV2[] {
   const sections: PromptSectionV2[] = [];
   for (const entry of entries) {
     const text = entry.text();
-    if (text !== undefined && text !== '') sections.push({ id: entry.id, text });
+    if (text === undefined || text === '') continue;
+    const tokenBudget = blockBudgetOf(entry.id);
+    const cut = truncateToTokenBudget(text, tokenBudget);
+    const source = sourceOfBlock(entry.id, data);
+    sections.push({
+      id: entry.id,
+      text: cut.text,
+      ...(source === undefined ? {} : { source }),
+      ...(cut.truncated ? { truncated: true, droppedChars: cut.droppedChars } : {}),
+      ...(tokenBudget === undefined ? {} : { tokenBudget }),
+    });
   }
   return sections;
 }

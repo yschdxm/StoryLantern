@@ -12,10 +12,13 @@ export function RequestDetail({
   preview,
   previousBody,
   postHistory,
+  authorsNote,
 }: {
   preview: ChatPreview;
   previousBody?: string | undefined;
   postHistory?: string | undefined;
+  /** 只有请求对象真的带了 authorsNote 才显示（没有就只靠系统提示块，不编造）。 */
+  authorsNote?: string | undefined;
 }): ReactNode {
   const t = useT();
   const [feedback, setFeedback] = useState<'ok' | 'failed' | undefined>(undefined);
@@ -57,6 +60,12 @@ export function RequestDetail({
         <>
           <h3 className="trace__heading">{t('chat.request.postHistory')}</h3>
           <pre className="request-detail__pre">{postHistory}</pre>
+        </>
+      )}
+      {authorsNote !== undefined && authorsNote !== '' && (
+        <>
+          <h3 className="trace__heading">{t('chat.request.authorsNote')}</h3>
+          <pre className="request-detail__pre">{authorsNote}</pre>
         </>
       )}
       <h3 className="trace__heading">{t('chat.request.body')}</h3>

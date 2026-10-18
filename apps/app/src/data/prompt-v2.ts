@@ -8,7 +8,8 @@
  * 依据：`docs/specs/角色卡结构设计文档.md` 第 3–12 章、`docs/specs/世界资源设计文档.md` 第 3、8 章。
  */
 
-import { CITATION_INSTRUCTION, formatNumbered, stripCitationMarkers } from './citations.ts';
+import { CITATION_INSTRUCTION } from './citations.ts';
+import { citationWindowOf, lastMessageKeyOf, toMessages } from './prompt-history.ts';
 import { isCharacterCard, isItemCard, isLoreCard, isSceneCard } from '../../../../packages/cards/src/index.ts';
 import type {
   CardDocument,
@@ -21,12 +22,17 @@ import type {
 } from '../../../../packages/cards/src/index.ts';
 import type { ScoredEntry } from '../../../../packages/lore/src/index.ts';
 import { retrieve } from '../../../../packages/oplog/src/index.ts';
-import type { AssembleFn, PromptGraph } from '../../../../plugins/writing-pipeline/src/index.ts';
+import type { AssembleFn } from '../../../../plugins/writing-pipeline/src/index.ts';
+import type { BlockSource } from '../../../../plugins/context-blocks/src/index.ts';
 import { expandMacros } from './macros.ts';
 import { formatMemoryBlock, selectMemories, type RetrievedMemory } from './memory-retrieval.ts';
-import { renderAllSections, type PromptBlockDataV2, type PromptSummary, type PromptWorldV2 } from './prompt-blocks-v2.ts';
+import type { PromptBlockDataV2, PromptSummary, PromptWorldV2 } from './prompt-blocks-v2.ts';
+// 两条装配路径的 trace 收口在 prompt-trace.ts（B20/B21 字段也在那里落到 PromptTraceBlockV2）。
+import { assembleFallback, assemblePipeline } from './prompt-trace.ts';
+import { ensureAuthorsNoteBlock, readAuthorsNote } from './prompt-authors-note.ts';
 // 典籍检索：全局字符预算 + 扫描深度（设置 `chat.lore_scan_depth`）+ 整词匹配 + 单条 token_budget 都在 prompt-lore 里消费。
 import { loreScanDepthOf, loreTextOf } from './prompt-lore.ts';
+import { insertLoreAtDepth } from './prompt-lore-positions.ts';
 import { estimateTokens, type ChatPromptMessage, type PromptHistoryItem } from './tokens.ts';import { SETTING_KEYS, type Memory, type MessageRole } from './types.ts';
 
 // 典籍检索的实现搬到了 prompt-lore.ts；这些名字仍从这里导出，避免调用方/测试跟着改
@@ -34,11 +40,19 @@ export { loreBooksOf, passesProbability, stableHash } from './prompt-lore.ts';
 
 export type PromptSectionKind =
   | 'custom' | 'setup' | 'rules' | 'character' | 'state' | 'scene'
-  | 'items' | 'examples' | 'memory' | 'summary' | 'lore' | 'postHistory';
+  | 'items' | 'examples' | 'memory' | 'summary' | 'lore' | 'postHistory' | 'authorsNote';
 
 export interface PromptTraceBlockV2 {
   id: string; kind: PromptSectionKind; chars: number;
   estimatedTokens: number; included: boolean; reason: string;
+  /** B21：实体级来源（角色/场景/物品/典籍/会话/摘要/记忆）。 */
+  source?: BlockSource;
+  /** B20：本块被块内截断过（末尾 `…`）。 */
+  truncated?: boolean;
+  /** B20：截断丢掉的 Unicode 码点数。 */
+  droppedChars?: number;
+  /** B20：本块 token 预算（没设就缺省）。 */
+  tokenBudget?: number;
 }
 
 export interface PromptTraceV2 {
@@ -48,6 +62,10 @@ export interface PromptTraceV2 {
   excluded: { role: MessageRole; reason: 'empty' | 'error' | 'limit'; preview: string }[];
   /** 因条件求值未实现而被跳过的规则条数（不能假装全生效）。 */
   rulesOmitted: number; loreDropped: number;
+  /** 每个 position 注入条数（索引 0–7；8 = 未设 position 的旧块）。 */
+  lorePositionCounts: number[];
+  /** position=7（outlet）未注入条数与名字（无宿主消费者，不静默）。 */
+  loreOutletDropped: number; loreOutletsIgnored: string[];
   historyIncluded: number; historyLimit: number; systemChars: number;
   messageChars: number; usedTokens: number; budgetTokens: number; omitted: number;
 }
@@ -101,27 +119,6 @@ function splitHistory(history: readonly PromptHistoryItem[], limit: number) {
   return { kept: usable.slice(-limit), excluded };
 }
 
-function toMessages(kept: readonly PromptHistoryItem[], cite: boolean): ChatPromptMessage[] {
-  return kept.map((item, index) => ({
-    role: item.role === 'assistant' ? 'assistant' : item.role === 'user' ? 'user' : 'system',
-    // 编号前先去掉旧回复里已有的引用标记：否则上一轮带进来的 `[16]` 会被再编号成 `[2] [16]`，
-    // 模型会把旧编号当成新的窗口编号。扫描用的 history 仍是原文（见 data.history）。
-    content: cite ? formatNumbered(stripCitationMarkers(item.content), index + 1) : item.content,
-  }));
-}
-
-/** 引用窗口：与 messages 顺序一致；没有 id 的消息留 undefined（不伪造 id）。 */
-function citationWindowOf(kept: readonly PromptHistoryItem[]): (string | undefined)[] {
-  return kept.map((item) => (typeof item.id === 'string' && item.id !== '' ? item.id : undefined));
-}
-
-/** 概率判定的种子：优先用最后一条历史消息的 id；没有 id 时退化为 `role:content`（跨设备稳定）。 */
-function lastMessageKeyOf(kept: readonly PromptHistoryItem[]): string {
-  const last = kept[kept.length - 1];
-  if (last === undefined) return '';
-  return typeof last.id === 'string' && last.id !== '' ? last.id : `${last.role}:${last.content}`;
-}
-
 /**
  * post-history 指令：**会话成员**（不含不在场的卡）按 setup 顺序拼接，空串跳过。
  * 作者文本里的 `{{char}}`/`{{user}}` 在这里展开（用户输入/历史不展开）。
@@ -161,7 +158,7 @@ export function createPromptBlockDataV2(options: {
   custom: string; setup: SessionSetup; cards: readonly CardDocument[]; runtime: SessionRuntime;
   history: ReadonlyArray<{ role: MessageRole; content: string }>;
   memories?: readonly Memory[]; summaries?: readonly PromptSummary[]; preselectedSummaries?: readonly PromptSummary[];
-  loreBudgetChars?: number; loreScanDepth?: number; lastMessageKey?: string;
+  loreBudgetChars?: number; loreScanDepth?: number; lastMessageKey?: string; sessionTitle?: string; authorsNote?: string;
 }): PromptBlockDataV2 {
   const world = buildPromptWorldV2(options.cards, options.setup);
   const first = world.members[0];
@@ -180,9 +177,14 @@ export function createPromptBlockDataV2(options: {
     ...(options.preselectedSummaries === undefined ? {} : { preselectedSummaries: options.preselectedSummaries }),
     ...(options.loreBudgetChars === undefined ? {} : { loreBudgetChars: options.loreBudgetChars }),
     ...(options.loreScanDepth === undefined ? {} : { loreScanDepth: options.loreScanDepth }),
+    ...(options.sessionTitle === undefined ? {} : { sessionTitle: options.sessionTitle }),
+    ...(options.authorsNote === undefined ? {} : { authorsNote: options.authorsNote }),
     lastMessageKey: options.lastMessageKey ?? '',
     retrieval: {},
-    outcomes: { matchedLore: [], loreDropped: 0, matchedMemories: [], matchedSummaries: [], rulesOmitted: 0 },
+    outcomes: {
+      matchedLore: [], loreDropped: 0, matchedMemories: [], matchedSummaries: [], rulesOmitted: 0,
+      lorePositionCounts: Array.from({ length: 9 }, () => 0), loreOutletDropped: 0, loreOutletsIgnored: [],
+    },
   };
 }
 
@@ -232,83 +234,13 @@ function precomputeRetrieval(data: PromptBlockDataV2): void {
   if (lore !== undefined) data.retrieval.lore = lore;
 }
 
-function kindOf(id: string): PromptSectionKind | undefined {
-  if (id === 'app.system.custom') return 'custom';
-  if (id === 'app.setup') return 'setup';
-  if (id === 'app.rules') return 'rules';
-  if (id === 'app.character' || id.startsWith('app.character.')) return 'character';
-  if (id === 'app.state') return 'state';
-  if (id === 'app.scene') return 'scene';
-  if (id === 'app.items') return 'items';
-  if (id === 'app.examples') return 'examples';
-  if (id === 'app.memory.matched') return 'memory';
-  if (id === 'app.summary.matched') return 'summary';
-  if (id === 'app.lore.matched') return 'lore';
-  return undefined;
-}
-
-interface AssembledV2 {
-  systemPrompt: string;
-  blocks: PromptTraceBlockV2[];
-  usedTokens: number;
-  omitted: number;
-}
-
-function assemblePipeline(
-  assemble: AssembleFn,
-  data: PromptBlockDataV2,
-  sessionTitle: string,
-  budgetTokens: number,
-): AssembledV2 {
-  const graph: PromptGraph = assemble(
-    // 历史不进块（保留 role 结构），transcript 传空；也不传 characterName，
-    // 避免 context-blocks 的内置 `character` 块再生成一段"你是「…」"与角色块重复。
-    { sessionTitle, transcript: [], data: data as unknown as Record<string, unknown> },
-    budgetTokens,
-  );
-  const included = graph.order
-    .map((id) => graph.nodes.find((node) => node.id === id))
-    .filter((node): node is PromptGraph['nodes'][number] => node !== undefined && node.included);
-  const blocks: PromptTraceBlockV2[] = [];
-  for (const node of graph.nodes) {
-    const kind = kindOf(node.id);
-    if (kind === undefined) continue;
-    blocks.push({ id: node.id, kind, chars: (node.text ?? '').length, estimatedTokens: node.tokens, included: node.included, reason: node.reason });
-  }
-  return {
-    systemPrompt: included.map((node) => node.text ?? '').filter((text) => text !== '').join('\n'),
-    blocks,
-    usedTokens: graph.usedTokens,
-    omitted: graph.omitted,
-  };
-}
-
-function assembleFallback(data: PromptBlockDataV2): AssembledV2 {
-  const sections = renderAllSections(data);
-  const blocks = sections.map(
-    (section): PromptTraceBlockV2 => ({
-      id: section.id,
-      kind: kindOf(section.id) ?? 'custom',
-      chars: section.text.length,
-      estimatedTokens: estimateTokens(section.text),
-      included: true,
-      reason: '',
-    }),
-  );
-  return {
-    systemPrompt: sections.map((section) => section.text).join('\n'),
-    blocks,
-    usedTokens: blocks.reduce((sum, block) => sum + block.estimatedTokens, 0),
-    omitted: 0,
-  };
-}
-
 export function buildChatRequestV2(options: BuildChatRequestV2Options): ChatRequestV2 {
   const limit = historyLimitOf(options.settings);
   const { kept, excluded } = splitHistory(options.history, limit);
   const loreScanDepth = loreScanDepthOf(options.settings);
-  const messages = toMessages(kept, options.cite === true);
-  const citationWindow = citationWindowOf(kept);
+  const authorsNote = readAuthorsNote(options.settings);
+  let messages = toMessages(kept, options.cite === true);
+  let citationWindow = citationWindowOf(kept);
   const data = createPromptBlockDataV2({
     custom: (options.settings[SETTING_KEYS.systemPrompt] ?? '').trim(),
     setup: options.setup,
@@ -320,6 +252,8 @@ export function buildChatRequestV2(options: BuildChatRequestV2Options): ChatRequ
     ...(options.preselectedSummaries === undefined ? {} : { preselectedSummaries: options.preselectedSummaries }),
     ...(options.loreBudgetChars === undefined ? {} : { loreBudgetChars: options.loreBudgetChars }),
     ...(loreScanDepth === undefined ? {} : { loreScanDepth }),
+    ...(authorsNote === undefined ? {} : { authorsNote }),
+    sessionTitle: options.sessionTitle,
     lastMessageKey: lastMessageKeyOf(kept),
   });
   // post-history 指令来自**会话成员**（data.world.members 已按 setup.characters 顺序排好）。
@@ -367,6 +301,16 @@ export function buildChatRequestV2(options: BuildChatRequestV2Options): ChatRequ
     },
   ];
 
+  // B18 作者注：已注册块在两条路径按 priority 81 注入；空/未设时补一个可见的 included:false 块。
+  blocks = ensureAuthorsNoteBlock(blocks, authorsNote);
+
+  // B19 @depth：作为 system 消息插入（无 position 预算概念）；引用窗口同步补位
+  const depthInjection = insertLoreAtDepth(messages, citationWindow, data.retrieval.loreAtDepth ?? []);
+  if (depthInjection.injected > 0) {
+    messages = depthInjection.messages;
+    citationWindow = depthInjection.citationWindow;
+  }
+
   const messageChars = messages.reduce((sum, message) => sum + message.content.length, 0);
   return {
     systemPrompt,
@@ -384,7 +328,10 @@ export function buildChatRequestV2(options: BuildChatRequestV2Options): ChatRequ
       excluded,
       rulesOmitted: data.outcomes.rulesOmitted,
       loreDropped: data.outcomes.loreDropped,
-      historyIncluded: messages.length,
+      lorePositionCounts: data.outcomes.lorePositionCounts ?? [],
+      loreOutletDropped: data.outcomes.loreOutletDropped ?? 0,
+      loreOutletsIgnored: data.outcomes.loreOutletsIgnored ?? [],
+      historyIncluded: kept.length,
       historyLimit: limit,
       systemChars: systemPrompt.length,
       messageChars,

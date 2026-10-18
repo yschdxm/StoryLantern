@@ -34,6 +34,10 @@ export function parseLorebook(value: unknown, fallbackName: string): ImportedLor
     const disabled = entry['disable'] === true || entry['enabled'] === false;
     const order = asInteger(entry['order'] ?? entry['insertion_order']);
     const depth = asInteger(entry['depth']);
+    // ST position 0–7（越界/非法不写）；outlet 名只保留非空
+    const positionRaw = asInteger(entry['position']);
+    const position = positionRaw !== undefined && positionRaw >= 0 && positionRaw <= 7 ? positionRaw : undefined;
+    const outlet = asString(entry['outlet']).trim();
     // ST 用 excludeRecursion 表达"不参与二次触发"；字段缺失时的默认值仍是允许递归
     const excluded = entry['excludeRecursion'] ?? entry['exclude_recursion'];
     // 整词匹配：ST 原生是 matchWholeWords；CCv3/其它导出器可能写 match_whole_words
@@ -73,6 +77,8 @@ export function parseLorebook(value: unknown, fallbackName: string): ImportedLor
         constant: entry['constant'] === true,
         ...(order === undefined ? {} : { order }),
         ...(depth === undefined ? {} : { depth }),
+        ...(position === undefined ? {} : { position }),
+        ...(outlet === '' ? {} : { outlet }),
         ...(excluded === undefined ? {} : { recursive: excluded !== true }),
         ...(typeof wholeWords === 'boolean' ? { matchWholeWords: wholeWords } : {}),
         ...(tokenBudget === undefined ? {} : { tokenBudget }),

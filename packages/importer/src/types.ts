@@ -17,6 +17,10 @@ export interface ImportedLorebookEntry {
   order?: number;
   /** ST 的深度窗口（`depth`）；0/缺省 = 用默认窗口。 */
   depth?: number;
+  /** ST `position`（0–7，原样保留）；app 映射到 `LoreTrigger.position`。 */
+  position?: number;
+  /** ST `outlet` 名（原样保留；没有宿主消费者时不注入，由 app 计数）。 */
+  outlet?: string;
   /** 是否允许递归扫描（ST 的 `excludeRecursion` 取反）；缺省 true。 */
   recursive?: boolean;
   /**

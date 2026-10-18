@@ -16,6 +16,22 @@ export const Config = defineConfig({
 
 export type BlockPlacement = 'system' | 'before-history' | 'at-depth' | 'after-history';
 
+/**
+ * 实体级来源（B21）：这个块的内容**来自哪里**，供请求面板说明"模型看到的这段是谁的"。
+ *
+ * 聚合块（多个角色/多条命中）把 id 用逗号连接；单实体块就是那一个 id。
+ * 类型里 `setting` 留给设置类来源，避免以后加来源时再改一次契约。
+ */
+export type BlockSourceType = 'character' | 'scene' | 'item' | 'lore' | 'session' | 'setting' | 'summary' | 'memory';
+
+export interface BlockSource {
+  type: BlockSourceType;
+  /** 实体 id；聚合时为逗号分隔（按稳定顺序）。 */
+  id?: string;
+  /** 展示名（面板直接用；聚合时为顿号分隔）。 */
+  label?: string;
+}
+
 export interface BlockContext {
   sessionTitle: string;
   characterName?: string;
@@ -36,6 +52,15 @@ export interface BlockDefinition {
   placement: BlockPlacement;
   /** 越大越先满足预算。 */
   priority: number;
+  /**
+   * 本块自己的 token 预算（B20）：超出时**块内截断**（末尾 `…`），而不是整块被全局预算丢掉。
+   * 缺省 = 本块没有独立预算（仍受全局预算约束）。
+   */
+  tokenBudget?: number;
+  /** 必须保留（B20）：全局预算不足时不裁它；没有它这次请求就不可用（例如角色设定/本局处境）。 */
+  mustKeep?: boolean;
+  /** 实体级来源（B21）：静态对象或按装配上下文计算的函数。 */
+  source?: BlockSource | ((context: BlockContext) => BlockSource | undefined);
   /** 返回 undefined 表示本块这次不参与（例如没有对应内容）。 */
   render(context: BlockContext): string | undefined;
 }

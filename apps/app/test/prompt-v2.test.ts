@@ -285,8 +285,8 @@ test('没有 assemble 时走兜底拼接：trace.pipeline === false，块按固�
     cards: [characterCard()],
   }));
   assert.equal(request.trace.pipeline, false);
-  assert.deepEqual(request.trace.blocks.map((block) => block.kind), ['custom', 'character', 'postHistory']);
-  assert.deepEqual(request.trace.blocks.map((block) => block.id), ['app.system.custom', 'app.character.c1', 'app.post_history']);
+  assert.deepEqual(request.trace.blocks.map((block) => block.kind), ['custom', 'character', 'postHistory', 'authorsNote']);
+  assert.deepEqual(request.trace.blocks.map((block) => block.id), ['app.system.custom', 'app.character.c1', 'app.post_history', 'app.authors_note']);
   assert.ok(request.systemPrompt.startsWith('自定义。'));
 });
 

@@ -61,6 +61,8 @@ export function RequestTracePanel({
 }): ReactNode {
   const t = useT();
   const [detailOpen, setDetailOpen] = useState(false);
+  // ChatCall 目前没有 authorsNote（作者注在系统提示块里）；只有调用方真的带上时才显示。
+  const requestAuthorsNote = (state?.request as (ChatCall & { authorsNote?: string }) | undefined)?.authorsNote;
   const historyLabels: RequestHistoryLabels = {
     title: t('chat.request.history.title'),
     empty: t('chat.request.history.empty'),
@@ -94,6 +96,7 @@ export function RequestTracePanel({
               preview={state.preview}
               previousBody={state.previousBody}
               postHistory={state.request?.postHistory}
+              authorsNote={requestAuthorsNote}
             />
           )}
 
@@ -128,6 +131,17 @@ export function RequestTracePanel({
                       ? ''
                       : ` · ${t('chat.trace.block.omitted')}`}
                 </span>
+                {block.source !== undefined && (
+                  <span className="trace__meta">
+                    {t('chat.trace.source', {
+                      type: t(`chat.trace.source.${block.source.type}`),
+                      label: block.source.label ?? block.source.id ?? '—',
+                    })}
+                  </span>
+                )}
+                {block.truncated === true && (
+                  <span className="trace__meta">{t('chat.trace.block.truncated', { chars: block.droppedChars ?? 0 })}</span>
+                )}
                 {block.reason !== '' && <span className="trace__reason">{block.reason}</span>}
               </li>
             ))}
@@ -205,6 +219,14 @@ export function RequestTracePanel({
           )}
           {state.trace.loreDropped > 0 && (
             <p className="trace__meta">{t('chat.trace.loreDropped', { count: state.trace.loreDropped })}</p>
+          )}
+          {state.trace.loreOutletDropped > 0 && (
+            <p className="notice notice--warn">
+              {t('chat.trace.outletDropped', {
+                count: state.trace.loreOutletDropped,
+                names: state.trace.loreOutletsIgnored.length === 0 ? '' : `（${state.trace.loreOutletsIgnored.join('、')}）`,
+              })}
+            </p>
           )}
           {historyError !== undefined && (
             <p className="notice notice--warn">{t('chat.request.history.failed', { message: historyError })}</p>

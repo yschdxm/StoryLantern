@@ -143,8 +143,17 @@ export interface LoreTrigger {
    * `<=0` / 未设 = 不截断。注意它与全局扫描预算（`budgetChars`）是两件事。
    */
   token_budget?: number;
-  /** 深度窗口：注入位置/匹配窗口，语义与旧世界书 `depth` 一致。 */
+  /** 深度窗口：注入位置/匹配窗口，语义与旧世界书 `depth` 一致；`position=4` 时也用作插入深度。 */
   depth?: number;
+  /**
+   * 注入位置（自有语义，不冒充 ST 原生）：
+   * `0`=角色前(96)、`1`=角色后(94)、`2`=场景前(89)、`3`=场景后(87)、`5`=示例前(85)、
+   * `6`=示例后(83)、`4`=按 `depth` 作为 system 消息插入对话（默认 4）、`7`=outlet（无宿主消费者，不注入）。
+   * 未设 = 旧行为（收进 `app.lore.matched`，before-history 78）。
+   */
+  position?: 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
+  /** 酒馆 outlet 名；没有宿主消费者时不注入，但会在 trace 里计数并列出名字。 */
+  outlet?: string;
   /**
    * 整词匹配：只影响**英文/ASCII 词**（`bell` 不命中 `umbrella`）；CJK 仍按子串（`铃` 命中 `铜铃`）。
    * 默认 false（纯子串）。

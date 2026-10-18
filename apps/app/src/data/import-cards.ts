@@ -229,6 +229,9 @@ function loreCardOf(
       recursive: entry.recursive ?? true,
       // depth=0 表示默认窗口：省略字段（0 与"不注入"是两种语义，不能混）
       ...(input.depth === 0 ? {} : { depth: input.depth }),
+      // ST position（0–7，解析器已校验）/ outlet：没给就不写
+      ...(entry.position === undefined ? {} : { position: entry.position as 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 }),
+      ...(entry.outlet === undefined || entry.outlet === '' ? {} : { outlet: entry.outlet }),
       // 整词匹配 / 单条预算：解析器给了才写（没给不写，不猜）
       ...(entry.matchWholeWords === undefined ? {} : { match_whole_words: entry.matchWholeWords }),
       ...(entry.tokenBudget === undefined ? {} : { token_budget: entry.tokenBudget }),
@@ -306,7 +309,6 @@ export function planLorebookImport(
   }
   return { pack, cards, notes };
 }
-
 /** 角色卡：酒馆字段 → 卡片 / 草稿 / 丢弃清单。 */
 export function planCharacterImport(input: ImportedCharacter, options: { now: number; id?: string }): ImportPlan {
   const cardId = options.id ?? ulid();
@@ -355,7 +357,6 @@ export function planCharacterImport(input: ImportedCharacter, options: { now: nu
     ...(quickReplies.length === 0 ? {} : { quick_replies: quickReplies }),
     compat,
   };
-
   const stash = stashEntriesOf(input, cardId, options.now, parsed);
   const notes: string[] = [];
   if (regexScripts.length > 0) {
@@ -378,7 +379,6 @@ export function planCharacterImport(input: ImportedCharacter, options: { now: nu
   notes.push('knowledge_boundary / ability_boundary 留空，可由作者或 Agent 补全');
   notes.push('speech.style 留空，可由 Agent 从描述里提取');
   if (discarded.length > 0) notes.push(`已丢弃字段（无对应承载，仅留审计）：${discarded.join('、')}`);
-
   let loreCards: LoreCard[] = [];
   let pack: WorldPackManifest | undefined;
   if (input.lorebook !== undefined) {

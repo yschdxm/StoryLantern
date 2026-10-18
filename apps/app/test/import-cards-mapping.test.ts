@@ -21,6 +21,8 @@ const ST_ENTRY = {
   disable: false,
   order: 10,
   depth: 4,
+  position: 4,
+  outlet: 'outletA',
   excludeRecursion: true,
   preventRecursion: true,
   delayUntilRecursion: 2,
@@ -50,6 +52,8 @@ test('B3–B6 全字段：导入落 trigger，导出写回 ST 原字段，再导
   assert.equal(trigger.sticky, 3);
   assert.equal(trigger.cooldown, 5);
   assert.equal(trigger.delay, 1);
+  assert.equal(trigger.position, 4, 'ST position → trigger.position');
+  assert.equal(trigger.outlet, 'outletA', 'ST outlet → trigger.outlet');
 
   const exported = exportLorebook(first.pack, first.cards);
   const payload = JSON.parse(exported.json) as { entries: Record<string, Record<string, unknown>> };
@@ -64,6 +68,8 @@ test('B3–B6 全字段：导入落 trigger，导出写回 ST 原字段，再导
   assert.equal(entry['sticky'], 3);
   assert.equal(entry['cooldown'], 5);
   assert.equal(entry['delay'], 1);
+  assert.equal(entry['position'], 4, 'position 反向写回 ST 原字段');
+  assert.equal(entry['outlet'], 'outletA', 'outlet 反向写回 ST 原字段');
   assert.equal(entry['selective'], true);
 
   // B3–B6 字段已能往返：losses 里不能出现它们
@@ -77,6 +83,8 @@ test('B3–B6 全字段：导入落 trigger，导出写回 ST 原字段，再导
     'lore.trigger.sticky',
     'lore.trigger.cooldown',
     'lore.trigger.delay',
+    'lore.trigger.position',
+    'lore.trigger.outlet',
   ]) {
     assert.equal(exported.losses.includes(loss), false, `${loss} 已能往返，不该报丢失`);
   }
@@ -108,6 +116,8 @@ test('B3–B6：delayUntilRecursion 布尔兼容（true→1，false/缺省不写
     'sticky',
     'cooldown',
     'delay',
+    'position',
+    'outlet',
   ]) {
     assert.equal(key in trigger, false, `没给的 ${key} 不能凭空写进 trigger`);
   }

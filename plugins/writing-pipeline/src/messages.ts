@@ -12,10 +12,14 @@ export const MESSAGES: Record<string, LocaleMessages> = {
   'zh-CN': {
     'pipeline.node.included': '纳入（优先级 {{priority}}，占用 {{tokens}} tokens）',
     'pipeline.node.omitted': '预算不足裁掉（已用 {{used}}/{{budget}}，本块需 {{tokens}}）',
+    'pipeline.node.truncated': '块内截断到本块预算 {{budget}} tokens（丢掉 {{dropped}} 字，末尾…；截后 {{tokens}} tokens）',
+    'pipeline.node.mustKeep': '必须保留：全局预算 {{used}}/{{budget}} 已满，仍纳入本块（{{tokens}} tokens）',
   },
   en: {
     'pipeline.node.included': 'Included (priority {{priority}}, {{tokens}} tokens)',
     'pipeline.node.omitted': 'Dropped for budget (used {{used}}/{{budget}}, needs {{tokens}})',
+    'pipeline.node.truncated': 'Truncated to this block budget of {{budget}} tokens ({{dropped}} chars dropped, ends with …; now {{tokens}} tokens)',
+    'pipeline.node.mustKeep': 'Must keep: global budget {{used}}/{{budget}} is full, still included ({{tokens}} tokens)',
   },
 };
 

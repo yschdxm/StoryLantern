@@ -4,7 +4,7 @@ import { SETTING_KEYS } from '../data/types.ts';
 import { useT } from '../i18n/context.tsx';
 import { useAppState } from '../screens/screen-props.ts';
 import { ModelProfilesPanel } from '../screens/ModelProfilesPanel.tsx';
-import { Button, Field, TextInput } from '../ui/components.tsx';
+import { Button, Field, TextArea, TextInput } from '../ui/components.tsx';
 import { SettingsRow } from '../ui/SettingsRow.tsx';
 import { SettingsDetail, SettingsList, useSectionDetail } from './SettingsSection.tsx';
 import type { SettingsProps } from './settings-types.ts';
@@ -111,6 +111,15 @@ export function ModelSettings({ store, chat, transport, initialRow }: SettingsPr
                   if (raw.trim() === '' || String(clamped) !== raw) saveNow(SETTING_KEYS.loreScanDepth, String(clamped));
                   else commit(SETTING_KEYS.loreScanDepth);
                 }}
+              />
+            </Field>
+            <Field label={t('settings.model.authorsNote')} hint={t('settings.model.authorsNote.hint')}>
+              <TextArea
+                value={value(SETTING_KEYS.authorsNote)}
+                onChange={(next) => update(SETTING_KEYS.authorsNote, next)}
+                onBlur={() => commit(SETTING_KEYS.authorsNote)}
+                rows={4}
+                placeholder={t('settings.model.authorsNote.placeholder')}
               />
             </Field>
             <div className="row">
