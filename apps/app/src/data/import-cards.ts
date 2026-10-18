@@ -220,6 +220,9 @@ function loreCardOf(
       recursive: entry.recursive ?? true,
       // depth=0 表示默认窗口：省略字段（0 与"不注入"是两种语义，不能混）
       ...(input.depth === 0 ? {} : { depth: input.depth }),
+      // 整词匹配 / 单条预算：解析器给了才写（没给不写，不猜）
+      ...(entry.matchWholeWords === undefined ? {} : { match_whole_words: entry.matchWholeWords }),
+      ...(entry.tokenBudget === undefined ? {} : { token_budget: entry.tokenBudget }),
     },
     // 条目级启停属于作者的设定语义（LoreCard 已有该字段）：关掉的照常导入，只是不参与扫描
     ...(entry.enabled ? {} : { enabled: false }),

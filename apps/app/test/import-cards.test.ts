@@ -250,6 +250,9 @@ test('导入：独立世界书 → 包 + 典籍卡（含关闭条目与 order/de
           order: 100,
           depth: 4,
           excludeRecursion: true,
+          // ST 原生整词匹配（camelCase）；单条预算目前只有解析器的可选字段
+          matchWholeWords: true,
+          token_budget: 320,
         },
         '1': {
           key: ['铜铃'],
@@ -258,6 +261,9 @@ test('导入：独立世界书 → 包 + 典籍卡（含关闭条目与 order/de
           constant: false,
           disable: true,
           order: 120,
+          // 兼容另一种写法：snake_case + 预算藏在 extensions 命名空间
+          match_whole_words: false,
+          extensions: { storylantern: { token_budget: 128 } },
         },
       },
     }),
@@ -277,11 +283,15 @@ test('导入：独立世界书 → 包 + 典籍卡（含关闭条目与 order/de
   assert.equal(first.trigger?.priority, 100);
   assert.equal(first.trigger?.depth, 4);
   assert.equal(first.trigger?.recursive, false, 'excludeRecursion=true → recursive=false');
+  assert.equal(first.trigger?.match_whole_words, true, 'matchWholeWords → trigger.match_whole_words');
+  assert.equal(first.trigger?.token_budget, 320, 'token_budget → trigger.token_budget');
   assert.deepEqual([...(first.secondary_keys ?? [])], ['夜']);
 
   const disabled = plan.cards[1];
   assert.ok(disabled !== undefined);
   assert.equal(disabled.enabled, false, 'disable=true → enabled:false');
+  assert.equal(disabled.trigger?.match_whole_words, false, 'snake_case 也认，false 要保留');
+  assert.equal(disabled.trigger?.token_budget, 128, 'extensions.storylantern.token_budget 也能读回');
   assert.ok(plan.notes.some((note) => note.includes('关闭')));
 });
 
@@ -312,6 +322,44 @@ test('导出世界书：ST 原生 entries（含禁用条目）+ 无法映射字�
   assert.equal(entry['disable'], false);
   assert.equal(payload.entries['1']?.['disable'], true, '条目级启停要能往返');
   assert.ok(exported.losses.includes('lore.meta.id'), '卡片 id 不能往返，要提示');
+});
+
+test('导入导出映射：整词匹配与单条预算往返；ST 无原生字段走 extensions 且不计入 losses', () => {
+  const plan = planLorebookImport(
+    {
+      name: '边境城',
+      description: '',
+      entries: [
+        {
+          keys: ['铜铃'],
+          secondaryKeys: [],
+          content: '铜铃是遗物。',
+          name: '遗物',
+          enabled: true,
+          constant: false,
+          order: 10,
+          matchWholeWords: true,
+          tokenBudget: 320,
+        },
+      ],
+    },
+    { now: NOW, id: 'book-1' },
+  );
+  assert.equal(plan.cards[0]?.trigger?.match_whole_words, true);
+  assert.equal(plan.cards[0]?.trigger?.token_budget, 320);
+
+  const exported = exportLorebook(plan.pack, plan.cards);
+  const payload = JSON.parse(exported.json) as { entries: Record<string, Record<string, unknown>> };
+  const entry = payload.entries['0'];
+  assert.ok(entry !== undefined);
+  assert.equal(entry['matchWholeWords'], true, '整词匹配写回 ST 原生字段');
+  assert.deepEqual(entry['extensions'], { storylantern: { token_budget: 320 } }, 'ST 没有单条预算字段 → 写扩展命名空间');
+  assert.equal(exported.losses.includes('lore.trigger.token_budget'), false, '写进 extensions 就不算丢失');
+  // 往返：把导出的 JSON 再导入，两个字段都还在
+  const back = importText('back.json', exported.json) as ImportedLorebookFile;
+  const again = planLorebookImport(back.lorebook, { now: NOW, id: 'book-2' });
+  assert.equal(again.cards[0]?.trigger?.match_whole_words, true);
+  assert.equal(again.cards[0]?.trigger?.token_budget, 320);
 });
 
 test('落库：导入计划能直接过校验并写进卡片仓储（过渡态字段只 warning）', async () => {

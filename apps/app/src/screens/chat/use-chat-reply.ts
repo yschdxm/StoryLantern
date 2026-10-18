@@ -5,18 +5,19 @@ import { computeUsage } from '../../../../../packages/oplog/src/index.ts';
 import type { WireTransport } from '../../../../../packages/wire/src/index.ts';
 import type { AppStore } from '../../app/state.ts';
 import { loadWorkspace, type WorkspaceSnapshot } from '../../app/workspace.ts';
-import type { ChatCall, ChatClient, ChatPreview, ChatReplyResult } from '../../data/chat-client.ts';
+import type { ChatCall, ChatClient, ChatDelta, ChatPreview, ChatReplyResult } from '../../data/chat-client.ts';
 import { resolveCitations } from '../../data/citations.ts';
 import { describeError } from '../../data/error-text.ts';
 import { candidatesFor, targetLabel } from '../../data/model-routing.ts';
 import { buildChatRequestV2 } from '../../data/prompt-v2.ts';
 import { selectSummariesForChat } from '../../data/summary-vector-select.ts';
 import { estimateTokens } from '../../data/tokens.ts';
+import { tokensMetaOf, type RealUsage } from '../../data/message-append.ts';
 import { SETTING_KEYS, type MessageCitation, type MessageMeta } from '../../data/types.ts';
 import { createUsageStore } from '../../data/usage-store.ts';
 import { useT } from '../../i18n/context.tsx';
 import type { ModelAttempt, RequestTraceState } from '../RequestTracePanel.tsx';
-import { buildChatOptionsV2 } from '../chat-request.ts';
+import { buildChatOptionsV2, includeUsageOf } from '../chat-request.ts';
 
 export interface StreamingReply {
   text: string;
@@ -118,6 +119,7 @@ export function useChatReply(input: {
       messages: request.messages,
       ...(request.systemPrompt === '' ? {} : { systemPrompt: request.systemPrompt }),
       ...(request.postHistory === undefined ? {} : { postHistory: request.postHistory }),
+      includeUsage: includeUsageOf(fresh.settings),
     };
     const firstCall: ChatCall =
       candidates[0]?.id === undefined || candidates[0].id === '' ? baseCall : { ...baseCall, profileId: candidates[0].id };
@@ -152,6 +154,8 @@ export function useChatReply(input: {
     let streamedReasoning = '';
     let firstDeltaAt: number | undefined;
     let promptTokens = 0;
+    /** 接口回来的真实用量（流末尾的 usage chunk）；没有就是 undefined → 用估算。 */
+    let realUsage: RealUsage | undefined;
 
     const metaOf = (
       outcome: ChatReplyResult,
@@ -164,11 +168,7 @@ export function useChatReply(input: {
       modelLabel: candidateLabel,
       ...(outcome.reasoning === undefined || outcome.reasoning === '' ? {} : { reasoning: outcome.reasoning }),
       ...(citationList.length === 0 ? {} : { citations: citationList }),
-      tokens: {
-        ...(promptTokens === 0 ? {} : { prompt: promptTokens }),
-        completion: estimateTokens(text),
-        estimated: true,
-      },
+      tokens: tokensMetaOf(outcome.usage ?? realUsage, promptTokens, estimateTokens(text)),
       timing: {
         ...(firstDeltaAt === undefined ? {} : { firstDeltaMs: firstDeltaAt - startedAt }),
         totalMs: Date.now() - startedAt,
@@ -215,12 +215,14 @@ export function useChatReply(input: {
                   if (firstDeltaAt === undefined) firstDeltaAt = Date.now();
                   streamedReasoning += delta.reasoning;
                 }
+                if (delta.usage !== undefined) realUsage = delta.usage;
                 setStreaming({ text: streamedText, reasoning: streamedReasoning });
               },
             },
           );
           winner = { id: candidate.id, label: targetLabel(candidate) };
           attempts.push({ label: winner.label, ok: true, ms: Date.now() - attemptStarted });
+          const actual = outcome.usage ?? realUsage;
           await usage
             .record(
               fresh.settings['device.id'] ?? 'unknown',
@@ -228,8 +230,8 @@ export function useChatReply(input: {
                 at: Date.now(),
                 task: 'chat',
                 modelId: candidate.id === '' ? 'default' : candidate.id,
-                promptTokens,
-                completionTokens: estimateTokens(outcome.text),
+                promptTokens: actual?.promptTokens ?? promptTokens,
+                completionTokens: actual?.completionTokens ?? estimateTokens(outcome.text),
                 prices: usage.prices().value,
               }),
             )
@@ -293,11 +295,7 @@ export function useChatReply(input: {
                 modelLabel: candidates[0] === undefined ? '—' : targetLabel(candidates[0]),
                 ...(streamedReasoning === '' ? {} : { reasoning: streamedReasoning }),
                 citations: resolved.citations,
-                tokens: {
-                  ...(promptTokens === 0 ? {} : { prompt: promptTokens }),
-                  completion: estimateTokens(resolved.text),
-                  estimated: true,
-                },
+                tokens: tokensMetaOf(realUsage, promptTokens, estimateTokens(resolved.text)),
                 timing: {
                   ...(firstDeltaAt === undefined ? {} : { firstDeltaMs: firstDeltaAt - startedAt }),
                   totalMs: Date.now() - startedAt,

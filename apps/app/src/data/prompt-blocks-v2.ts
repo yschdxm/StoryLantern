@@ -23,6 +23,7 @@ import type {
   Tone,
 } from '../../../../packages/cards/src/index.ts';
 import type { ScoredEntry } from '../../../../packages/lore/src/index.ts';
+import { expandMacros, type MacroContext } from './macros.ts';
 import type { RetrievedMemory } from './memory-retrieval.ts';
 import { appendVisualCaptions } from './prompt-visuals.ts';
 import type { Memory, MessageRole } from './types.ts';
@@ -71,6 +72,10 @@ export interface PromptBlockDataV2 {
   memories: readonly Memory[];
   summaries: readonly PromptSummary[];
   preselectedSummaries?: readonly PromptSummary[];
+  /** 作者文本里的 `{{char}}`/`{{user}}` 展开上下文（缺省 = 不展开任何宏）。 */
+  macros?: MacroContext;
+  /** 世界书扫描深度（设置 `chat.lore_scan_depth`；缺省 = 扫描器默认 4）。 */
+  loreScanDepth?: number;
   loreBudgetChars?: number;
   /** 概率判定的确定性种子：最后一条历史消息的 id（缺 id 时见 prompt-v2 的替代）。 */
   lastMessageKey: string;
@@ -97,6 +102,10 @@ const PLACEMENT_ORDER: readonly BlockPlacement[] = ['system', 'before-history', 
 
 function dataOf(context: BlockContext): PromptBlockDataV2 {
   return (context.data ?? {}) as unknown as PromptBlockDataV2;
+}
+/** 宏展开 + 保持"无内容返回 undefined"的语义。 */
+function expandText(text: string | undefined, macros: MacroContext | undefined): string | undefined {
+  return text === undefined || text === '' ? text : expandMacros(text, macros);
 }
 function trimmed(value: string | undefined): string {
   return (value ?? '').trim();
@@ -169,10 +178,10 @@ export function renderCharacterSection(character: CharacterCard): string {
   return lines.join('\n');
 }
 
-/** 所有成员角色的角色块（管线里合并成一块；兜底路径逐角色拆块）。 */
+/** 所有成员角色的角色块（管线里合并成一块；兜底路径逐角色拆块）。作者文本里的宏在这里展开。 */
 export function renderCharacterSections(data: PromptBlockDataV2): string | undefined {
   if (data.world.members.length === 0) return undefined;
-  return data.world.members.map((character) => renderCharacterSection(character)).join('\n');
+  return expandMacros(data.world.members.map((character) => renderCharacterSection(character)).join('\n'), data.macros);
 }
 
 /** 规则块：只处理 before_prompt 且启用的 constraint / inject_prompt；带条件表达式的跳过并计数。 */
@@ -180,13 +189,13 @@ export function renderCharacterSections(data: PromptBlockDataV2): string | undef
 import { renderRulesSection } from './prompt-rules.ts';
 export { renderRulesSection };
 
-/** 开局配置块：只输出非空项；tone 走中文映射。 */
+/** 开局配置块：只输出非空项；tone 走中文映射；作者文本里的宏在这里展开。 */
 export function renderSetupSection(data: PromptBlockDataV2): string | undefined {
   const setup = data.setup;
   const lines: string[] = [];
-  pushText(lines, '本局处境', setup.premise);
-  pushText(lines, '你的身份', setup.user_role);
-  pushText(lines, '世界基调', setup.setting);
+  pushText(lines, '本局处境', expandMacros(setup.premise, data.macros));
+  pushText(lines, '你的身份', expandMacros(setup.user_role ?? '', data.macros));
+  pushText(lines, '世界基调', expandMacros(setup.setting ?? '', data.macros));
   pushText(lines, '基调', setup.tone === undefined ? '' : TONE_LABELS[setup.tone]);
   return lines.length === 0 ? undefined : lines.join('\n');
 }
@@ -298,7 +307,9 @@ export function renderExamplesSection(data: PromptBlockDataV2): string | undefin
   const coldStart = data.history.length === 0 ? pool.find((example) => (example.tags ?? []).includes('cold_start')) : undefined;
   const selected = coldStart === undefined ? pool.slice(0, 2) : [coldStart];
   const sections = selected
-    .map((example) => example.messages.map((message) => `${message.role}: ${message.content.trim()}`).join('\n'))
+    .map((example) =>
+      example.messages.map((message) => `${message.role}: ${expandMacros(message.content.trim(), data.macros)}`).join('\n'),
+    )
     .filter((text) => text !== '');
   return sections.length === 0 ? undefined : `【对话示例】\n${sections.join('\n\n')}`;
 }
@@ -329,7 +340,7 @@ export function registerPromptBlocksV2(blocks: BlockRegistry): () => void {
   const definitions: BlockDefinition[] = [
     defineBlock('app.system.custom', 'system', 100, (context) => renderCustomSection(dataOf(context))),
     defineBlock('app.setup', 'system', 99, (context) => renderSetupSection(dataOf(context))),
-    defineBlock('app.rules', 'system', 98, (context) => renderRulesSection(dataOf(context))),
+    defineBlock('app.rules', 'system', 98, (context) => expandText(renderRulesSection(dataOf(context)), dataOf(context).macros)),
     defineBlock('app.character', 'system', 95, (context) => renderCharacterSections(dataOf(context))),
     defineBlock('app.state', 'system', 90, (context) => renderStateSection(dataOf(context))),
     defineBlock('app.scene', 'system', 88, (context) => renderSceneSection(dataOf(context))),
@@ -358,12 +369,12 @@ export function renderAllSections(data: PromptBlockDataV2): PromptSectionV2[] {
   const entries: Array<{ id: string; placement: BlockPlacement; priority: number; text: () => string | undefined }> = [
     { id: 'app.system.custom', placement: 'system', priority: 100, text: () => renderCustomSection(data) },
     { id: 'app.setup', placement: 'system', priority: 99, text: () => renderSetupSection(data) },
-    { id: 'app.rules', placement: 'system', priority: 98, text: () => renderRulesSection(data) },
+    { id: 'app.rules', placement: 'system', priority: 98, text: () => expandText(renderRulesSection(data), data.macros) },
     ...data.world.members.map((character) => ({
       id: `app.character.${character.meta.id}`,
       placement: 'system' as BlockPlacement,
       priority: 95,
-      text: () => renderCharacterSection(character),
+      text: () => expandMacros(renderCharacterSection(character), data.macros),
     })),
     { id: 'app.state', placement: 'system', priority: 90, text: () => renderStateSection(data) },
     { id: 'app.scene', placement: 'system', priority: 88, text: () => renderSceneSection(data) },

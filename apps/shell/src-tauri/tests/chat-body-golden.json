@@ -8,5 +8,5 @@
     ]
   },
   "target": { "model": "deepseek-flash", "temperature": 0.9, "maxTokens": 1024 },
-  "body": "{\"max_tokens\":1024,\"messages\":[{\"content\":\"你以克制的笔触叙事。\",\"role\":\"system\"},{\"content\":\"你好\",\"role\":\"user\"},{\"content\":\"嗯。\",\"role\":\"assistant\"}],\"model\":\"deepseek-flash\",\"stream\":true,\"temperature\":0.9}"
+  "body": "{\"max_tokens\":1024,\"messages\":[{\"content\":\"你以克制的笔触叙事。\",\"role\":\"system\"},{\"content\":\"你好\",\"role\":\"user\"},{\"content\":\"嗯。\",\"role\":\"assistant\"}],\"model\":\"deepseek-flash\",\"stream\":true,\"stream_options\":{\"include_usage\":true},\"temperature\":0.9}"
 }

@@ -133,6 +133,12 @@ function loreEntryJson(card: LoreCard, index: number): Record<string, unknown> {
     depth: trigger.depth ?? 0,
     exclude_recursion: trigger.recursive === false,
     probability: trigger.probability ?? 100,
+    // 整词匹配：ST 原生字段；没设就不写（false 与缺省语义相同，写出来只是噪音）
+    ...(trigger.match_whole_words === undefined ? {} : { matchWholeWords: trigger.match_whole_words }),
+    // 单条预算：ST 没有原生字段。写进扩展命名空间（导入时从同一位置读回），不当作 ST 原生字段。
+    ...(trigger.token_budget === undefined
+      ? {}
+      : { extensions: { storylantern: { token_budget: trigger.token_budget } } }),
     ...(secondary.length === 0
       ? {}
       : { selective: true, selectiveLogic: logic === 'all' ? 0 : logic === 'not' ? 1 : 2 }),
@@ -153,7 +159,7 @@ function lorebookLosses(pack: WorldPackManifest, cards: readonly LoreCard[]): st
     if (card.kind !== 'other') add('lore.kind');
     if ((card.trigger?.probability ?? 100) !== 100) add('lore.trigger.probability');
     if ((card.trigger?.conditions?.length ?? 0) > 0) add('lore.trigger.conditions');
-    if (card.trigger?.token_budget !== undefined) add('lore.trigger.token_budget');
+    // token_budget 已写进 extensions.storylantern（导入能读回），不再算丢失
     if ((card.refs?.length ?? 0) > 0) add('lore.refs');
     if ((card.visuals?.length ?? 0) > 0) add('lore.visuals');
     if (card.appearance !== undefined && Object.keys(card.appearance).length > 0) add('lore.appearance');

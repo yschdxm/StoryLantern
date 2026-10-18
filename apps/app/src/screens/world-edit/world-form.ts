@@ -45,7 +45,8 @@ export interface StatePairDraft { key: string; value: string; raw?: StateValue }
 export interface ItemValueDraft { currency: string; amount: string; tradable: TriState }
 export interface ItemUsabilityDraft { condition: string; maxUses: string }
 export interface ItemDurabilityDraft { max: string; repairable: TriState; breakEffect: string }
-export interface LoreTriggerDraft { constant: boolean; priority: string; probability: string; recursive: boolean; depth: string; conditions: string }
+/** 触发策略草稿；matchWholeWords = 整词匹配（中文仍按子串），tokenBudget 空串 = 不限制。 */
+export interface LoreTriggerDraft { constant: boolean; priority: string; probability: string; recursive: boolean; depth: string; conditions: string; matchWholeWords: boolean; tokenBudget: string }
 
 export const SCENE_APPEARANCE_FIELDS = ['summary', 'structure', 'scale', 'materials', 'other'] as const;
 export const ATMOSPHERE_FIELDS = ['light', 'sound', 'smell', 'temperature', 'crowd', 'mood', 'other'] as const;
@@ -148,7 +149,7 @@ export function emptyWorldDraft(kind: WorldKind): WorldCardDraft {
   if (kind === 'item') {
     return { ...common, kind: 'item', type: 'other', descriptionText: '', functionText: '', rarity: '', value: { currency: '', amount: '', tradable: 'unset' }, usability: { condition: '', maxUses: '' }, durability: { max: '', repairable: 'unset', breakEffect: '' }, appearance: pickFields(undefined, ITEM_APPEARANCE_FIELDS), behaviors: [] };
   }
-  return { ...common, kind: 'lore', loreKind: 'other', content: '', summary: '', keys: '', secondaryKeys: '', logic: 'any', trigger: { constant: false, priority: '5', probability: '100', recursive: true, depth: '', conditions: '' }, enabled: true };
+  return { ...common, kind: 'lore', loreKind: 'other', content: '', summary: '', keys: '', secondaryKeys: '', logic: 'any', trigger: { constant: false, priority: '5', probability: '100', recursive: true, depth: '', conditions: '', matchWholeWords: false, tokenBudget: '' }, enabled: true };
 }
 
 // ---------------------------------------------------------------- 卡片 → 草稿
@@ -214,6 +215,8 @@ export function draftOfCard(card: WorldCard): WorldCardDraft {
       recursive: trigger?.recursive !== false,
       depth: trigger?.depth === undefined ? '' : String(trigger.depth),
       conditions: joinLineList(trigger?.conditions),
+      matchWholeWords: trigger?.match_whole_words === true,
+      tokenBudget: trigger?.token_budget === undefined ? '' : String(trigger.token_budget),
     },
   };
 }
@@ -347,6 +350,7 @@ function buildLore(existing: LoreCard | undefined, draft: LoreDraft): LoreCard {
   const secondary = splitKeyList(draft.secondaryKeys);
   const conditions = splitLineList(draft.trigger.conditions);
   const depth = maybeNumber(draft.trigger.depth);
+  const budget = maybeNumber(draft.trigger.tokenBudget);
   const trigger: LoreTrigger = {
     ...existing?.trigger,
     constant: draft.trigger.constant,
@@ -355,7 +359,12 @@ function buildLore(existing: LoreCard | undefined, draft: LoreDraft): LoreCard {
     recursive: draft.trigger.recursive,
     ...(depth === undefined ? {} : { depth: Math.max(0, Math.round(depth)) }),
     ...(conditions.length === 0 ? {} : { conditions }),
+    ...(draft.trigger.matchWholeWords ? { match_whole_words: true } : {}),
+    ...(budget === undefined ? {} : { token_budget: Math.max(1, Math.round(budget)) }),
   };
+  // 关掉或清空时要把旧字段删掉，否则 spread 会让它们永远留着
+  if (!draft.trigger.matchWholeWords) delete trigger.match_whole_words;
+  if (budget === undefined) delete trigger.token_budget;
   return applyOwned<LoreCard>(existing, {
     ...commonOwned(existing, draft), card_type: 'lore', kind: draft.loreKind,
     content: draft.content.trim(), summary: optionalText(draft.summary),

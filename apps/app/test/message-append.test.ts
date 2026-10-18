@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { appendMessageWithMeta } from '../src/data/message-append.ts';
+import { appendMessageWithMeta, tokensMetaOf } from '../src/data/message-append.ts';
 import type { MessageStore } from '../src/data/repository.ts';
 import type { Message, MessageMeta } from '../src/data/types.ts';
 
@@ -52,4 +52,19 @@ test('createdAt 显式传入时原样使用', async () => {
   const { calls, store } = captureStore();
   await appendMessageWithMeta(store, 's1', 'assistant', '正文', { createdAt: 123 }, meta);
   assert.deepEqual(calls[0], ['s1', 'assistant', '正文', 'done', 123, meta]);
+});
+
+test('tokensMetaOf：有真实 usage 就用真实值（estimated:false），没有才估算（estimated:true）', () => {
+  assert.deepEqual(tokensMetaOf({ promptTokens: 123, completionTokens: 45, totalTokens: 168 }, 999, 999), {
+    prompt: 123,
+    completion: 45,
+    estimated: false,
+  });
+  assert.deepEqual(tokensMetaOf(undefined, 321, 12), { prompt: 321, completion: 12, estimated: true });
+  assert.deepEqual(tokensMetaOf(undefined, 0, 7), { completion: 7, estimated: true }, '没有 prompt 估算值时省略 prompt');
+});
+
+test('tokensMetaOf：真实值只给一半时不瞎补——缺的那半省略（不把估算冒充成接口值）', () => {
+  assert.deepEqual(tokensMetaOf({ completionTokens: 45 }, 999, 999), { completion: 45, estimated: false });
+  assert.deepEqual(tokensMetaOf({ promptTokens: 123 }, 999, 999), { prompt: 123, estimated: false });
 });

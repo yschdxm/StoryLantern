@@ -15,11 +15,15 @@ export interface ChatDelta {
   delta?: string;
   /** 思考链增量（DeepSeek 的 `delta.reasoning_content` / 兼容的 `delta.reasoning`）。 */
   reasoning?: string;
+  /** 真实 token 用量（流末尾单独一条 chunk；部分端点可能没有）。 */
+  usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number };
 }
 
 export interface ChatUsage {
   promptTokens?: number;
   completionTokens?: number;
+  totalTokens?: number;
+  /** `false` = 来自接口的真实用量；`true` = 调用方本地估算。 */
   estimated: boolean;
 }
 
@@ -46,6 +50,11 @@ export interface ChatCall {
    * 用于"回复前提醒"这类后置指令，不占历史窗口的前部位置。
    */
   postHistory?: string;
+  /**
+   * 是否向接口要真实 token 用量（`stream_options.include_usage`）。
+   * 默认 true；个别不支持的端点会回 400，调用方可显式传 false 关掉。
+   */
+  includeUsage?: boolean;
   /** 多模型路由：只传 id，密钥由宿主自己取。 */
   profileId?: string;
 }
@@ -96,19 +105,35 @@ export function createChatClient(transport: WireTransport | undefined): ChatClie
       const bound = handlers.signal === undefined ? client : client.withSignal(handlers.signal);
       let text = '';
       let reasoning = '';
+      let usage: ChatUsage | undefined;
       try {
         for await (const chunk of bound.stream<ChatDelta>('chat', 'reply', request)) {
           const delta = typeof chunk.delta === 'string' ? chunk.delta : '';
           const thought = typeof chunk.reasoning === 'string' ? chunk.reasoning : '';
-          if (delta === '' && thought === '') continue;
+          if (chunk.usage !== undefined) usage = { ...chunk.usage, estimated: false };
+          if (delta === '' && thought === '') {
+            // 纯 usage chunk 也要透传（调用方可能据此刷新用量面板）
+            if (chunk.usage !== undefined) handlers.onDelta?.(chunk);
+            continue;
+          }
           if (delta !== '') text += delta;
           if (thought !== '') reasoning += thought;
           handlers.onDelta?.(chunk);
         }
-        return reasoning === '' ? { text, aborted: false } : { text, reasoning, aborted: false };
+        return {
+          text,
+          ...(reasoning === '' ? {} : { reasoning }),
+          ...(usage === undefined ? {} : { usage }),
+          aborted: false,
+        };
       } catch (cause) {
         if (cause instanceof WireError && cause.code === 'aborted') {
-          return reasoning === '' ? { text, aborted: true } : { text, reasoning, aborted: true };
+          return {
+            text,
+            ...(reasoning === '' ? {} : { reasoning }),
+            ...(usage === undefined ? {} : { usage }),
+            aborted: true,
+          };
         }
         if (cause instanceof WireError) throw new DataError(cause.code, cause.message);
         throw cause;

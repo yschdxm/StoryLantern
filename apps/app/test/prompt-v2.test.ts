@@ -5,6 +5,7 @@ import {
   type BuildChatRequestV2Options,
 } from '../src/data/prompt-v2.ts';
 import { estimateTokens } from '../src/data/tokens.ts';
+import { LORE_SCAN_DEPTH_SETTING } from '../src/data/prompt-lore.ts';
 import { registerPromptBlocksV2 } from '../src/data/prompt-blocks-v2.ts';
 import { assembleBlocks } from '../../../plugins/writing-pipeline/src/index.ts';
 import { Registry } from '../../../packages/plugin-api/src/index.ts';
@@ -248,10 +249,7 @@ test('预算裁剪：60 token 时 lore/summary 先被裁，character 保留', ()
 });
 
 test('cite:true 编号并追加引用说明；cite:false 不编号', () => {
-  const history = [
-    { role: 'user' as const, content: '第一句' },
-    { role: 'assistant' as const, content: '第二句' },
-  ];
+  const history = [{ role: 'user' as const, content: '第一句' }, { role: 'assistant' as const, content: '第二句' }];
   const cited = buildChatRequestV2(optionsOf({ cite: true, history }));
   assert.deepEqual(cited.messages.map((message) => message.content), ['[1] 第一句', '[2] 第二句']);
   assert.match(cited.systemPrompt, /编号/);
@@ -263,12 +261,7 @@ test('cite:true 编号并追加引用说明；cite:false 不编号', () => {
 });
 
 test('确定性：打乱 cards 数组顺序，输出完全一致（兜底与管线两条路径）', () => {
-  const cards = [
-    characterCard(),
-    sceneCard({ appearance: { summary: '昏暗。' }, occupants: [{ target: 'c1', presence: 'resident' }] }),
-    itemCard(),
-    loreCard({ content: '月亮的事情。', keys: ['月亮'] }),
-  ];
+  const cards = [characterCard(), sceneCard({ appearance: { summary: '昏暗。' }, occupants: [{ target: 'c1', presence: 'resident' }] }), itemCard(), loreCard({ content: '月亮的事情。', keys: ['月亮'] })];
   const build = (ordered: typeof cards, assemble?: BuildChatRequestV2Options['assemble']) =>
     buildChatRequestV2(optionsOf({
       cards: ordered,
@@ -320,11 +313,7 @@ test('post-history：按成员顺序拼接、空串不出现、不进 systemProm
   assert.equal(block?.estimatedTokens, estimateTokens('不要替用户行动。\n保持短句。'));
   const withoutInstructions = buildChatRequestV2(optionsOf({
     setup: setupOf({ characters: ['c2', 'c1', 'c3'] }),
-    cards: [
-      characterCard(),
-      characterCard({ meta: meta({ id: 'c2', name: '老王' }), identity: { name: '老王', background: '' } }),
-      silent,
-    ],
+    cards: [characterCard(), characterCard({ meta: meta({ id: 'c2', name: '老王' }), identity: { name: '老王', background: '' } }), silent],
   }));
   assert.equal(request.trace.usedTokens, withoutInstructions.trace.usedTokens, 'post-history 不占系统提示预算');
   assert.equal(request.trace.systemChars, withoutInstructions.trace.systemChars, 'post-history 不进 systemPrompt');
@@ -363,11 +352,48 @@ test('已有 [3] 的历史在发给模型前被 strip；扫描仍用未 strip �
   assert.equal(plain.messages[0]?.content, '[3] 原文', '不编号时不改写内容');
 });
 
-test('典籍单条预算（token_budget）当前未实现：不假装截断（全局预算仍生效）', () => {
-  const content = '长'.repeat(50);
+test('token_budget：单条内容按 Unicode 码点截断并加 …（装配层执行，不伪称扫描器做）', () => {
   const request = buildChatRequestV2(optionsOf({
-    history: [{ role: 'user', content: '长' }],
-    cards: [loreCard({ content, keys: ['长'], trigger: { token_budget: 1 } })],
+    history: [{ role: 'user', content: '触发' }],
+    cards: [loreCard({ content: '😀😀😀😀', keys: ['触发'], trigger: { token_budget: 2 } })],
   }));
-  assert.ok(request.systemPrompt.includes(content), '扫描器没有单条预算字段，不能假装按 1 截断');
+  assert.equal(request.lore[0]?.content, '😀😀…');
+  assert.match(request.systemPrompt, /😀😀…/);
+  assert.ok(!request.systemPrompt.includes('😀😀😀😀'), '不能按字节/UTF-16 码元切坏 emoji');
+});
+
+test('scanDepth：设置 chat.lore_scan_depth 生效（深度 1 时旧消息里的关键词不命中）', () => {
+  const cards = [loreCard({ content: '铜铃设定。', keys: ['铜铃'] })];
+  const history = ['第 1 句 铜铃', '第 2 句', '第 3 句', '第 4 句', '第 5 句'].map((content) => ({ role: 'user' as const, content }));
+  const deep = buildChatRequestV2(optionsOf({ settings: { [LORE_SCAN_DEPTH_SETTING]: '5' }, history, cards }));
+  assert.deepEqual(deep.lore.map((entry) => entry.entryId), ['l1']);
+  const shallow = buildChatRequestV2(optionsOf({ settings: { [LORE_SCAN_DEPTH_SETTING]: '1' }, history, cards }));
+  assert.deepEqual(shallow.lore, [], '深度 1 只看最后一条，第 1 条里的铜铃不命中');
+});
+
+test('match_whole_words：bell 不命中 umbrella；CJK「铃」仍命中「铜铃」', () => {
+  const whole = loreCard({ content: '钟。', keys: ['bell'], trigger: { match_whole_words: true } });
+  assert.deepEqual(buildChatRequestV2(optionsOf({ history: [{ role: 'user', content: 'an umbrella' }], cards: [whole] })).lore, []);
+  assert.equal(buildChatRequestV2(optionsOf({ history: [{ role: 'user', content: 'the bell rings' }], cards: [whole] })).lore.length, 1);
+  const cjk = loreCard({ content: '铜铃。', keys: ['铃'], trigger: { match_whole_words: true } });
+  assert.equal(buildChatRequestV2(optionsOf({ history: [{ role: 'user', content: '铜铃响了' }], cards: [cjk] })).lore.length, 1);
+});
+
+test('宏：只展开作者文本（character/setup/lore/postHistory），不碰用户历史', () => {
+  const character = characterCard({
+    prompts: {
+      system_extra: '用户是 {{user}}，角色是 {{char}}。',
+      post_history_instructions: '{{char}} 检查 {{user}} 是否越权。',
+    },
+  });
+  const request = buildChatRequestV2(optionsOf({
+    setup: setupOf({ premise: '{{user}} 在 {{char}} 的门前。', user_role: '旅人' }),
+    cards: [character, loreCard({ content: '{{char}} 的铜铃属于 {{user}}。', keys: ['铜铃'] })],
+    history: [{ role: 'user', content: '我听见铜铃，我是 {{char}}' }],
+  }));
+  assert.match(request.systemPrompt, /用户是 旅人，角色是 林霜。/);
+  assert.match(request.systemPrompt, /旅人 在 林霜 的门前。/);
+  assert.match(request.systemPrompt, /林霜 的铜铃属于 旅人。/);
+  assert.equal(request.postHistory, '林霜 检查 旅人 是否越权。');
+  assert.equal(request.messages[0]?.content, '我听见铜铃，我是 {{char}}', '用户历史不展开');
 });

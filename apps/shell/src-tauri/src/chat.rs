@@ -118,7 +118,18 @@ fn read_request(args: &[Value]) -> Result<(Vec<Value>, String), WireErrorPayload
     Ok((payload, system))
 }
 
-/// `chat.reply({ messages, systemPrompt, profileId? })`：流式产出回复。
+/// `includeUsage`：默认开着（真实 token 用量）；调用方可显式传 `false` 关掉。
+///
+/// 少数 OpenAI 兼容端点不认识 `stream_options` 会回 400。这里**不静默重试**：
+/// 非 2xx 时把状态码与原始响应体交回前端，由设置/调用方决定是否关掉。
+fn include_usage(args: &[Value]) -> bool {
+    args.first()
+        .and_then(|request| request.get("includeUsage"))
+        .and_then(Value::as_bool)
+        .unwrap_or(true)
+}
+
+/// `chat.reply({ messages, systemPrompt, postHistory?, profileId?, includeUsage? })`：流式产出回复。
 pub fn chat_reply(
     out: &StreamOut,
     store: &Store,
@@ -168,7 +179,13 @@ pub fn chat_reply(
     let mut request = client
         .post(&url)
         .header("content-type", "application/json")
-        .json(&build_body(&model, &payload_messages, temperature, max_tokens));
+        .json(&build_body(
+            &model,
+            &payload_messages,
+            temperature,
+            max_tokens,
+            include_usage(args),
+        ));
     if !api_key.is_empty() {
         request = request.bearer_auth(&api_key);
     }
@@ -184,7 +201,14 @@ pub fn chat_reply(
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().unwrap_or_default();
-        out.fail("model-error", &format!("接口返回 {status}：{}", truncate(&body, 400)));
+        // 不静默、不重试：原始错误交给前端（例如接口不认识 stream_options → 400）。
+        out.fail(
+            "model-error",
+            &format!(
+                "接口返回 {status}：{}（若接口不支持 stream_options，可在设置里关闭「真实用量」后重试）",
+                truncate(&body, 400)
+            ),
+        );
         return Ok(());
     }
 
@@ -199,6 +223,20 @@ pub fn chat_reply(
         match parse_sse_data(data) {
             SseEvent::Delta(text) => out.chunk(json!({ "delta": text })),
             SseEvent::Reasoning(text) => out.chunk(json!({ "reasoning": text })),
+            SseEvent::Usage { prompt_tokens, completion_tokens, total_tokens } => {
+                // 只把拿到的字段发回去（缺的字段省略，前端按可选处理）；camelCase 与 TS 契约一致。
+                let mut usage = serde_json::Map::new();
+                if let Some(value) = prompt_tokens {
+                    usage.insert("promptTokens".to_string(), json!(value));
+                }
+                if let Some(value) = completion_tokens {
+                    usage.insert("completionTokens".to_string(), json!(value));
+                }
+                if let Some(value) = total_tokens {
+                    usage.insert("totalTokens".to_string(), json!(value));
+                }
+                out.chunk(json!({ "usage": Value::Object(usage) }));
+            }
             SseEvent::Done => break,
             SseEvent::Ignore => {}
         }
@@ -217,6 +255,12 @@ enum SseEvent {
     Reasoning(String),
     /// 流结束标记 `[DONE]`。
     Done,
+    /// 真实 token 用量（流末尾只含 `usage` 的 chunk；`choices` 为空）。
+    Usage {
+        prompt_tokens: Option<i64>,
+        completion_tokens: Option<i64>,
+        total_tokens: Option<i64>,
+    },
     /// 空行/坏 JSON/没有可发内容的行：跳过，不报错。
     Ignore,
 }
@@ -249,6 +293,19 @@ fn parse_sse_data(raw: &str) -> SseEvent {
             return SseEvent::Reasoning(reasoning.to_string());
         }
     }
+    // 用量 chunk：`{"choices":[],"usage":{...}}`（OpenAI 兼容流在末尾单独发一条）。
+    let usage = &parsed["usage"];
+    if usage.is_object() {
+        let number = |key: &str| usage.get(key).and_then(Value::as_i64);
+        let event = SseEvent::Usage {
+            prompt_tokens: number("prompt_tokens"),
+            completion_tokens: number("completion_tokens"),
+            total_tokens: number("total_tokens"),
+        };
+        if event != (SseEvent::Usage { prompt_tokens: None, completion_tokens: None, total_tokens: None }) {
+            return event;
+        }
+    }
     SseEvent::Ignore
 }
 
@@ -267,14 +324,26 @@ fn is_local_endpoint(url: &str) -> bool {
 /// 与"宿主实际 PUT 的字节"不可能各写一份而漂移（M2 退出判据）。
 /// 返回 `serde_json::Value`，由 reqwest 的 `.json()` 序列化；`chat_preview` 用
 /// `serde_json::to_string` 得到**同一份字节**。
-fn build_body(model: &str, payload_messages: &[Value], temperature: f64, max_tokens: i64) -> Value {
-    json!({
+fn build_body(
+    model: &str,
+    payload_messages: &[Value],
+    temperature: f64,
+    max_tokens: i64,
+    include_usage: bool,
+) -> Value {
+    let mut body = json!({
         "model": model,
         "messages": payload_messages,
         "stream": true,
         "temperature": temperature,
         "max_tokens": max_tokens,
-    })
+    });
+    // 真实 token 用量：OpenAI 兼容端点要显式要才在流末尾发 usage chunk。
+    // 不认识的端点会回 400 —— 调用方可传 includeUsage:false 关掉（错误原样交回，不静默重试）。
+    if include_usage {
+        body["stream_options"] = json!({ "include_usage": true });
+    }
+    body
 }
 
 /// `chat.preview({ messages, systemPrompt, profileId? })`：
@@ -288,7 +357,13 @@ pub fn chat_preview(store: &Store, args: &[Value]) -> Result<Value, WireErrorPay
         .and_then(|request| request.get("profileId"))
         .and_then(Value::as_str);
     let target = resolve_target(store, profile_id)?;
-    let body = build_body(&target.model, &payload_messages, target.temperature, target.max_tokens);
+    let body = build_body(
+        &target.model,
+        &payload_messages,
+        target.temperature,
+        target.max_tokens,
+        include_usage(args),
+    );
     let text = serde_json::to_string(&body)
         .map_err(|error| WireErrorPayload::new("serialize-failed", format!("请求体序列化失败：{error}")))?;
     Ok(json!({
@@ -511,6 +586,7 @@ mod tests {
             &payload,
             target["temperature"].as_f64().unwrap_or(0.0),
             target["maxTokens"].as_i64().unwrap_or(0),
+            true,
         );
         let actual = serde_json::to_string(&body).expect("序列化失败");
         assert_eq!(actual, golden["body"].as_str().unwrap_or_default(), "请求体与 golden 不一致（逐字节）");
@@ -575,6 +651,44 @@ mod tests {
         assert_eq!(parse_sse_data("不是 json"), SseEvent::Ignore);
         assert_eq!(parse_sse_data(r#"{"choices":[{"delta":{}}]}"#), SseEvent::Ignore);
         assert_eq!(parse_sse_data(r#"{"error":{"message":"quota"}}"#), SseEvent::Ignore);
+    }
+
+    /// 末尾的真实用量 chunk：`choices: []` + `usage`。
+    #[test]
+    fn parse_sse_data_recognizes_usage_chunk() {
+        let usage = r#"{"choices":[],"usage":{"prompt_tokens":123,"completion_tokens":45,"total_tokens":168}}"#;
+        assert_eq!(
+            parse_sse_data(usage),
+            SseEvent::Usage {
+                prompt_tokens: Some(123),
+                completion_tokens: Some(45),
+                total_tokens: Some(168),
+            }
+        );
+        // 只有部分字段也认（缺的保持 None）
+        let partial = r#"{"choices":[],"usage":{"completion_tokens":7}}"#;
+        assert_eq!(
+            parse_sse_data(partial),
+            SseEvent::Usage {
+                prompt_tokens: None,
+                completion_tokens: Some(7),
+                total_tokens: None,
+            }
+        );
+        // 空 usage 对象按 Ignore（不能发一个全空的 chunk）
+        assert_eq!(parse_sse_data(r#"{"choices":[],"usage":{}}"#), SseEvent::Ignore);
+    }
+
+    /// includeUsage=false 时请求体不带 stream_options（给不支持的端点留退路）。
+    #[test]
+    fn build_body_include_usage_flag() {
+        let messages = vec![json!({ "role": "user", "content": "hi" })];
+        let on = build_body("m", &messages, 0.9, 1024, true);
+        assert_eq!(on["stream_options"]["include_usage"], json!(true));
+        let off = build_body("m", &messages, 0.9, 1024, false);
+        assert!(off.get("stream_options").is_none(), "关掉时不能带 stream_options");
+        assert_eq!(include_usage(&[json!({ "includeUsage": false })]), false);
+        assert_eq!(include_usage(&[json!({})]), true, "默认开");
     }
 }
 /// `chat.rerank({ query, documents:[...], model, profileId?, topN? })`：

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { AppState } from '../src/app/state.ts';
 import { SETTING_KEYS } from '../src/data/types.ts';
-import { buildChatOptionsV2 } from '../src/screens/chat-request.ts';
+import { buildChatOptionsV2, includeUsageOf } from '../src/screens/chat-request.ts';
 
 /**
  * 状态 → 装配输入的映射：历史必须带消息 id（引用窗口要用），cite 只由设置决定。
@@ -29,6 +29,15 @@ test('历史项带 id，顺序保持', () => {
       ['m2', 'assistant', '夜里好。'],
     ],
   );
+});
+
+test('includeUsage：默认开；chat.stream_usage=off 才关；其他值都算开', () => {
+  assert.equal(includeUsageOf({}), true);
+  assert.equal(includeUsageOf({ [SETTING_KEYS.streamUsage]: 'on' }), true);
+  assert.equal(includeUsageOf({ [SETTING_KEYS.streamUsage]: 'off' }), false);
+  for (const value of ['OFF', '0', 'false', '']) {
+    assert.equal(includeUsageOf({ [SETTING_KEYS.streamUsage]: value }), true, value);
+  }
 });
 
 test('cite：默认关闭；chat.cite=on 才开启；其他值都算关闭', () => {

@@ -7,6 +7,11 @@ export const enChat: AppMessages = {
   'settings.model.cite': 'Citation mode',
   'settings.model.cite.hint':
     'When on, the model marks source indices at the end of sentences and they render as tappable citation chips; when off (default) nothing is numbered, so ordinary roleplay never shows [16].',
+  'settings.model.streamUsage': 'Real usage reporting',
+  'settings.model.streamUsage.hint':
+    'When on, request streaming usage (stream_options.include_usage); token counts in message details are the API values. Some compatible endpoints reject it — turn it off to estimate instead (the UI then labels them as estimated).',
+  'settings.model.loreScanDepth': 'Lore scan depth',
+  'settings.model.loreScanDepth.hint': 'Only look for keywords in the latest N messages (1–20, default 4); a larger window lets older lore trigger.',
 
   'chat.stopped': 'Stopped',
   'chat.reasoning.title': 'Reasoning ({{count}} chars)',
@@ -21,6 +26,7 @@ export const enChat: AppMessages = {
   'chat.detail.model': 'Model',
   'chat.detail.model.value': '{{label}} ({{id}})',
   'chat.detail.tokens': 'Tokens (estimated)',
+  'chat.detail.tokens.real': 'Tokens (from API)',
   'chat.detail.tokens.value': 'prompt {{prompt}} · completion {{completion}}',
   'chat.detail.timing': 'Timing',
   'chat.detail.timing.value': 'first delta {{first}} ms · total {{total}} ms',

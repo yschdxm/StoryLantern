@@ -19,6 +19,16 @@ export interface ImportedLorebookEntry {
   depth?: number;
   /** 是否允许递归扫描（ST 的 `excludeRecursion` 取反）；缺省 true。 */
   recursive?: boolean;
+  /**
+   * 整词匹配（ST 的 `matchWholeWords` / CCv3 的 `match_whole_words`）。
+   * 缺省 = 没给（不要写 false：false 与"没给"在语义上都是子串匹配，但导出会多一个字段）。
+   */
+  matchWholeWords?: boolean;
+  /**
+   * 单条内容预算（token/字符预算）。ST 世界书**没有这个原生字段**：
+   * 从条目根上的 `token_budget` / `budget`，或我们导出时写的 `extensions.storylantern.token_budget` 读回。
+   */
+  tokenBudget?: number;
 }
 
 export interface ImportedLorebook {

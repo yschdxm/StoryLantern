@@ -7,7 +7,38 @@
  */
 
 import type { MessageStore } from './repository.ts';
-import type { Message, MessageMeta, MessageStatus } from './types.ts';
+import type { Message, MessageMeta, MessageStatus, MessageTokens } from './types.ts';
+
+/** 接口回来的真实用量（字段可选：有的端点只给一部分）。 */
+export interface RealUsage {
+  promptTokens?: number;
+  completionTokens?: number;
+  totalTokens?: number;
+}
+
+/**
+ * `meta.tokens` 的取值：**有真实 usage 用真实的（estimated:false），没有才本地估算（estimated:true）**。
+ *
+ * 只给了一半真实值时，缺的那半**不瞎补**、直接省略——宁可少一个数，也不把估算冒充成接口值。
+ */
+export function tokensMetaOf(
+  usage: RealUsage | undefined,
+  estimatedPrompt: number,
+  estimatedCompletion: number,
+): MessageTokens {
+  if (usage !== undefined && (usage.promptTokens !== undefined || usage.completionTokens !== undefined)) {
+    return {
+      ...(usage.promptTokens === undefined ? {} : { prompt: usage.promptTokens }),
+      ...(usage.completionTokens === undefined ? {} : { completion: usage.completionTokens }),
+      estimated: false,
+    };
+  }
+  return {
+    ...(estimatedPrompt > 0 ? { prompt: estimatedPrompt } : {}),
+    completion: estimatedCompletion,
+    estimated: true,
+  };
+}
 
 export interface AppendMessageOptions {
   status?: MessageStatus;

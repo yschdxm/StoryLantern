@@ -99,6 +99,10 @@ function classify(value: Record<string, unknown>): 'character' | 'lorebook' | 'u
   const spec = String(value['spec'] ?? '').toLowerCase();
   if (spec.startsWith('lorebook')) return 'lorebook';
 
+  // 顶层 `entries` 优先于 `description` 等通用字段：ST 世界书导出**自己也带 description**，
+  // 先判 hasCardFields 会把「世界书」误判成角色卡（真机上表现为导出的世界书再导入失败）。
+  if (hasEntries(value)) return 'lorebook';
+
   const data = isRecord(value['data']) ? value['data'] : undefined;
   if (hasCardFields(value)) return 'character';
 
@@ -107,7 +111,6 @@ function classify(value: Record<string, unknown>): 'character' | 'lorebook' | 'u
     if (hasCardFields(data) || typeof data['name'] === 'string') return 'character';
   }
 
-  if (hasEntries(value)) return 'lorebook';
   return 'unknown';
 }
 

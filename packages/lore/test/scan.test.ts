@@ -69,6 +69,19 @@ test('深度窗口：窗口外的旧消息不触发，默认只看最近 4 条',
   assert.equal(scanLore({ books: deep, messages: long }).matched.length, 1);
 });
 
+test('整词匹配：ASCII 词要词边界（bell 不命中 umbrella），CJK 仍按子串', () => {
+  const whole = [book([entry('e1', ['bell'], '铃的设定。', { matchWholeWords: true })])];
+  assert.equal(scanLore({ books: whole, messages: history('an umbrella') }).matched.length, 0, 'bell 不能命中 umbrella');
+  assert.equal(scanLore({ books: whole, messages: history('the bell rings') }).matched.length, 1);
+  assert.equal(scanLore({ books: whole, messages: history('BELL rings') }).matched.length, 1, '大小写默认不敏感仍生效');
+  // CJK 不能整词化：铃 必须仍命中 铜铃
+  const cjk = [book([entry('e2', ['铃'], '铜铃的设定。', { matchWholeWords: true })])];
+  assert.equal(scanLore({ books: cjk, messages: history('铜铃响了') }).matched.length, 1);
+  // 次级关键词也走同一套规则
+  const secondary = [book([entry('e3', ['bell'], '内容', { matchWholeWords: true, secondaryKeys: ['umbrella'] })])];
+  assert.equal(scanLore({ books: secondary, messages: history('the bell under an umbrella') }).matched.length, 1);
+});
+
 test('正在输入的那句话也参与匹配（否则打字时提到的设定不会触发）', () => {
   const books = [book([entry('e1', ['铜铃'], '铜铃的设定。')])];
   assert.equal(scanLore({ books, messages: history('无关的一句'), extraText: '我把铜铃摘下来' }).matched.length, 1);
@@ -102,8 +115,7 @@ test('递归不会无限循环（A 触发 B、B 又触发 A）', () => {
   assert.ok(result.rounds <= 3, `轮数应有上限，实际 ${result.rounds}`);
 });
 
-test('预算：按 order 升序优先保留，放不下的进 dropped 而不是静默丢弃', () => {
-  const big = '字'.repeat(50);
+test('预算：按 order 升序优先保留，放不下的进 dropped 而不是静默丢弃', () => {  const big = '字'.repeat(50);
   const books = [
     book([
       entry('e1', ['触发'], `${big}1`, { order: 200 }),

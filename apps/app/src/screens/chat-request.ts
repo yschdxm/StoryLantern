@@ -13,6 +13,11 @@ import type { PromptSummary } from '../data/prompt-blocks-v2.ts';
 import type { BuildChatRequestV2Options } from '../data/prompt-v2.ts';
 import { SETTING_KEYS } from '../data/types.ts';
 
+/** 真实用量回传：默认开；只有显式 `chat.stream_usage='off'` 才关（改用估算）。 */
+export function includeUsageOf(settings: Record<string, string>): boolean {
+  return settings[SETTING_KEYS.streamUsage] !== 'off';
+}
+
 export interface ChatOptionsInput {
   state: AppState;
   sessionId: string;

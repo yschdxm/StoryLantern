@@ -7,6 +7,11 @@ export const zhChat: AppMessages = {
   'settings.model.cite': '引用模式',
   'settings.model.cite.hint':
     '开启后模型会在句末标注来源编号，并显示为可点开的引用 chip；关闭则不编号（默认关闭，普通角色扮演不会出现 [16]）。',
+  'settings.model.streamUsage': '真实用量回传',
+  'settings.model.streamUsage.hint':
+    '开启后向接口请求流式用量（stream_options.include_usage），消息详情里的 token 是接口回传值；部分兼容接口不支持会报错，关掉后改用估算（界面会标注估算）。',
+  'settings.model.loreScanDepth': '世界书扫描深度',
+  'settings.model.loreScanDepth.hint': '只在最近 N 条消息里找关键词（1–20，默认 4）；设得越大，越早的设定越容易被触发。',
 
   'chat.stopped': '已停止',
   'chat.reasoning.title': '思考过程（{{count}} 字）',
@@ -21,6 +26,7 @@ export const zhChat: AppMessages = {
   'chat.detail.model': '模型',
   'chat.detail.model.value': '{{label}}（{{id}}）',
   'chat.detail.tokens': 'token（估算）',
+  'chat.detail.tokens.real': 'token（接口回传）',
   'chat.detail.tokens.value': '输入 {{prompt}} · 输出 {{completion}}',
   'chat.detail.timing': '耗时',
   'chat.detail.timing.value': '首字 {{first}} ms · 总耗时 {{total}} ms',

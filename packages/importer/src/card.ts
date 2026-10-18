@@ -34,6 +34,14 @@ export function parseLorebook(value: unknown, fallbackName: string): ImportedLor
     const depth = asInteger(entry['depth']);
     // ST 用 excludeRecursion 表达"不参与二次触发"；字段缺失时的默认值仍是允许递归
     const excluded = entry['excludeRecursion'] ?? entry['exclude_recursion'];
+    // 整词匹配：ST 原生是 matchWholeWords；CCv3/其它导出器可能写 match_whole_words
+    const wholeWords = entry['matchWholeWords'] ?? entry['match_whole_words'];
+    // 单条预算没有 ST 原生字段：读条目根上的 token_budget/budget，或我们导出时写的 extensions 命名空间
+    const extensions = isRecord(entry['extensions']) ? entry['extensions'] : undefined;
+    const sl = extensions !== undefined && isRecord(extensions['storylantern']) ? extensions['storylantern'] : undefined;
+    const tokenBudget = asInteger(
+      entry['token_budget'] ?? entry['budget'] ?? (sl === undefined ? undefined : sl['token_budget']),
+    );
     return attachRaw(
       {
         keys: asStringArray(entry['key'] ?? entry['keys']),
@@ -45,6 +53,8 @@ export function parseLorebook(value: unknown, fallbackName: string): ImportedLor
         ...(order === undefined ? {} : { order }),
         ...(depth === undefined ? {} : { depth }),
         ...(excluded === undefined ? {} : { recursive: excluded !== true }),
+        ...(typeof wholeWords === 'boolean' ? { matchWholeWords: wholeWords } : {}),
+        ...(tokenBudget === undefined ? {} : { tokenBudget }),
       },
       entry,
     );

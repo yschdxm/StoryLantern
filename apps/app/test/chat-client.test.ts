@@ -61,6 +61,27 @@ test('流式：没有思考链时不返回 reasoning 字段（旧模型/旧宿�
   assert.equal('reasoning' in result, false);
 });
 
+test('流式：content→usage→[DONE]，usage 用接口真实值并标记 estimated:false', async () => {
+  const chunks: { text: string; usage?: unknown }[] = [];
+  const client = createChatClient(
+    transportOf(() => [
+      { delta: '真实回复' },
+      { usage: { promptTokens: 123, completionTokens: 45, totalTokens: 168 } },
+    ]),
+  );
+  const result = await client.reply(CALL, { onDelta: (chunk) => chunks.push({ text: chunk.delta ?? '', ...(chunk.usage === undefined ? {} : { usage: chunk.usage }) }) });
+  assert.equal(result.text, '真实回复');
+  assert.deepEqual(result.usage, { promptTokens: 123, completionTokens: 45, totalTokens: 168, estimated: false });
+  assert.equal(chunks.length, 2, 'usage chunk 也要透传给 onDelta');
+  assert.deepEqual(chunks[1]?.usage, { promptTokens: 123, completionTokens: 45, totalTokens: 168 });
+});
+
+test('流式：没有 usage 时不伪造字段（调用方按 estimated:true 自行估算）', async () => {
+  const client = createChatClient(transportOf(() => [{ delta: '只有正文' }]));
+  const result = await client.reply(CALL, {});
+  assert.equal('usage' in result, false);
+});
+
 test('preview：走 chat.preview，原样带回 URL/body/字节数/模型名', async () => {
   const client = createChatClient(
     transportOf((request) => {

@@ -149,6 +149,30 @@ test('典籍：主/二级触发词去空白、去重（保序）', () => {
   assert.deepEqual(splitKeyList(' a, a ,, b 、b '), ['a', 'b']);
 });
 
+test('典籍触发策略：整词匹配与单条预算往返（空 = 不限制）', () => {
+  const onDraft: LoreDraft = {
+    ...minimalLore(),
+    trigger: { ...minimalLore().trigger, matchWholeWords: true, tokenBudget: '120' },
+  };
+  const onCard = buildCard(undefined, onDraft) as LoreCard;
+  assert.equal(onCard.trigger?.match_whole_words, true);
+  assert.equal(onCard.trigger?.token_budget, 120);
+  const onAgain = draftOfCard(onCard) as LoreDraft;
+  assert.equal(onAgain.trigger.matchWholeWords, true);
+  assert.equal(onAgain.trigger.tokenBudget, '120');
+
+  const offDraft: LoreDraft = {
+    ...minimalLore(),
+    trigger: { ...minimalLore().trigger, matchWholeWords: false, tokenBudget: '' },
+  };
+  const offCard = buildCard(undefined, offDraft) as LoreCard;
+  assert.equal('match_whole_words' in (offCard.trigger ?? {}), false);
+  assert.equal('token_budget' in (offCard.trigger ?? {}), false);
+  const offAgain = draftOfCard(offCard) as LoreDraft;
+  assert.equal(offAgain.trigger.matchWholeWords, false);
+  assert.equal(offAgain.trigger.tokenBudget, '');
+});
+
 test('name 为空时校验报 error（编辑器能逐条展示）', () => {
   const card = buildCard(undefined, { ...minimalScene(), name: '   ' });
   const result = validateCard(card);

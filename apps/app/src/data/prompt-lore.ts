@@ -12,10 +12,22 @@
 import { scanLore, type ScanBook, type ScoredEntry } from '../../../../packages/lore/src/index.ts';
 import { evaluateConditions, flattenScope, type ExprScope } from '../../../../packages/cards/src/index.ts';
 import type { LoreCard, SessionRuntime } from '../../../../packages/cards/src/index.ts';
+import { expandMacros } from './macros.ts';
 import type { PromptBlockDataV2 } from './prompt-blocks-v2.ts';
+import { SETTING_KEYS } from './types.ts';
 
-/** FNV-1a：跨设备一致的整数哈希（不依赖平台/时间）。 */
-export function stableHash(text: string): number {
+/** 设置键：世界书扫描深度（与设置页/`SETTING_KEYS` 同一个键，避免两处字符串漂移）。 */
+export const LORE_SCAN_DEPTH_SETTING = SETTING_KEYS.loreScanDepth;
+export const DEFAULT_LORE_SCAN_DEPTH = 4;
+const MAX_LORE_SCAN_DEPTH = 20;
+
+/** 读设置：默认 4，允许 1–20；0/未设/非法值 = 用扫描器默认（4）。 */
+export function loreScanDepthOf(settings: Record<string, string>): number | undefined {
+  const depth = Number(settings[LORE_SCAN_DEPTH_SETTING]);
+  return Number.isInteger(depth) && depth > 0 && depth <= MAX_LORE_SCAN_DEPTH ? depth : undefined;
+}
+
+/** FNV-1a：跨设备一致的整数哈希（不依赖平台/时间）。 */export function stableHash(text: string): number {
   let hash = 0x811c9dc5;
   for (let index = 0; index < text.length; index += 1) {
     hash ^= text.charCodeAt(index);
@@ -45,6 +57,9 @@ export function loreBooksOf(cards: readonly LoreCard[]): ScanBook[] {
         enabled: true,
         order: 100 - (card.trigger?.priority ?? 5),
         caseSensitive: false,
+        matchWholeWords: card.trigger?.match_whole_words === true,
+        // 扫描器只保留字段、不截断：单条预算由下面的 applyTokenBudget 在装配层执行。
+        ...(card.trigger?.token_budget === undefined ? {} : { tokenBudget: card.trigger.token_budget }),
         recursive: card.trigger?.recursive ?? true,
         depth: card.trigger?.depth ?? 0,
         constant: card.trigger?.constant ?? false,
@@ -93,6 +108,17 @@ export function eligibleLoreCards(
   return { cards: kept, dropped };
 }
 
+/**
+ * 单条内容的字符预算：按 **Unicode 码点**截断，超出加 `…`。
+ * 这是**装配层**行为（扫描器不截断、也不该伪称它做了）；`<=0` / 未设 = 不截断。
+ */
+export function applyTokenBudget(content: string, budget: number | undefined): string {
+  if (budget === undefined || !Number.isFinite(budget) || budget <= 0) return content;
+  const points = Array.from(content);
+  const limit = Math.floor(budget);
+  return points.length <= limit ? content : `${points.slice(0, limit).join('')}…`;
+}
+
 /** 渲染【相关设定】块；顺带把命中/丢弃写回 `data.outcomes`（请求面板用）。 */
 export function loreTextOf(data: PromptBlockDataV2): string | undefined {
   if (data.world.loreCards.length === 0) return undefined;
@@ -104,6 +130,7 @@ export function loreTextOf(data: PromptBlockDataV2): string | undefined {
   const result = scanLore({
     books: loreBooksOf(eligible.cards),
     messages: data.history.map((item) => ({ role: item.role, content: item.content })),
+    ...(data.loreScanDepth === undefined ? {} : { scanDepth: data.loreScanDepth }),
     ...(data.loreBudgetChars === undefined ? {} : { budgetChars: data.loreBudgetChars }),
   });
   const byId = new Map(eligible.cards.map((card) => [card.meta.id, card]));
@@ -113,7 +140,9 @@ export function loreTextOf(data: PromptBlockDataV2): string | undefined {
   for (const entry of result.matched) {
     const trigger = byId.get(entry.entryId)?.trigger;
     if (trigger?.constant === true || passesProbability(entry.entryId, trigger?.probability, data.lastMessageKey)) {
-      kept.push(entry);
+      // 作者文本里的宏先展开，再按单条预算截断（模型看到的与 trace 记的同一份文本）。
+      const expanded = expandMacros(entry.content, data.macros);
+      kept.push({ ...entry, content: applyTokenBudget(expanded, trigger?.token_budget) });
     } else {
       dropped += 1;
     }

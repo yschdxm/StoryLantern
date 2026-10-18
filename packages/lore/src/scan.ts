@@ -6,11 +6,14 @@
  *
  *  - **关键词**：主关键词命中任意一个即可；次级关键词非空时要求**也**命中至少一个。
  *  - **大小写**：默认不敏感；`caseSensitive` 打开后按原文比较。
+ *  - **整词**：`matchWholeWords` 打开后，**英文/ASCII 词**要求两侧不是字母/数字/下划线
+ *    （`bell` 不命中 `umbrella`）；含非 ASCII 的关键词（CJK 等）仍按子串（`铃` 命中 `铜铃`）。
  *  - **深度窗口**：`depth = N` 表示只看最近 N 条消息；`depth = 0` 用调用方给的默认深度。
  *    正在输入的那句话（`extraText`）永远参与匹配——否则"打字时提到某个设定"不会触发。
  *  - **常量**：`constant = true` 不看关键词，只要书被激活就注入。
  *  - **递归**：命中条目的正文会追加进扫描文本，再扫一轮（`recursive` 为 false 的条目内容不参与）。
  *  - **预算**：按 `order` 升序（小的先放）贪心放入，放不下的记为 `dropped`，界面可以提示。
+ *    这是**全局**字符预算；单条内容的 `tokenBudget` 由上层装配器截断（扫描器保留字段、不擅自改正文）。
  *
  * 输出**与输入顺序无关**（同分按 bookId/entryId 排序），因此两台设备、两次调用都得到同样的注入，
  * 这既是可解释性的前提，也是同步一致性的前提。
@@ -24,6 +27,13 @@ export interface ScanEntry {
   enabled?: boolean;
   order?: number;
   caseSensitive?: boolean;
+  /** 整词匹配：只影响 ASCII 词；CJK 仍子串。 */
+  matchWholeWords?: boolean;
+  /**
+   * 单条内容字符预算。扫描器**不截断**（只返回原文）；由上层装配器决定怎么截
+   * （`prompt-lore.ts` 按 Unicode 码点截断并加 `…`）。保留字段是为了语义集中在一处。
+   */
+  tokenBudget?: number;
   recursive?: boolean;
   depth?: number;
   constant?: boolean;
@@ -137,12 +147,13 @@ export function scanLore(options: ScanOptions): ScanResult {
 
       // 第一轮：只看直接文本（历史窗口 + 正在输入）；之后每轮把命中内容也算进来
       const haystack = `${tail(entry.depth ?? 0)}\n${buffer}`;
-      const hits = matchKeys(haystack, entry.keys ?? [], entry.caseSensitive === true);
+      const whole = entry.matchWholeWords === true;
+      const hits = matchKeys(haystack, entry.keys ?? [], entry.caseSensitive === true, whole);
       if (hits.length === 0) continue;
 
       const secondary = entry.secondaryKeys ?? [];
       if (secondary.length > 0) {
-        const secondaryHits = matchKeys(haystack, secondary, entry.caseSensitive === true);
+        const secondaryHits = matchKeys(haystack, secondary, entry.caseSensitive === true, whole);
         if (secondaryHits.length === 0) continue;
         hits.push(...secondaryHits);
       }
@@ -191,15 +202,39 @@ export function scanLore(options: ScanOptions): ScanResult {
 }
 
 /** 命中哪些关键词（返回值用于界面上解释"为什么注入它"）。 */
-function matchKeys(haystack: string, keys: readonly string[], caseSensitive: boolean): string[] {
+function matchKeys(haystack: string, keys: readonly string[], caseSensitive: boolean, matchWholeWords: boolean): string[] {
   const hits: string[] = [];
   const text = caseSensitive ? haystack : haystack.toLowerCase();
   for (const key of keys) {
     const needle = key.trim();
     if (needle === '') continue;
-    if (text.includes(caseSensitive ? needle : needle.toLowerCase())) hits.push(needle);
+    const found = caseSensitive ? needle : needle.toLowerCase();
+    const hit = matchWholeWords && isAsciiWord(found) ? includesWholeWord(text, found) : text.includes(found);
+    if (hit) hits.push(needle);
   }
   return hits;
+}
+
+/** ASCII 词（字母/数字/下划线）：只有这种关键词受整词匹配影响；CJK 永远是子串。 */
+function isAsciiWord(value: string): boolean {
+  return /^[A-Za-z0-9_]+$/.test(value);
+}
+
+function isWordChar(char: string | undefined): boolean {
+  return char !== undefined && /[A-Za-z0-9_]/.test(char);
+}
+
+/** 整词命中：`bell` 不能命中 `umbrella`；两侧必须是词边界。 */
+function includesWholeWord(text: string, needle: string): boolean {
+  let from = 0;
+  for (;;) {
+    const index = text.indexOf(needle, from);
+    if (index < 0) return false;
+    const before = index === 0 ? undefined : text[index - 1];
+    const after = text[index + needle.length];
+    if (!isWordChar(before) && !isWordChar(after)) return true;
+    from = index + 1;
+  }
 }
 
 /** 把命中的条目拼成注入用的文本块（顺序即最终顺序）。 */

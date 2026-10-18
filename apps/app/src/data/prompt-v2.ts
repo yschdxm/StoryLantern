@@ -22,12 +22,11 @@ import type {
 import type { ScoredEntry } from '../../../../packages/lore/src/index.ts';
 import { retrieve } from '../../../../packages/oplog/src/index.ts';
 import type { AssembleFn, PromptGraph } from '../../../../plugins/writing-pipeline/src/index.ts';
+import { expandMacros } from './macros.ts';
 import { formatMemoryBlock, selectMemories, type RetrievedMemory } from './memory-retrieval.ts';
 import { renderAllSections, type PromptBlockDataV2, type PromptSummary, type PromptWorldV2 } from './prompt-blocks-v2.ts';
-// 典籍预算：`packages/lore` 的扫描器只有**全局**字符预算（`ScanOptions.budgetChars`，由 loreBudgetChars 传入）；
-// `LoreTrigger.token_budget`（单条预算）目前**没有**对应实现——ScanEntry 没有该字段，
-// 单条预算由扫描器侧预留。这里不伪造：不会假装按单条截断（只映射了 priority/constant/recursive/depth/keys）。
-import { loreTextOf } from './prompt-lore.ts';
+// 典籍检索：全局字符预算 + 扫描深度（设置 `chat.lore_scan_depth`）+ 整词匹配 + 单条 token_budget 都在 prompt-lore 里消费。
+import { loreScanDepthOf, loreTextOf } from './prompt-lore.ts';
 import { estimateTokens, type ChatPromptMessage, type PromptHistoryItem } from './tokens.ts';import { SETTING_KEYS, type Memory, type MessageRole } from './types.ts';
 
 // 典籍检索的实现搬到了 prompt-lore.ts；这些名字仍从这里导出，避免调用方/测试跟着改
@@ -125,11 +124,12 @@ function lastMessageKeyOf(kept: readonly PromptHistoryItem[]): string {
 
 /**
  * post-history 指令：**会话成员**（不含不在场的卡）按 setup 顺序拼接，空串跳过。
+ * 作者文本里的 `{{char}}`/`{{user}}` 在这里展开（用户输入/历史不展开）。
  * 它不进 systemPrompt 的块预算，由调用方作为对话末尾的指令发出去（`ChatCall.postHistory`）。
  */
-function postHistoryOf(members: readonly CharacterCard[]): string | undefined {
-  const parts = members
-    .map((character) => character.prompts?.post_history_instructions?.trim() ?? '')
+function postHistoryOf(data: PromptBlockDataV2): string | undefined {
+  const parts = data.world.members
+    .map((character) => expandMacros(character.prompts?.post_history_instructions ?? '', data.macros).trim())
     .filter((text) => text !== '');
   return parts.length === 0 ? undefined : parts.join('\n');
 }
@@ -161,18 +161,25 @@ export function createPromptBlockDataV2(options: {
   custom: string; setup: SessionSetup; cards: readonly CardDocument[]; runtime: SessionRuntime;
   history: ReadonlyArray<{ role: MessageRole; content: string }>;
   memories?: readonly Memory[]; summaries?: readonly PromptSummary[]; preselectedSummaries?: readonly PromptSummary[];
-  loreBudgetChars?: number; lastMessageKey?: string;
+  loreBudgetChars?: number; loreScanDepth?: number; lastMessageKey?: string;
 }): PromptBlockDataV2 {
+  const world = buildPromptWorldV2(options.cards, options.setup);
+  const first = world.members[0];
+  const charName = first === undefined ? '' : (first.identity.name.trim() || first.meta.name.trim());
+  const userName = (options.setup.user_role ?? '').trim();
   return {
     custom: options.custom,
     setup: options.setup,
-    world: buildPromptWorldV2(options.cards, options.setup),
+    world,
+    // 宏上下文：只用于作者文本（character/setup/lore/postHistory）；用户输入/历史保持原样。
+    macros: { ...(charName === '' ? {} : { charName }), ...(userName === '' ? {} : { userName }) },
     runtime: options.runtime,
     history: options.history,
     memories: options.memories ?? [],
     summaries: options.summaries ?? [],
     ...(options.preselectedSummaries === undefined ? {} : { preselectedSummaries: options.preselectedSummaries }),
     ...(options.loreBudgetChars === undefined ? {} : { loreBudgetChars: options.loreBudgetChars }),
+    ...(options.loreScanDepth === undefined ? {} : { loreScanDepth: options.loreScanDepth }),
     lastMessageKey: options.lastMessageKey ?? '',
     retrieval: {},
     outcomes: { matchedLore: [], loreDropped: 0, matchedMemories: [], matchedSummaries: [], rulesOmitted: 0 },
@@ -299,6 +306,7 @@ function assembleFallback(data: PromptBlockDataV2): AssembledV2 {
 export function buildChatRequestV2(options: BuildChatRequestV2Options): ChatRequestV2 {
   const limit = historyLimitOf(options.settings);
   const { kept, excluded } = splitHistory(options.history, limit);
+  const loreScanDepth = loreScanDepthOf(options.settings);
   const messages = toMessages(kept, options.cite === true);
   const citationWindow = citationWindowOf(kept);
   const data = createPromptBlockDataV2({
@@ -311,10 +319,11 @@ export function buildChatRequestV2(options: BuildChatRequestV2Options): ChatRequ
     summaries: options.summaries ?? [],
     ...(options.preselectedSummaries === undefined ? {} : { preselectedSummaries: options.preselectedSummaries }),
     ...(options.loreBudgetChars === undefined ? {} : { loreBudgetChars: options.loreBudgetChars }),
+    ...(loreScanDepth === undefined ? {} : { loreScanDepth }),
     lastMessageKey: lastMessageKeyOf(kept),
   });
   // post-history 指令来自**会话成员**（data.world.members 已按 setup.characters 顺序排好）。
-  const postHistory = postHistoryOf(data.world.members);
+  const postHistory = postHistoryOf(data);
   precomputeRetrieval(data);
 
   const assemble = options.assemble;

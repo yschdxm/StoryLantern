@@ -117,11 +117,27 @@ export function LoreSections({
         />
         <span>{t('world.editor.lore.trigger.recursive')}</span>
       </label>
+      <label className="switch">
+        <input
+          type="checkbox"
+          checked={draft.trigger.matchWholeWords}
+          onChange={(event) => update({ trigger: { ...draft.trigger, matchWholeWords: event.target.checked } })}
+        />
+        <span>{t('world.editor.lore.trigger.matchWholeWords')}</span>
+      </label>
+      <p className="field__hint">{t('world.editor.lore.trigger.matchWholeWords.hint')}</p>
       <Field label={t('world.editor.lore.trigger.depth')}>
         <TextInput
           type="number"
           value={draft.trigger.depth}
           onChange={(value) => update({ trigger: { ...draft.trigger, depth: value } })}
+        />
+      </Field>
+      <Field label={t('world.editor.lore.trigger.tokenBudget')} hint={t('world.editor.lore.trigger.tokenBudget.hint')}>
+        <TextInput
+          type="number"
+          value={draft.trigger.tokenBudget}
+          onChange={(value) => update({ trigger: { ...draft.trigger, tokenBudget: value } })}
         />
       </Field>
       <Field label={t('world.editor.lore.trigger.conditions')} hint={t('world.editor.lore.trigger.conditions.hint')}>

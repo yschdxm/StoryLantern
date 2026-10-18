@@ -90,6 +90,29 @@ export function ModelSettings({ store, chat, transport, initialRow }: SettingsPr
               <span>{t('settings.model.cite')}</span>
             </label>
             <p className="field__hint">{t('settings.model.cite.hint')}</p>
+            <label className="switch">
+              <input
+                type="checkbox"
+                checked={value(SETTING_KEYS.streamUsage) !== 'off'}
+                onChange={(event) => saveNow(SETTING_KEYS.streamUsage, event.target.checked ? 'on' : 'off')}
+              />
+              <span>{t('settings.model.streamUsage')}</span>
+            </label>
+            <p className="field__hint">{t('settings.model.streamUsage.hint')}</p>
+            <Field label={t('settings.model.loreScanDepth')} hint={t('settings.model.loreScanDepth.hint')}>
+              <TextInput
+                type="number"
+                value={value(SETTING_KEYS.loreScanDepth) === '' ? '4' : value(SETTING_KEYS.loreScanDepth)}
+                onChange={(next) => update(SETTING_KEYS.loreScanDepth, next)}
+                onBlur={() => {
+                  const raw = value(SETTING_KEYS.loreScanDepth);
+                  const parsed = Number(raw);
+                  const clamped = raw.trim() === '' || !Number.isFinite(parsed) ? 4 : Math.min(20, Math.max(1, Math.round(parsed)));
+                  if (raw.trim() === '' || String(clamped) !== raw) saveNow(SETTING_KEYS.loreScanDepth, String(clamped));
+                  else commit(SETTING_KEYS.loreScanDepth);
+                }}
+              />
+            </Field>
             <div className="row">
               <Button variant="ghost" onClick={() => setShowKey((current) => !current)}>
                 {showKey ? t('settings.model.hideKey') : t('settings.model.showKey')}

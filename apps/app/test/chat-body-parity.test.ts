@@ -37,6 +37,7 @@ test('发送字节 == 展示字节：界面装配出的消息与宿主会发出�
     model: string;
     messages: { role: string; content: string }[];
     stream: boolean;
+    stream_options?: { include_usage?: boolean };
     temperature: number;
     max_tokens: number;
   };
@@ -55,9 +56,10 @@ test('发送字节 == 展示字节：界面装配出的消息与宿主会发出�
   assert.equal(body.stream, true, '必须流式（少传它就是一类真实事故）');
   assert.equal(body.temperature, golden.target.temperature);
   assert.equal(body.max_tokens, golden.target.maxTokens);
+  assert.equal(body.stream_options?.include_usage, true, '默认要真实用量：stream_options.include_usage=true');
 
   // 请求体的键集合也要钉住：多一个字段（例如把密钥塞进去）会在这里被看见
-  assert.deepEqual(Object.keys(body).sort(), ['max_tokens', 'messages', 'model', 'stream', 'temperature']);
+  assert.deepEqual(Object.keys(body).sort(), ['max_tokens', 'messages', 'model', 'stream', 'stream_options', 'temperature']);
   const serialized = JSON.stringify(body);
   assert.ok(!serialized.includes('api_key'), '请求体里不允许出现密钥字段');
 });

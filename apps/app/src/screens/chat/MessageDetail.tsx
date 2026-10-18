@@ -36,7 +36,7 @@ export function MessageDetail({
                 })}
               </p>
               <p className="trace__line">
-                {t('chat.detail.tokens')}：
+                {t(meta.tokens?.estimated === false ? 'chat.detail.tokens.real' : 'chat.detail.tokens')}：
                 {t('chat.detail.tokens.value', {
                   prompt: meta.tokens?.prompt ?? '—',
                   completion: meta.tokens?.completion ?? '—',

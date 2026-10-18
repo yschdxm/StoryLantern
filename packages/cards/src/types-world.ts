@@ -138,10 +138,18 @@ export interface LoreTrigger {
   probability?: number;
   /** 是否允许二次触发（命中内容再参与匹配）。 */
   recursive?: boolean;
-  /** 注入字符预算（单条）。 */
+  /**
+   * 单条内容字符预算：**装配层**（`prompt-lore.ts`）按 Unicode 码点截断，超出加 `…`。
+   * `<=0` / 未设 = 不截断。注意它与全局扫描预算（`budgetChars`）是两件事。
+   */
   token_budget?: number;
   /** 深度窗口：注入位置/匹配窗口，语义与旧世界书 `depth` 一致。 */
   depth?: number;
+  /**
+   * 整词匹配：只影响**英文/ASCII 词**（`bell` 不命中 `umbrella`）；CJK 仍按子串（`铃` 命中 `铜铃`）。
+   * 默认 false（纯子串）。
+   */
+  match_whole_words?: boolean;
   /** 变量条件表达式源码数组。 */
   conditions?: readonly string[];
 }
