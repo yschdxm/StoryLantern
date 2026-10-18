@@ -4,6 +4,7 @@ import { useAppState } from '../screens/screen-props.ts';
 import { BackupPanel } from '../screens/BackupPanel.tsx';
 import { ProfilesPanel } from '../screens/ProfilesPanel.tsx';
 import { AssetSelfTest } from './AssetSelfTest.tsx';
+import { PresetArchivePanel } from './PresetArchivePanel.tsx';
 import { SettingsRow } from '../ui/SettingsRow.tsx';
 import { SettingsDetail, SettingsList, useSectionDetail } from './SettingsSection.tsx';
 import type { SettingsProps } from './settings-types.ts';
@@ -27,12 +28,19 @@ export function DataSettings({ store, router, host, sync, initialRow }: Settings
 
   if (detail !== undefined) {
     const titleKey =
-      detail === 'backup' ? 'settings.row.backup' : detail === 'profile' ? 'settings.row.profile' : 'settings.row.assetSelfTest';
+      detail === 'backup'
+        ? 'settings.row.backup'
+        : detail === 'profile'
+          ? 'settings.row.profile'
+          : detail === 'assets'
+            ? 'settings.row.assetSelfTest'
+            : 'settings.row.presets';
     return (
       <SettingsDetail section="data" titleKey={titleKey} onBack={close}>
         {detail === 'backup' && sync !== undefined && <BackupPanel sync={sync} />}
         {detail === 'profile' && <ProfilesPanel store={store} />}
         {detail === 'assets' && <AssetSelfTest />}
+        {detail === 'presets' && <PresetArchivePanel store={store} />}
       </SettingsDetail>
     );
   }
@@ -47,6 +55,11 @@ export function DataSettings({ store, router, host, sync, initialRow }: Settings
         label={t('settings.row.assetSelfTest')}
         value={t('settings.value.assetSelfTest')}
         onPress={() => open('assets')}
+      />
+      <SettingsRow
+        label={t('settings.row.presets')}
+        value={t('settings.value.presets')}
+        onPress={() => open('presets')}
       />
       <SettingsRow label={t('import.title')} value={t('settings.value.import')} onPress={() => router.navigate({ name: 'import' })} />
       <SettingsRow label={t('settings.row.localData')} value={counts} arrow={false} />
