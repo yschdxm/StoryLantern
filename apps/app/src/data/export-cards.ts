@@ -9,6 +9,8 @@
  */
 
 import type { CharacterCard, CompatStashEntry, LoreCard, WorldPackManifest } from '../../../../packages/cards/src/index.ts';
+import { quickRepliesToSt } from './quick-replies.ts';
+import { regexScriptsOfExtensions, regexScriptsToSt } from './regex-scripts.ts';
 
 export interface ExportPlan {
   json: string;
@@ -50,6 +52,37 @@ function listLosses(items: readonly unknown[], field: string): string[] {
   return items.length === 0 ? [] : [field];
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** 卡片扩展里不是"正则/快捷回复"的部分：导出时如实报丢失。 */
+function extensionLosses(card: CharacterCard): string[] {
+  const losses: string[] = [];
+  const extensions = card.extensions ?? {};
+  for (const key of Object.keys(extensions)) {
+    if (key !== 'storylantern') losses.push(`extensions.${key}`);
+  }
+  const story = extensions['storylantern'];
+  if (isRecord(story)) {
+    for (const key of Object.keys(story)) {
+      if (key !== 'regex_scripts') losses.push(`extensions.storylantern.${key}`);
+    }
+  }
+  return losses;
+}
+
+/** 正则脚本 + 快捷回复 → ST `data.extensions`（B13/B14；能再被导入读回）。 */
+function extensionPayload(card: CharacterCard): Record<string, unknown> | undefined {
+  const regexScripts = regexScriptsOfExtensions(card.extensions);
+  const quickReplies = card.quick_replies ?? [];
+  const payload: Record<string, unknown> = {
+    ...(regexScripts.length === 0 ? {} : { regex_scripts: regexScriptsToSt(regexScripts) }),
+    ...(quickReplies.length === 0 ? {} : { quick_replies: quickRepliesToSt(quickReplies) }),
+  };
+  return Object.keys(payload).length === 0 ? undefined : payload;
+}
+
 /** 我们的字段里，酒馆 v2 没有对应的：挑重要的报，避免把提示淹没在噪音里。 */
 function characterLosses(card: CharacterCard): string[] {
   const losses: string[] = [];
@@ -76,7 +109,7 @@ function characterLosses(card: CharacterCard): string[] {
   if (card.presentation !== undefined) losses.push('presentation');
   if (card.memory !== undefined) losses.push('memory');
   if (card.agent !== undefined) losses.push('agent');
-  if (card.extensions !== undefined && Object.keys(card.extensions).length > 0) losses.push('extensions');
+  losses.push(...extensionLosses(card));
   if (card.examples?.some((group) => group.tags !== undefined || group.context !== undefined) === true) {
     losses.push('examples[].tags/context');
   }
@@ -93,6 +126,7 @@ export function exportCharacterCard(card: CharacterCard, stash: readonly CompatS
   const scenario = latestStashText(stash, card.meta.id, 'scenario') ?? '';
   const summary = card.persona.summary.trim();
   const traits = card.persona.traits.map((item) => item.trim()).filter((item) => item !== '');
+  const extensions = extensionPayload(card);
   const data: Record<string, unknown> = {
     name: card.identity.name,
     description: card.identity.background,
@@ -108,6 +142,7 @@ export function exportCharacterCard(card: CharacterCard, stash: readonly CompatS
     ...(opening.alternates.length === 0 ? {} : { alternate_greetings: opening.alternates }),
     ...(card.meta.tags === undefined || card.meta.tags.length === 0 ? {} : { tags: [...card.meta.tags] }),
     ...(card.meta.author === undefined || card.meta.author === '' ? {} : { creator: card.meta.author }),
+    ...(extensions === undefined ? {} : { extensions }),
   };
   return {
     json: JSON.stringify({ spec: 'chara_card_v2', spec_version: '2.0', data }, null, 2),

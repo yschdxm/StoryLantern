@@ -7,6 +7,8 @@ import {
   type ImportedCharacter,
   type ImportedLorebook,
   type ImportedLorebookEntry,
+  type ImportedQuickReply,
+  type ImportedRegexScript,
 } from './types.ts';
 
 /** ST 的数值字段既可能是 number 也可能是数字字符串；非数字一律当"没给"。 */
@@ -115,7 +117,7 @@ const HANDLED_CARD_FIELDS: ReadonlySet<string> = new Set([
   'name', 'description', 'personality', 'scenario', 'first_mes', 'mes_example',
   'creator_notes', 'system_prompt', 'post_history_instructions', 'alternate_greetings',
   'tags', 'creator', 'character_version', 'extensions', 'character_book',
-  'depth_prompt', 'group_only_greetings',
+  'depth_prompt', 'group_only_greetings', 'regex_scripts', 'quick_replies',
 ]);
 
 /** `depth_prompt` 可能是字符串，也可能是 `{ prompt, depth }`（ST 放在 extensions 里）。 */
@@ -126,10 +128,67 @@ function depthPromptOf(data: Record<string, unknown>): string {
   return '';
 }
 
-/** `extensions` 的值不导入：只留键名，由导入层写进丢弃清单。 */
+/** 我们已经消费掉的 `extensions` 键：不再进"丢弃清单"。 */
+const HANDLED_EXTENSION_KEYS: ReadonlySet<string> = new Set(['regex_scripts', 'quick_replies']);
+
+/** `extensions` 里没消费的值不导入：只留键名，由导入层写进丢弃清单。 */
 function extensionKeysOf(data: Record<string, unknown>): string[] {
   const extensions = data['extensions'];
-  return isRecord(extensions) ? Object.keys(extensions).sort() : [];
+  return isRecord(extensions) ? Object.keys(extensions).filter((key) => !HANDLED_EXTENSION_KEYS.has(key)).sort() : [];
+}
+
+/** 正则脚本原始数组：ST 放在 `extensions.regex_scripts`，也容忍根上的 `regex_scripts`。 */
+function regexScriptListOf(data: Record<string, unknown>): unknown[] {
+  const extensions = isRecord(data['extensions']) ? data['extensions'] : undefined;
+  const fromExtensions = extensions === undefined ? undefined : extensions['regex_scripts'];
+  const direct = data['regex_scripts'];
+  return Array.isArray(fromExtensions) ? fromExtensions : Array.isArray(direct) ? direct : [];
+}
+
+/** 正则脚本：解析出可执行的原始条目（字段缺失/不可映射的跳过，由调用方报数量）。 */
+function regexScriptsOf(data: Record<string, unknown>): ImportedRegexScript[] {
+  const out: ImportedRegexScript[] = [];
+  regexScriptListOf(data).forEach((raw, index) => {
+    if (!isRecord(raw)) return;
+    const findRegex = asString(raw['findRegex']).trim();
+    if (findRegex === '') return;
+    const placement = (Array.isArray(raw['placement']) ? raw['placement'] : [raw['placement']])
+      .map((value) => asInteger(value))
+      .filter((value): value is number => value !== undefined && value > 0);
+    if (placement.length === 0) return;
+    out.push({
+      id: asString(raw['id']).trim() || `regex-${index + 1}`,
+      name: asString(raw['scriptName']).trim() || asString(raw['name']).trim() || `regex-${index + 1}`,
+      findRegex,
+      replaceString: asString(raw['replaceString']),
+      placement,
+      ...(raw['disabled'] === true ? { disabled: true } : {}),
+      ...(raw['markdownOnly'] === true ? { markdownOnly: true } : {}),
+      ...(raw['promptOnly'] === true ? { promptOnly: true } : {}),
+    });
+  });
+  return out;
+}
+
+/** 快捷回复：ST 放在 `extensions.quick_replies`，也容忍根上的 `quick_replies`。 */
+function quickRepliesOf(data: Record<string, unknown>): ImportedQuickReply[] {
+  const extensions = isRecord(data['extensions']) ? data['extensions'] : undefined;
+  const fromExtensions = extensions === undefined ? undefined : extensions['quick_replies'];
+  const direct = data['quick_replies'];
+  const list = Array.isArray(fromExtensions) ? fromExtensions : Array.isArray(direct) ? direct : [];
+  const out: ImportedQuickReply[] = [];
+  list.forEach((raw, index) => {
+    if (!isRecord(raw)) return;
+    const content = asString(raw['message'] ?? raw['content']).trim();
+    if (content === '') return;
+    out.push({
+      id: asString(raw['id']).trim() || `qr-${index + 1}`,
+      name: asString(raw['label'] ?? raw['name']).trim() || `qr-${index + 1}`,
+      content,
+      enabled: raw['enabled'] !== false,
+    });
+  });
+  return out;
 }
 
 /** 我们没有映射的顶层 data 字段（`nickname`/`assets` 之类）：如实上报。 */
@@ -178,6 +237,14 @@ export function parseCharacterJson(value: unknown, source: string): ImportedChar
   const cardPrompt = asString(data['system_prompt']).trim();
   if (cardPrompt !== '') notes.push('卡片自带 system prompt 已带入角色（优先于全局提示）');
   if (asString(data['creator_notes']).trim() !== '') notes.push('creator notes 已作为卡片简介带入');
+  const regexScripts = regexScriptsOf(data);
+  const regexRawCount = regexScriptListOf(data).length;
+  if (regexScripts.length > 0) notes.push(`正则脚本 ${regexScripts.length} 条已解析（执行引擎已就绪，聊天链路接线在下一批）`);
+  if (regexRawCount > regexScripts.length) {
+    notes.push(`正则脚本 ${regexRawCount} 条中有 ${regexRawCount - regexScripts.length} 条缺少 findRegex/placement，已跳过（不猜）`);
+  }
+  const quickReplies = quickRepliesOf(data);
+  if (quickReplies.length > 0) notes.push(`快捷回复 ${quickReplies.length} 条已解析（暂无 UI 入口）`);
 
   return attachRaw(
     {
@@ -202,10 +269,9 @@ export function parseCharacterJson(value: unknown, source: string): ImportedChar
       extensionKeys: extensionKeysOf(data),
       unmappedFields: unmappedFieldsOf(data),
       ...(lorebook === undefined ? {} : { lorebook }),
-      notes:
-        regexScriptCount(data) === 0
-          ? notes
-          : [...notes, `${regexScriptCount(data)} 条正则脚本没有导入：当前版本不执行正则（要么接进生成链路，要么不导，不做半支持）`],
+      ...(regexScripts.length === 0 ? {} : { regexScripts }),
+      ...(quickReplies.length === 0 ? {} : { quickReplies }),
+      notes,
     },
     value,
   );
@@ -221,16 +287,7 @@ function withCreatorNotes(description: string, data: Record<string, unknown>): s
 /**
  * 卡片里的正则脚本条数（SillyTavern 放在 extensions.regex_scripts，也有放在根上的）。
  *
- * 我们**不导入也不假装支持**：正则要么真接进生成链路，要么明确不导——只把条数报给用户，
- * 免得"导入成功"却少了一块行为。
+ * 已改为真解析（`regexScriptsOf`）：这里只保留被其它地方引用的旧函数名会误报，
+ * 因此直接删除，避免"只计数不导入"的旧语义残留。
  */
-function regexScriptCount(data: Record<string, unknown>): number {
-  const extensions = data['extensions'];
-  const fromExtensions =
-    extensions !== null && typeof extensions === 'object'
-      ? (extensions as Record<string, unknown>)['regex_scripts']
-      : undefined;
-  const direct = data['regex_scripts'];
-  const list = Array.isArray(fromExtensions) ? fromExtensions : Array.isArray(direct) ? direct : [];
-  return list.length;
-}
+

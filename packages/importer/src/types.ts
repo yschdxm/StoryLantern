@@ -52,6 +52,28 @@ export interface ImportedLorebook {
   entries: ImportedLorebookEntry[];
 }
 
+/** 酒馆 `regex_scripts` 的原始条目（字段名保持 ST 原名，placement 保留数字）。 */
+export interface ImportedRegexScript {
+  id: string;
+  name: string;
+  /** ST `findRegex`：`/pattern/flags` 或裸 pattern。 */
+  findRegex: string;
+  replaceString: string;
+  /** ST placement 数字（1=USER_INPUT、2=AI_OUTPUT、5=WORLD_INFO、6=REASONING）。 */
+  placement: number[];
+  disabled?: boolean;
+  markdownOnly?: boolean;
+  promptOnly?: boolean;
+}
+
+/** 酒馆快捷回复原始条目（`extensions.quick_replies`）。 */
+export interface ImportedQuickReply {
+  id: string;
+  name: string;
+  content: string;
+  enabled: boolean;
+}
+
 export interface ImportedCharacter {
   kind: 'character';
   /** 来源文件名，用于界面提示与排错。 */
@@ -87,6 +109,10 @@ export interface ImportedCharacter {
   /** 我们没有映射的 `data` 字段名：如实上报丢弃，不静默。 */
   unmappedFields?: string[];
   lorebook?: ImportedLorebook;
+  /** 酒馆正则脚本（`extensions.regex_scripts` / 根上 `regex_scripts`）；由导入层决定是否存进卡片。 */
+  regexScripts?: ImportedRegexScript[];
+  /** 酒馆快捷回复（`extensions.quick_replies`）。 */
+  quickReplies?: ImportedQuickReply[];
   /** 丢掉了什么、可能影响什么——宁可写清楚，也不静默丢数据。 */
   notes: string[];
 }

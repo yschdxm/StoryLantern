@@ -12,9 +12,18 @@
 import { scanLore, type ScanBook, type ScoredEntry } from '../../../../packages/lore/src/index.ts';
 import { evaluateConditions, flattenScope, type ExprScope } from '../../../../packages/cards/src/index.ts';
 import type { LoreCard, SessionRuntime } from '../../../../packages/cards/src/index.ts';
+import { applyRegexScripts, type RegexSkipped } from './regex-scripts.ts';
+import { regexScriptsOfWorld } from './chat-regex.ts';
 import { expandMacros } from './macros.ts';
 import type { PromptBlockDataV2 } from './prompt-blocks-v2.ts';
 import { SETTING_KEYS } from './types.ts';
+
+// B13：world_info 正则统计挂在装配 data 上（trace 的数据源；prompt-v2 只负责把它抄进 trace）
+declare module './prompt-blocks-v2.ts' {
+  interface PromptOutcomesV2 {
+    loreRegex?: { applied: number; skipped: RegexSkipped[] };
+  }
+}
 
 /** 设置键：世界书扫描深度（与设置页/`SETTING_KEYS` 同一个键，避免两处字符串漂移）。 */
 export const LORE_SCAN_DEPTH_SETTING = SETTING_KEYS.loreScanDepth;
@@ -144,19 +153,35 @@ export function loreTextOf(data: PromptBlockDataV2): string | undefined {
   });
   const byId = new Map(eligible.cards.map((card) => [card.meta.id, card]));
   const kept: ScoredEntry[] = [];
+  // B13：world_info 正则对每条命中内容执行；卡片原文不改（只改这次注入的副本）。
+  const worldScripts = regexScriptsOfWorld(data.world);
+  let regexApplied = 0;
+  const regexSkipped: RegexSkipped[] = [];
   // trace 的 loreDropped = 条目停用/条件不满足 + 概率未命中 + 预算挤掉 + group/冷却/延迟抑制
   let dropped = eligible.dropped + result.dropped.length + result.suppressed;
   for (const entry of result.matched) {
     const trigger = byId.get(entry.entryId)?.trigger;
     if (trigger?.constant === true || passesProbability(entry.entryId, trigger?.probability, data.lastMessageKey)) {
-      // 作者文本里的宏先展开，再按单条预算截断（模型看到的与 trace 记的同一份文本）。
+      // 作者文本里的宏先展开，再跑 world_info 正则，最后按单条预算截断（模型看到的与 trace 记的同一份文本）。
       const expanded = expandMacros(entry.content, data.macros);
-      kept.push({ ...entry, content: applyTokenBudget(expanded, trigger?.token_budget) });
+      const scripted = worldScripts.length === 0 ? { text: expanded, applied: 0, skipped: [] as RegexSkipped[] } : applyRegexScripts(expanded, 'world_info', worldScripts);
+      regexApplied += scripted.applied;
+      regexSkipped.push(...scripted.skipped);
+      const injected = { ...entry, content: applyTokenBudget(scripted.text, trigger?.token_budget) };
+      // 统计附着在注入副本上（不改进来的 ScoredEntry 类型）：调用方据此把 world_info 写进 trace/meta。
+      if (scripted.applied > 0 || scripted.skipped.length > 0) {
+        (injected as ScoredEntry & { worldInfoApplied?: number; worldInfoSkipped?: RegexSkipped[] }).worldInfoApplied = scripted.applied;
+        (injected as ScoredEntry & { worldInfoApplied?: number; worldInfoSkipped?: RegexSkipped[] }).worldInfoSkipped = scripted.skipped;
+      }
+      kept.push(injected);
     } else {
       dropped += 1;
     }
   }
   data.outcomes.matchedLore = kept;
   data.outcomes.loreDropped = dropped;
+  if (regexApplied > 0 || regexSkipped.length > 0) {
+    data.outcomes.loreRegex = { applied: regexApplied, skipped: regexSkipped };
+  }
   return kept.length === 0 ? undefined : `【相关设定】\n${kept.map((entry) => entry.content.trim()).join('\n')}`;
 }

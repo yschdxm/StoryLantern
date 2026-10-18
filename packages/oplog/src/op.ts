@@ -88,8 +88,15 @@ export interface MessageTiming {
   totalMs?: number;
 }
 
+/** 一次正则脚本执行的统计（B13）：跳过的脚本 id/原因如实记，不静默。 */
+export interface MessageRegexStat {
+  placement: 'user_input' | 'ai_output' | 'world_info' | 'reasoning';
+  applied: number;
+  skipped: readonly { id: string; reason: string }[];
+}
+
 /**
- * 消息的生成元数据：模型、思考链、引用、token、耗时。
+ * 消息的生成元数据：模型、思考链、引用、token、耗时、正则脚本统计。
  *
  * 放在 oplog 内（而不是 app 里）是因为 `message.append` 的 payload 要能带它，
  * 而 oplog 不能反向依赖 app；app 侧 `data/types.ts` 直接复用这些类型。
@@ -101,6 +108,7 @@ export interface MessageMeta {
   citations?: readonly MessageCitation[];
   tokens?: MessageTokens;
   timing?: MessageTiming;
+  regex?: readonly MessageRegexStat[];
 }
 /** 消息生成状态：`stopped` = 用户中途停止（保留已收到的部分内容）。 */
 export type MessagePayloadStatus = 'done' | 'error' | 'stopped';
@@ -327,14 +335,12 @@ export function messageAppend(
     payload,
   });
 }
-
 export function messageEdit(
   base: { deviceId: string; clock: HlcClock },
   payload: MessageEditPayload,
 ): Op<MessageEditPayload> {
   return createOp({ ...base, type: 'message.edit', entity: { type: 'message', id: payload.messageId }, payload });
 }
-
 export function revisionSelect(
   base: { deviceId: string; clock: HlcClock },
   payload: RevisionSelectPayload,
@@ -346,7 +352,6 @@ export function revisionSelect(
     payload,
   });
 }
-
 export function candidateAppend(
   base: { deviceId: string; clock: HlcClock },
   payload: CandidateAppendPayload,
@@ -358,7 +363,6 @@ export function candidateAppend(
     payload,
   });
 }
-
 export function candidateSelect(
   base: { deviceId: string; clock: HlcClock },
   payload: CandidateSelectPayload,
@@ -370,14 +374,12 @@ export function candidateSelect(
     payload,
   });
 }
-
 export function messageDelete(
   base: { deviceId: string; clock: HlcClock },
   payload: MessageDeletePayload,
 ): Op<MessageDeletePayload> {
   return createOp({ ...base, type: 'message.delete', entity: { type: 'message', id: payload.messageId }, payload });
 }
-
 export function settingSet(
   base: { deviceId: string; clock: HlcClock },
   payload: SettingSetPayload,
@@ -385,9 +387,7 @@ export function settingSet(
 ): Op<SettingSetPayload> {
   return createOp({ ...base, ...stamp, type: 'setting.set', entity: { type: 'setting', id: payload.key }, payload });
 }
-
 // ---- 世界书 ----
-
 // 世界书的 payload 类型与构造器放在 `lore-ops.ts`（字段多、还会长大），这里只做转发，
 // 让调用方仍然可以只 import `op.ts`。
 export type {

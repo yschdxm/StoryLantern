@@ -26,6 +26,8 @@ export function ScreenMenu({
   const [open, setOpen] = useState(false);
   const [renaming, setRenaming] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [forking, setForking] = useState(false);
+  const [forkError, setForkError] = useState<string | undefined>(undefined);
 
   if (route.name !== 'chat') return null;
   const session = state.sessions.find((item) => item.id === route.sessionId);
@@ -33,7 +35,14 @@ export function ScreenMenu({
 
   return (
     <>
-      <IconButton icon="more" label={t('sessions.actionMenu')} onClick={() => setOpen(true)} />
+      <IconButton
+        icon="more"
+        label={t('sessions.actionMenu')}
+        onClick={() => {
+          setForkError(undefined);
+          setOpen(true);
+        }}
+      />
 
       <Sheet open={open} title={session.title} onClose={() => setOpen(false)}>
         <SheetItem
@@ -53,6 +62,26 @@ export function ScreenMenu({
           }}
         />
         <SheetItem
+          icon="plus"
+          label={forking ? t('sessions.fork.running') : t('sessions.fork.action')}
+          disabled={forking}
+          onClick={() => {
+            setForking(true);
+            setForkError(undefined);
+            void store.actions
+              .forkSession(session.id, { title: t('sessions.fork.title', { title: session.title }) })
+              .then((created) => {
+                setForking(false);
+                setOpen(false);
+                onNavigate?.({ name: 'chat', sessionId: created.id });
+              })
+              .catch((cause: unknown) => {
+                setForking(false);
+                setForkError(cause instanceof Error ? cause.message : String(cause));
+              });
+          }}
+        />
+        <SheetItem
           icon="edit"
           label={t('sessions.rename.action')}
           onClick={() => {
@@ -69,6 +98,9 @@ export function ScreenMenu({
             setOpen(false);
           }}
         />
+        {forkError !== undefined && (
+          <p className="notice notice--warn">{t('sessions.fork.failed', { message: forkError })}</p>
+        )}
       </Sheet>
 
       <Sheet open={renaming !== ''} title={t('sessions.rename')} onClose={() => setRenaming('')}>

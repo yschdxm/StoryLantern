@@ -138,6 +138,18 @@ export interface PromptFragments {
   post_history_instructions?: string;
 }
 
+/**
+ * 快捷回复（B14）：作者预置一句话，UI 点一下填进输入框（或直接发送）。
+ * 只存作者数据，执行/展开在应用层（`data/quick-replies.ts`）。
+ */
+export interface QuickReply {
+  id: string;
+  name: string;
+  /** 支持 `{{char}}` / `{{user}}` 宏（展开规则与提示词作者文本一致）。 */
+  content: string;
+  enabled?: boolean;
+}
+
 export interface MemoryPolicy {
   short_term_turns?: number;
   summary_threshold_tokens?: number;
@@ -163,6 +175,8 @@ export interface CharacterCard extends CardBase {
   state?: StateSchema;
   rules?: readonly CardRule[];
   prompts?: PromptFragments;
+  /** 快捷回复（ST `quick_replies`）；无 UI 入口时只由导入/导出携带。 */
+  quick_replies?: readonly QuickReply[];
   memory?: MemoryPolicy;
   presentation?: Presentation;
 }

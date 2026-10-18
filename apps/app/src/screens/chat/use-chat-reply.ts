@@ -7,6 +7,7 @@ import type { AppStore } from '../../app/state.ts';
 import { loadWorkspace, type WorkspaceSnapshot } from '../../app/workspace.ts';
 import type { ChatCall, ChatClient, ChatDelta, ChatPreview, ChatReplyResult } from '../../data/chat-client.ts';
 import { resolveCitations } from '../../data/citations.ts';
+import { regexStatOf, regexStatsOf, transformAiOutput, transformReasoning } from '../../data/chat-regex.ts';
 import { describeError } from '../../data/error-text.ts';
 import { candidatesFor, targetLabel } from '../../data/model-routing.ts';
 import { buildChatRequestV2 } from '../../data/prompt-v2.ts';
@@ -15,7 +16,7 @@ import { estimateTokens } from '../../data/tokens.ts';
 import { tokensMetaOf, type RealUsage } from '../../data/message-append.ts';
 import { makeRequestLogEntry, type RequestLogPort } from '../../data/request-log.ts';
 import { withBackoffRetry } from '../../data/backoff.ts';
-import { SETTING_KEYS, type MessageCitation, type MessageMeta } from '../../data/types.ts';
+import { SETTING_KEYS, type MessageCitation, type MessageMeta, type MessageRegexStat } from '../../data/types.ts';
 import { createUsageStore } from '../../data/usage-store.ts';
 import { useT } from '../../i18n/context.tsx';
 import type { ModelAttempt, RequestTraceState } from '../RequestTracePanel.tsx';
@@ -102,7 +103,6 @@ export function useChatReply(input: {
         );
       },
     });
-
     const activeWorkspace = input.workspace ?? (await loadWorkspace(store.repository, fresh, sessionId));
     const request = buildChatRequestV2(
       buildChatOptionsV2({
@@ -115,7 +115,6 @@ export function useChatReply(input: {
       }),
     );
     setInjectedLore(request.lore);
-
     const startedAt = Date.now();
     const candidates = candidatesFor(fresh.settings, 'chat');
     const attempts: ModelAttempt[] = [];
@@ -127,12 +126,10 @@ export function useChatReply(input: {
     };
     const firstCall: ChatCall =
       candidates[0]?.id === undefined || candidates[0].id === '' ? baseCall : { ...baseCall, profileId: candidates[0].id };
-
     const controller = new AbortController();
     controllerRef.current = controller;
     setChatError(undefined);
     setStreaming({ text: '', reasoning: '' });
-
     // 预览：先把"要发出去的"记下来（失败不阻塞发送，但面板要如实显示）
     let preview: ChatPreview | undefined;
     let previewError: string | undefined;
@@ -173,20 +170,19 @@ export function useChatReply(input: {
       ...(previousBody === undefined ? {} : { previousBody }),
       ...(previewError === undefined ? {} : { previewError }),
     });
-
     let streamedText = '';
     let streamedReasoning = '';
     let firstDeltaAt: number | undefined;
     let promptTokens = 0;
     /** 接口回来的真实用量（流末尾的 usage chunk）；没有就是 undefined → 用估算。 */
     let realUsage: RealUsage | undefined;
-
     const metaOf = (
       outcome: ChatReplyResult,
       candidateId: string,
       candidateLabel: string,
       text: string,
       citationList: readonly MessageCitation[],
+      regexStats: readonly MessageRegexStat[] = [],
     ): MessageMeta => ({
       ...(candidateId === '' ? {} : { modelId: candidateId }),
       modelLabel: candidateLabel,
@@ -197,11 +193,21 @@ export function useChatReply(input: {
         ...(firstDeltaAt === undefined ? {} : { firstDeltaMs: firstDeltaAt - startedAt }),
         totalMs: Date.now() - startedAt,
       },
+      ...(regexStats.length === 0 ? {} : { regex: regexStats }),
     });
-
+    /** B13：world_info 统计由 prompt-lore 附着在注入的 lore 条目上（不动 ScoredEntry 类型）。 */
+    const worldInfoStat = (): MessageRegexStat | undefined => {
+      let applied = 0;
+      const skipped: { id: string; reason: string }[] = [];
+      for (const raw of request.lore) {
+        const entry = raw as { worldInfoApplied?: number; worldInfoSkipped?: { id: string; reason: string }[] };
+        applied += entry.worldInfoApplied ?? 0;
+        skipped.push(...(entry.worldInfoSkipped ?? []));
+      }
+      return applied === 0 && skipped.length === 0 ? undefined : { placement: 'world_info', applied, skipped };
+    };
     try {
       if (candidates.length === 0) throw new Error(t('chat.noModel'));
-
       promptTokens =
         request.trace.usedTokens + estimateTokens(request.messages.map((message) => message.content).join(String.fromCharCode(10)));
       const maxOutputRaw = Number(fresh.settings[SETTING_KEYS.maxTokens] ?? '');
@@ -217,7 +223,6 @@ export function useChatReply(input: {
           }),
         );
       }
-
       let outcome: ChatReplyResult | undefined;
       let winner: { id: string; label: string } | undefined;
       for (const candidate of candidates) {
@@ -288,12 +293,17 @@ export function useChatReply(input: {
         }
       }
       setTrace((current) => (current === undefined ? current : { ...current, attempts }));
-
       if (outcome === undefined || winner === undefined) {
         throw new Error(attempts[attempts.length - 1]?.error ?? t('chat.noModel'));
       }
-
-      const resolved = resolveCitations(outcome.text, request.citationWindow);
+      // B13：ai_output 正则先跑，再 strip 引用标记 —— 反过来用户脚本会把 `[1]` 当正文改掉。
+      const ai = transformAiOutput(outcome.text, activeWorkspace.cards, activeWorkspace.setup);
+      const reasoning = transformReasoning(
+        outcome.reasoning ?? streamedReasoning,
+        activeWorkspace.cards,
+        activeWorkspace.setup,
+      );
+      const resolved = resolveCitations(ai.text, request.citationWindow);
       if (resolved.text !== '') {
         await store.actions.appendMessage(
           sessionId,
@@ -302,11 +312,12 @@ export function useChatReply(input: {
           outcome.aborted ? { status: 'stopped' } : {},
           undefined,
           metaOf(
-            { ...outcome, reasoning: outcome.reasoning ?? streamedReasoning },
+            { ...outcome, reasoning: reasoning.text },
             winner.id,
             winner.label,
             resolved.text,
             resolved.citations,
+            regexStatsOf([regexStatOf('ai_output', ai), regexStatOf('reasoning', reasoning), worldInfoStat()]),
           ),
         );
       }
@@ -332,7 +343,9 @@ export function useChatReply(input: {
       if (controller.signal.aborted) {
         await logRequest('ok', timing);
         // 用户停止：把已经收到的半截内容按 stopped 落库，不显示错误
-        const resolved = resolveCitations(streamedText, request.citationWindow);
+        const ai = transformAiOutput(streamedText, activeWorkspace.cards, activeWorkspace.setup);
+        const reasoning = transformReasoning(streamedReasoning, activeWorkspace.cards, activeWorkspace.setup);
+        const resolved = resolveCitations(ai.text, request.citationWindow);
         if (resolved.text !== '') {
           await store.actions
             .appendMessage(
@@ -346,13 +359,16 @@ export function useChatReply(input: {
                   ? {}
                   : { modelId: candidates[0].id }),
                 modelLabel: candidates[0] === undefined ? '—' : targetLabel(candidates[0]),
-                ...(streamedReasoning === '' ? {} : { reasoning: streamedReasoning }),
+                ...(reasoning.text === '' ? {} : { reasoning: reasoning.text }),
                 citations: resolved.citations,
                 tokens: tokensMetaOf(realUsage, promptTokens, estimateTokens(resolved.text)),
                 timing: {
                   ...(firstDeltaAt === undefined ? {} : { firstDeltaMs: firstDeltaAt - startedAt }),
                   totalMs: Date.now() - startedAt,
                 },
+                ...(regexStatsOf([regexStatOf('ai_output', ai), regexStatOf('reasoning', reasoning), worldInfoStat()]).length === 0
+                  ? {}
+                  : { regex: regexStatsOf([regexStatOf('ai_output', ai), regexStatOf('reasoning', reasoning), worldInfoStat()]) }),
               },
             )
             .catch(() => undefined);
@@ -372,7 +388,6 @@ export function useChatReply(input: {
       await store.actions.refreshSessions().catch(() => undefined);
     }
   };
-
   return {
     streaming,
     chatError,

@@ -1,4 +1,5 @@
 import type { MessageDraft, Repository } from '../data/repository.ts';
+import { forkSessionInRepository } from '../data/session-fork.ts';
 import { appendMessageWithMeta } from '../data/message-append.ts';
 import { DataError } from '../data/repository.ts';
 import type { Summary, SummaryDraft } from '../data/summary-types.ts';
@@ -11,7 +12,7 @@ import type {
   LoreEntryDraft,
   Memory,
   MemoryDraft,
-  Message, MessageMeta,
+  Message, MessageMeta, MessageRevision, MessageFork,
   Session,
   SettingsMap,
 } from '../data/types.ts';
@@ -55,7 +56,7 @@ export interface AppActions {
   createSession(characterId: string, title?: string, greetingIndex?: number): Promise<Session>;
   renameSession(id: string, title: string): Promise<void>;
   deleteSession(id: string): Promise<void>;
-  send(sessionId: string, text: string): Promise<void>;
+  send(sessionId: string, text: string, meta?: MessageMeta): Promise<void>;
   /** 追加一条消息（导入历史、或把生成结果落库都用它）；返回刚写入的那条。 */
   appendMessage(
     sessionId: string,
@@ -66,6 +67,11 @@ export interface AppActions {
     meta?: MessageMeta,
   ): Promise<Message>;
   updateMessage(id: string, content: string, status?: Message['status']): Promise<void>;
+  /** B15：编辑正文（新版本，旧版保留）。 */ editMessage(id: string, content: string): Promise<boolean>;
+  /** B16：切回某个历史版本。 */ selectMessageRevision(id: string, revisionId: string): Promise<boolean>;
+  /** B15：某条消息的全部正文版本（内容按需取）。 */ messageRevisions(id: string): Promise<MessageRevision[]>;
+  /** B16：分叉组（同基线多版本）。 */ messageForks(id: string): Promise<MessageFork[]>;
+  /** B17：分叉会话（复制 setup + 全部消息；runtime 不复制）。 */ forkSession(sessionId: string, options?: { title?: string }): Promise<Session>;
   removeMessage(id: string): Promise<void>;
   setSetting(key: string, value: string): Promise<void>;
   // ---- 世界书 ----
@@ -211,30 +217,24 @@ export function createAppStore(repository: Repository): AppStore {
       if (added > 0 && state.activeSessionId !== undefined) await actions.loadMessages(state.activeSessionId);
       return added;
     },
-
     async selectCandidate(messageId, candidateId) {
       const changed = await run('selectCandidate', () => repository.messages.selectCandidate(messageId, candidateId));
       if (changed && state.activeSessionId !== undefined) await actions.loadMessages(state.activeSessionId);
       return changed;
     },
-
     async refreshMemories() {
       set({ memories: await repository.memories.list(), facts: await repository.facts.list() });
     },
-
     async summariesOf(sessionId) {
       return run('summariesOf', () => repository.summaries.list(sessionId));
     },
-
     async saveSummaries(sessionId, drafts) {
       if (drafts.length === 0) return [];
       return run('saveSummaries', () => repository.summaries.save(sessionId, drafts));
     },
-
     async factsOf(characterId) {
       return run('factsOf', () => repository.facts.list(characterId));
     },
-
     async saveFacts(drafts) {
       if (drafts.length === 0) return [];
       const written = await run('saveFacts', () => repository.facts.save(drafts));
@@ -242,29 +242,24 @@ export function createAppStore(repository: Repository): AppStore {
       set({ facts: await repository.facts.list() });
       return written;
     },
-
     async saveMemory(draft) {
       const memory = await run('saveMemory', () => repository.memories.save(draft));
       await actions.refreshMemories();
       return memory;
     },
-
     async deleteMemory(id) {
       await run('deleteMemory', async () => {
         await repository.memories.remove(id);
       });
       await actions.refreshMemories();
     },
-
     async loadMessages(sessionId) {
       const messages = await repository.messages.list(sessionId);
       set({ messages, activeSessionId: sessionId });
     },
-
     messagesOf(sessionId) {
       return repository.messages.list(sessionId);
     },
-
     saveCharacter(draft) {
       return run('saveCharacter', async () => {
         const saved = await repository.characters.save(draft);
@@ -272,7 +267,6 @@ export function createAppStore(repository: Repository): AppStore {
         return saved;
       });
     },
-
     async deleteCharacter(id) {
       await run('deleteCharacter', async () => {
         await repository.characters.remove(id);
@@ -283,7 +277,6 @@ export function createAppStore(repository: Repository): AppStore {
         }
       });
     },
-
     createSession(characterId, title, greetingIndex) {
       return run('createSession', async () => {
         const session = await repository.sessions.create(characterId, title, greetingIndex);
@@ -295,14 +288,12 @@ export function createAppStore(repository: Repository): AppStore {
         return session;
       });
     },
-
     async renameSession(id, title) {
       await run('renameSession', async () => {
         await repository.sessions.rename(id, title);
         await refreshSessions();
       });
     },
-
     async deleteSession(id) {
       await run('deleteSession', async () => {
         await repository.sessions.remove(id);
@@ -310,16 +301,20 @@ export function createAppStore(repository: Repository): AppStore {
         if (state.activeSessionId === id) set({ messages: [], activeSessionId: undefined });
       });
     },
-
-    async send(sessionId, text) {
+    /** B17：分叉。复制失败时 `run` 会把 DataError 记进状态（界面可见），不静默。 */
+    async forkSession(sessionId, options = {}) {
+      const session = await run('forkSession', () => forkSessionInRepository(repository, sessionId, options));
+      await refreshSessions();
+      return session;
+    },
+    async send(sessionId, text, meta) {
       const content = text.trim();
       if (content === '') return;
       await run('send', async () => {
-        await repository.messages.append(sessionId, 'user', content, 'done');
+        await repository.messages.append(sessionId, 'user', content, 'done', undefined, meta);
         await Promise.all([actions.loadMessages(sessionId), refreshSessions()]);
       });
     },
-
     async appendMany(sessionId, entries) {
       const added = await repository.messages.appendMany(sessionId, entries);
       if (state.activeSessionId === sessionId) await actions.loadMessages(sessionId);
@@ -341,7 +336,6 @@ export function createAppStore(repository: Repository): AppStore {
       }
       return added;
     },
-
     async appendMessage(sessionId, role, content, options = {}, _candidates?, meta?) {
       const message = await appendMessageWithMeta(repository.messages, sessionId, role, content, options, meta);
       if (state.activeSessionId === sessionId) await actions.loadMessages(sessionId);
@@ -357,21 +351,34 @@ export function createAppStore(repository: Repository): AppStore {
       });
       return message;
     },
-
     async updateMessage(id, content, status) {
       await run('updateMessage', async () => {
         await repository.messages.update(id, content, status);
         if (state.activeSessionId !== undefined) await actions.loadMessages(state.activeSessionId);
       });
     },
-
+    async editMessage(id, content) {
+      const changed = await run('editMessage', () => repository.messages.edit(id, content));
+      if (changed && state.activeSessionId !== undefined) await actions.loadMessages(state.activeSessionId);
+      return changed;
+    },
+    async selectMessageRevision(id, revisionId) {
+      const changed = await run('selectMessageRevision', () => repository.messages.selectRevision(id, revisionId));
+      if (changed && state.activeSessionId !== undefined) await actions.loadMessages(state.activeSessionId);
+      return changed;
+    },
+    messageRevisions(id) {
+      return run('messageRevisions', () => repository.messages.revisions(id));
+    },
+    messageForks(id) {
+      return run('messageForks', () => repository.messages.forks(id));
+    },
     async removeMessage(id) {
       await run('removeMessage', async () => {
         await repository.messages.remove(id);
         if (state.activeSessionId !== undefined) await actions.loadMessages(state.activeSessionId);
       });
     },
-
     async setSetting(key, value) {
       await run('setSetting', async () => {
         await repository.settings.set(key, value);
@@ -379,7 +386,6 @@ export function createAppStore(repository: Repository): AppStore {
       });
     },
   };
-
   return {
     getState: () => state,
     subscribe(listener) {

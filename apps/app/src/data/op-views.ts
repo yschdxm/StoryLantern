@@ -56,6 +56,7 @@ export function sessionView(materializer: Materializer, sessionId: string): Sess
     updatedAt: Math.max(record.titleHlc.t, lastAt),
     messageCount: messages.length,
     lastMessage: last === undefined ? '' : (materializer.textOf(last.id) ?? ''),
+    ...(record.forkedFrom === undefined ? {} : { forkedFrom: record.forkedFrom }),
   };
 }
 
@@ -73,6 +74,9 @@ export function messageView(materializer: Materializer, messageId: string): Mess
     candidates: record.candidates.map((candidate) => ({ id: candidate.candidateId, content: candidate.content })),
     selectedCandidateId: record.selectedCandidate?.candidateId ?? '',
     ...(record.meta === undefined ? {} : { meta: record.meta }),
+    ...(record.revisions.length <= 1 ? {} : { revisionCount: record.revisions.length }),
+    activeRevisionId: record.activeRevision.revisionId,
+    ...(materializer.forksOf(messageId).length === 0 ? {} : { forkCount: materializer.forksOf(messageId).length }),
   };
 }
 

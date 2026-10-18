@@ -22,6 +22,8 @@ import type {
   WorldPackManifest,
 } from '../../../../packages/cards/src/index.ts';
 import type { ImportedCharacter, ImportedLorebook } from '../../../../packages/importer/src/index.ts';
+import { quickRepliesFromSt } from './quick-replies.ts';
+import { regexScriptsFromSt } from './regex-scripts.ts';
 
 export interface ImportPlan {
   card: CharacterCard;
@@ -320,6 +322,8 @@ export function planCharacterImport(input: ImportedCharacter, options: { now: nu
   const prompts = promptsOf(input);
   const tags = cleaned(input.tags ?? []);
   const author = (input.creator ?? '').trim();
+  const regexScripts = regexScriptsFromSt(input.regexScripts ?? []);
+  const quickReplies = quickRepliesFromSt(input.quickReplies ?? []);
   const card: CharacterCard = {
     card_type: 'character',
     meta: {
@@ -346,11 +350,22 @@ export function planCharacterImport(input: ImportedCharacter, options: { now: nu
     speech: { style: '' },
     ...(parsed.examples.length === 0 ? {} : { examples: parsed.examples }),
     ...(prompts === undefined ? {} : { prompts }),
+    // B13 正则脚本进卡片扩展命名空间；B14 快捷回复是作者数据，放顶层字段
+    ...(regexScripts.length === 0 ? {} : { extensions: { storylantern: { regex_scripts: regexScripts } } }),
+    ...(quickReplies.length === 0 ? {} : { quick_replies: quickReplies }),
     compat,
   };
 
   const stash = stashEntriesOf(input, cardId, options.now, parsed);
   const notes: string[] = [];
+  if (regexScripts.length > 0) {
+    notes.push(`正则脚本 ${regexScripts.length} 条已保存到卡片扩展（执行引擎已就绪，聊天链路接线在下一批）`);
+  }
+  const unsupportedRegex = (input.regexScripts?.length ?? 0) - regexScripts.length;
+  if (unsupportedRegex > 0) notes.push(`${unsupportedRegex} 条正则脚本的 placement 不受支持，已跳过（不猜）`);
+  const markdownOnly = (input.regexScripts ?? []).filter((script) => script.markdownOnly === true).length;
+  if (markdownOnly > 0) notes.push(`${markdownOnly} 条正则脚本标了 markdownOnly（仅 Markdown 显示）：当前不区分，按普通脚本保存`);
+  if (quickReplies.length > 0) notes.push(`快捷回复 ${quickReplies.length} 条已保存到角色卡（暂无 UI 入口）`);
   if (input.scenario.trim() !== '') notes.push('scenario 已转存为本地推荐处境草稿（卡片不包含场景字段）');
   const greetings = greetingList(input);
   if (greetings.length > 0) notes.push(`开场白 ${greetings.length} 条已转存为本地开场草稿（卡片不包含开场字段）`);
@@ -380,6 +395,5 @@ export function planCharacterImport(input: ImportedCharacter, options: { now: nu
     pack = lorePlan.pack;
     notes.push(...lorePlan.notes);
   }
-
   return { card, stash, loreCards, ...(pack === undefined ? {} : { pack }), notes, discarded };
 }

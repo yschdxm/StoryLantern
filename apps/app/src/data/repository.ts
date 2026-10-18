@@ -7,7 +7,7 @@ import type {
   LorebookDraft,
   Memory,
   MemoryDraft,
-  Message, MessageMeta,
+  Message, MessageMeta, MessageRevision, MessageFork,
   MessageRole,
   MessageStatus,
   Session,
@@ -94,7 +94,8 @@ export interface SessionStore {
   list(): Promise<Session[]>;
   /** `greetingIndex`：`0`=第一条开场白（默认）、`-1`=不插入、其余依次对应备选开场白。 */
   create(characterId: string, title?: string, greetingIndex?: number): Promise<Session>;
-  /** 带开局配置创建（可选能力）：成员/资源池/处境/开场模式一次写入；开场消息由 opening_mode 决定。 */ createWithSetup?(input: { characterIds: readonly string[]; setup: SessionSetup; title?: string }): Promise<Session>;
+  /** 带开局配置创建（可选能力）：成员/资源池/处境/开场模式一次写入；`forkedFrom` 记分叉来源。 */
+  createWithSetup?(input: { characterIds: readonly string[]; setup: SessionSetup; title?: string; forkedFrom?: string }): Promise<Session>;
   rename(id: string, title: string): Promise<boolean>;
   remove(id: string): Promise<boolean>;
 }
@@ -113,6 +114,14 @@ export interface MessageStore {
   /** `createdAt` 用于导入历史记录：不传就用当前时间。`meta` 随 op 一起落库。 */
   append(sessionId: string, role: MessageRole, content: string, status?: MessageStatus, createdAt?: number, meta?: MessageMeta): Promise<Message>;
   update(id: string, content: string, status?: MessageStatus): Promise<boolean>;
+  /** 编辑正文：追加一个新 revision，active 指向它（B15）。 */
+  edit(id: string, content: string): Promise<boolean>;
+  /** 切回某个历史版本（B16）。 */
+  selectRevision(id: string, revisionId: string): Promise<boolean>;
+  /** 某条消息的全部正文版本（内容可能长，列表只带摘要；按需调这个）。 */
+  revisions(id: string): Promise<MessageRevision[]>;
+  /** 同基线多版本的分叉组（`forksOf`）；没有分叉返回空数组。 */
+  forks(id: string): Promise<MessageFork[]>;
   /**
    * 追加候选回复（SillyTavern 的 swipes 落在这里）。
    * 返回真正新增的条数：重复内容与空串会被忽略，因此重放是安全的。
@@ -290,13 +299,11 @@ export function validateCharacterDraft(draft: CharacterDraft): Required<Omit<Cha
     alternateGreetings: (draft.alternateGreetings ?? []).map((item) => item.trim()).filter((item) => item !== ''),
   };
 }
-
 export function validateSessionTitle(title: string): string {
   const trimmed = title.trim();
   if (trimmed === '') throw new DataError('invalid-argument', '会话名不能为空');
   return trimmed;
 }
-
 /** 世界书字段的公共校验：两个实现必须给出同样的错误码与文案。 */
 export function validateLorebookDraft(draft: LorebookDraft): Required<Omit<LorebookDraft, 'id'>> {
   const name = (draft.name ?? '').trim();
@@ -309,7 +316,6 @@ export function validateLorebookDraft(draft: LorebookDraft): Required<Omit<Loreb
     enabled: draft.enabled !== false,
   };
 }
-
 /** 关键词：去空白、去重、丢掉空串。 */
 export function normalizeLoreKeys(keys: readonly string[]): string[] {
   const seen = new Set<string>();
@@ -322,7 +328,6 @@ export function normalizeLoreKeys(keys: readonly string[]): string[] {
   }
   return out;
 }
-
 export function validateLoreEntryDraft(draft: LoreEntryDraft): Required<Omit<LoreEntryDraft, 'id'>> {
   const keys = normalizeLoreKeys(draft.keys ?? []);
   const constant = draft.constant === true;
@@ -345,12 +350,10 @@ export function validateLoreEntryDraft(draft: LoreEntryDraft): Required<Omit<Lor
     constant,
   };
 }
-
 export function validateMessageRole(role: string): MessageRole {
   if (role === 'user' || role === 'assistant' || role === 'system') return role;
   throw new DataError('invalid-argument', `未知的消息角色：${role}`);
 }
-
 /**
  * 本地端点（局域网/本机）通常不需要 API Key。
  *
@@ -368,7 +371,6 @@ export function isLocalEndpoint(url: string): boolean {
     lower.startsWith('http://[') // IPv6 本机
   );
 }
-
 /** 模型是否已配置到"可以发话"的程度。 */
 export function isModelConfigured(settings: Record<string, string>): boolean {
   const baseUrl = (settings['model.base_url'] ?? '').trim();
@@ -377,7 +379,6 @@ export function isModelConfigured(settings: Record<string, string>): boolean {
   if (baseUrl === '' || model === '') return false;
   return apiKey !== '' || isLocalEndpoint(baseUrl);
 }
-
 /** 会话列表/聊天气泡共用的时间显示：刚刚 / 12:05 / 昨天 / 3月8日 */export function formatTime(timestamp: number, now = Date.now()): string {
   if (timestamp <= 0) return '';
   const date = new Date(timestamp);
@@ -390,7 +391,6 @@ export function isModelConfigured(settings: Record<string, string>): boolean {
   if (yesterday.toDateString() === date.toDateString()) return '昨天';
   return `${date.getMonth() + 1} 月 ${date.getDate()} 日`;
 }
-
 /** 会话列表的副标题：最后一条消息压成一行。 */
 export function previewOf(text: string, limit = 60): string {
   const flat = text.replace(/\s+/g, ' ').trim();

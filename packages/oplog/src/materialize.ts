@@ -218,6 +218,22 @@ export class Materializer {
       .map(([key, revisionIds]) => ({ baseRevisionId: key === '' ? null : key, revisionIds: revisionIds.sort() }));
   }
 
+  /**
+   * 消息的所有正文版本（B15/B16）：按到达顺序给 `{id, content, active}`。
+   *
+   * 内容可能很长，所以**不塞进 `Message`**（列表只带数量/active id），
+   * 由 UI 在打开消息详情时单独调 `messageStore.revisions(id)`。
+   */
+  revisionsOf(messageId: string): { id: string; content: string; active: boolean }[] {
+    const message = this.#state.messages[messageId];
+    if (message === undefined || message.deleted !== undefined) return [];
+    return message.revisions.map((revision) => ({
+      id: revision.revisionId,
+      content: revision.content,
+      active: revision.revisionId === message.activeRevision.revisionId,
+    }));
+  }
+
   snapshot(): Snapshot {
     return {
       version: 1,
@@ -354,37 +370,29 @@ export class Materializer {
     applySessionUpsert(this.#state, op);
     return 'applied';
   }
-
   #sessionDelete(op: Op): ApplyResult {
     applySessionDelete(this.#state, op);
     return 'applied';
   }
-
   /** 消息与设置的语义在 `message-projection.ts` 里，这里只转发（保持门禁 400 行以内）。 */
   #messageAppend(op: Op): ApplyResult {
     return applyMessageAppend(this.#state, op);
   }
-
   #messageEdit(op: Op): ApplyResult {
     return applyMessageEdit(this.#state, op);
   }
-
   #revisionSelect(op: Op): ApplyResult {
     return applyRevisionSelect(this.#state, op);
   }
-
   #candidateAppend(op: Op): ApplyResult {
     return applyCandidateAppend(this.#state, op);
   }
-
   #candidateSelect(op: Op): ApplyResult {
     return applyCandidateSelect(this.#state, op);
   }
-
   #messageDelete(op: Op): ApplyResult {
     return applyMessageDelete(this.#state, op);
   }
-
   #settingSet(op: Op): ApplyResult {
     return applySettingSet(this.#state, op);
   }

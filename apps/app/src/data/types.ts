@@ -17,6 +17,7 @@ export type MessageStatus = 'done' | 'streaming' | 'error' | 'stopped';
 export type {
   MessageCitation,
   MessageMeta,
+  MessageRegexStat,
   MessageTiming,
   MessageTokens,
 } from '../../../../packages/oplog/src/op.ts';
@@ -61,6 +62,8 @@ export interface Session {
   updatedAt: number;
   messageCount: number;
   lastMessage: string;
+  /** 分叉来源会话（B17）：非空表示这是从那个会话复制出来的。 */
+  forkedFrom?: string;
 }
 
 export interface Message {
@@ -77,6 +80,27 @@ export interface Message {
   selectedCandidateId: string;
   /** 生成元数据（模型/思考链/引用/token/耗时）；旧消息没有。 */
   meta?: MessageMetaType;
+  /**
+   * 正文版本数量与当前版本 id（B15/B16）：列表只带摘要，**不带全量内容**。
+   * 打开消息详情时用 `store.actions.messageRevisions(id)` 单独取。
+   */
+  revisionCount?: number;
+  activeRevisionId?: string;
+  /** 存在分叉的基线数（`forksOf` 非空时 >0；内容按需取）。 */
+  forkCount?: number;
+}
+
+/** 一个"同基线多版本"的分叉组（两台设备基于同一版各改一次）。 */
+export interface MessageFork {
+  baseRevisionId: string | null;
+  revisionIds: string[];
+}
+
+/** 一条正文版本（编辑/重生成产生的历史版本）。 */
+export interface MessageRevision {
+  id: string;
+  content: string;
+  active: boolean;
 }
 
 /** 一条候选回复：导入历史时来自 swipes，将来重新生成也会落到这里。 */

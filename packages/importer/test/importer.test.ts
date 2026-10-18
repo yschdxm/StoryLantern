@@ -100,6 +100,37 @@ test('导入：世界书（CCv3 数组形态）', async () => {
   assert.ok((imported as ImportedLorebookFile).lorebook.entries.length > 0);
 });
 
+// ---------------------------------------------------------------- 正则脚本 / 快捷回复
+
+test('导入：正则脚本与快捷回复不再只计数，而是解析出原始条目', async () => {
+  const json = JSON.stringify({
+    spec: 'chara_card_v2',
+    data: {
+      name: '星野',
+      description: '守望者。',
+      extensions: {
+        regex_scripts: [
+          { id: 'r1', scriptName: '去 OOC', findRegex: '/\\(OOC:.*?\\)/gs', replaceString: '', placement: [2], disabled: false },
+          { id: 'r2', scriptName: '坏条目', findRegex: '', placement: [1] },
+        ],
+        quick_replies: [
+          { id: 'q1', label: '打招呼', message: '你好' },
+          { id: 'q2', label: '禁用', message: '再见', enabled: false },
+        ],
+      },
+    },
+  });
+  const card = asCharacter(await importText('card.json', json));
+  assert.deepEqual(card.regexScripts?.map((script) => script.id), ['r1'], '空 findRegex 的条目跳过');
+  assert.equal(card.regexScripts?.[0]?.placement[0], 2);
+  assert.equal(card.regexScripts?.[0]?.findRegex, '/\\(OOC:.*?\\)/gs');
+  assert.deepEqual(card.quickReplies?.map((reply) => reply.id), ['q1', 'q2']);
+  assert.equal(card.quickReplies?.[1]?.enabled, false);
+  assert.deepEqual(card.extensionKeys, [], 'regex_scripts / quick_replies 已消费，不再算丢弃');
+  assert.ok(card.notes.some((note) => note.includes('正则脚本 1 条已解析')));
+  assert.ok(card.notes.some((note) => note.includes('快捷回复 2 条已解析')));
+});
+
 // ---------------------------------------------------------------- 聊天记录
 
 test('导入：单人聊天 JSONL（角色名、角色归属、候选回复有提示）', async () => {
@@ -186,7 +217,7 @@ test('聊天导入：名字只写在每行上（没有表头）时，也要采�
   if (result.kind !== 'chat') return;
   assert.equal(result.characterName, 'Rin', '行内的 character_name 应当被采用，而不是落到默认名');
 });
-test('角色卡：带正则脚本时明确告知「没有导入」，不做半支持', () => {
+test('角色卡：带正则脚本但字段缺失时跳过并如实报数量（不再只统计不导入）', () => {
   const card = {
     spec: 'chara_card_v2',
     data: {
@@ -197,6 +228,6 @@ test('角色卡：带正则脚本时明确告知「没有导入」，不做半�
   };
   const result = importText('card.json', JSON.stringify(card));
   assert.equal(result.kind, 'character');
-  assert.equal(result.notes.some((note) => note.includes('正则')), true, '要说清正则没导入');
-  assert.equal(result.notes.some((note) => note.includes('2 条')), true, '要报条数');
+  assert.equal(result.notes.some((note) => note.includes('跳过')), true, '缺字段的脚本要报跳过');
+  assert.equal(result.notes.some((note) => note.includes('2 条')), true, '要报原始条数');
 });

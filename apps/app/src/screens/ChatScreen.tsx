@@ -7,10 +7,15 @@ import { loadWorkspace, type WorkspaceSnapshot } from '../app/workspace.ts';
 import { useT } from '../i18n/context.tsx';
 import type { ScreenProps } from './screen-props.ts';
 import { useAppState, useAsync } from './screen-props.ts';
+import { isCharacterCard } from '../../../../packages/cards/src/index.ts';
+import { expandQuickReply, listQuickReplies } from '../data/quick-replies.ts';
+import { regexStatOf, transformUserInput } from '../data/chat-regex.ts';
 import { Banner, Button, LoadMore, Sheet, SheetItem, useWindowedList } from '../ui/components.tsx';
 import { RequestTracePanel } from './RequestTracePanel.tsx';
 import { MessageContent, StreamingContent } from './chat/MessageBubble.tsx';
 import { MessageDetail } from './chat/MessageDetail.tsx';
+import { MessageEditSheet } from './chat/MessageEditSheet.tsx';
+import { MessageRevisionsSheet } from './chat/MessageRevisionsSheet.tsx';
 import { useChatReply } from './chat/use-chat-reply.ts';
 
 export interface ChatScreenProps extends ScreenProps {
@@ -35,6 +40,8 @@ export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings, t
   const [menuFor, setMenuFor] = useState<string | undefined>(undefined);
   const [pickerFor, setPickerFor] = useState<string | undefined>(undefined);
   const [detailFor, setDetailFor] = useState<string | undefined>(undefined);
+  const [editingFor, setEditingFor] = useState<string | undefined>(undefined);
+  const [versionsFor, setVersionsFor] = useState<string | undefined>(undefined);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const heightBeforeRef = useRef(0);
   // B25：请求审计只在本机设备 kv（不新增全局单例）；浏览器/宿主复用同一份端口实现。
@@ -63,8 +70,32 @@ export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings, t
   const candidateCount =
     menuFor === undefined ? 0 : (state.messages.find((message) => message.id === menuFor)?.candidates.length ?? 0);
   const detailMessage = detailFor === undefined ? undefined : state.messages.find((message) => message.id === detailFor);
+  const editingMessage = editingFor === undefined ? undefined : state.messages.find((message) => message.id === editingFor);
+  const versionsMessage = versionsFor === undefined ? undefined : state.messages.find((message) => message.id === versionsFor);
+  const menuMessage = menuFor === undefined ? undefined : state.messages.find((message) => message.id === menuFor);
   const sourceOf = (messageId: string): string | undefined =>
     state.messages.find((message) => message.id === messageId)?.content;
+
+  // B14：快捷回复来自本会话激活的角色卡；只填输入框，不直接发送。
+  const quickReplyCards = useMemo(() => (workspace?.cards ?? []).filter(isCharacterCard), [workspace]);
+  const quickReplies = useMemo(
+    () =>
+      listQuickReplies(
+        quickReplyCards,
+        workspace?.setup?.characters ?? quickReplyCards.map((card) => card.meta.id),
+      ),
+    [quickReplyCards, workspace?.setup?.characters],
+  );
+  const quickReplyChar = session?.characterName ?? quickReplyCards[0]?.meta.name ?? '';
+  const quickReplyUser = workspace?.setup?.user_role ?? '';
+  const insertQuickReply = (content: string): void => {
+    setDraft(
+      expandQuickReply(content, {
+        ...(quickReplyChar === '' ? {} : { char: quickReplyChar }),
+        ...(quickReplyUser === '' ? {} : { user: quickReplyUser }),
+      }),
+    );
+  };
 
   // 打开 Inspector 或一次生成结束时刷新审计列表；失败要看得见，不静默吞
   useEffect(() => {
@@ -115,7 +146,10 @@ export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings, t
     if (text === '' || streaming !== null) return;
     setDraft('');
     void (async () => {
-      await store.actions.send(sessionId, text).catch(() => undefined);
+      // B13：user_input 正则只转换本次输入；统计进消息 meta（不静默）
+      const outgoing = transformUserInput(text, workspace?.cards ?? [], workspace?.setup);
+      const regexStat = regexStatOf('user_input', outgoing);
+      await store.actions.send(sessionId, outgoing.text, regexStat === undefined ? {} : { regex: [regexStat] }).catch(() => undefined);
       if (!configured || !canReply) return;
       await reply.runReply();
     })();
@@ -209,6 +243,22 @@ export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings, t
         )}
       </div>
 
+      {quickReplies.length > 0 && (
+        <div className="quick-replies" role="group" aria-label={t('chat.quickReplies.label')} data-testid="quick-replies">
+          {quickReplies.map((reply) => (
+            <button
+              key={reply.id}
+              type="button"
+              className="quick-reply-chip"
+              title={reply.name}
+              onClick={() => insertQuickReply(reply.content)}
+            >
+              {reply.name}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="composer">
         <textarea
           className="composer__input"
@@ -243,6 +293,24 @@ export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings, t
             const id = menuFor;
             setMenuFor(undefined);
             if (id !== undefined) setDetailFor(id);
+          }}
+        />
+        <SheetItem
+          icon="edit"
+          label={t('chat.edit.action')}
+          onClick={() => {
+            const id = menuFor;
+            setMenuFor(undefined);
+            if (id !== undefined) setEditingFor(id);
+          }}
+        />
+        <SheetItem
+          icon="book"
+          label={t('chat.revisions.action', { count: menuMessage?.revisionCount ?? 1 })}
+          onClick={() => {
+            const id = menuFor;
+            setMenuFor(undefined);
+            if (id !== undefined) setVersionsFor(id);
           }}
         />
         {candidateCount > 0 && (
@@ -289,6 +357,28 @@ export function ChatScreen({ store, sessionId, chat, assemble, onOpenSettings, t
         sourceOf={sourceOf}
         open={detailFor !== undefined}
         onClose={() => setDetailFor(undefined)}
+      />
+
+      <MessageEditSheet
+        message={editingMessage}
+        onClose={() => setEditingFor(undefined)}
+        onSave={async (content) => {
+          if (editingFor === undefined) return false;
+          const changed = await store.actions.editMessage(editingFor, content);
+          if (changed) await store.actions.loadMessages(sessionId);
+          return changed;
+        }}
+      />
+      <MessageRevisionsSheet
+        store={store}
+        message={versionsMessage}
+        onClose={() => setVersionsFor(undefined)}
+        onSelect={async (revisionId) => {
+          if (versionsFor === undefined) return false;
+          const changed = await store.actions.selectMessageRevision(versionsFor, revisionId);
+          if (changed) await store.actions.loadMessages(sessionId);
+          return changed;
+        }}
       />
 
       <RequestTracePanel

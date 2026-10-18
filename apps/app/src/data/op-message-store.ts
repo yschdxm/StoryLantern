@@ -4,6 +4,7 @@ import {
   messageAppend,
   messageDelete,
   messageEdit,
+  revisionSelect,
   ulid,
   type HlcClock,
   type Materializer,
@@ -142,6 +143,40 @@ export function createMessageStore(deps: MessageStoreDeps): MessageStore {
         ]);
         return true;
       }),
+
+    /** B15：编辑 = 新 revision（旧的都留着），active 跟着新版本走。 */
+    edit: (id, content) =>
+      deps.withReady(async () => {
+        const record = deps.materializer().state.messages[id];
+        if (record === undefined || record.deleted !== undefined) return false;
+        if (content.trim() === '') throw new DataError('invalid-argument', '消息正文不能为空');
+        await deps.appendAndApply([
+          messageEdit(deps.base(), {
+            messageId: id,
+            revisionId: `${id}:r${record.revisions.length}-${ulid()}`,
+            baseRevisionId: record.activeRevision.revisionId,
+            content,
+            status: 'done',
+          }),
+        ]);
+        return true;
+      }),
+
+    /** B16：切回历史版本（不删任何版本）。 */
+    selectRevision: (id, revisionId) =>
+      deps.withReady(async () => {
+        const record = deps.materializer().state.messages[id];
+        if (record === undefined || record.deleted !== undefined) return false;
+        if (!record.revisions.some((revision) => revision.revisionId === revisionId)) return false;
+        await deps.appendAndApply([revisionSelect(deps.base(), { messageId: id, revisionId })]);
+        return true;
+      }),
+
+    revisions: (id) =>
+      deps.withReady(async () => deps.materializer().revisionsOf(id)),
+
+    /** B16：分叉组（同基线多版本）——投影里已有，这里只做仓储出口。 */
+    forks: (id) => deps.withReady(async () => deps.materializer().forksOf(id)),
 
     /**
      * 追加候选回复：每条候选一个 op（`message.candidate.append`）。

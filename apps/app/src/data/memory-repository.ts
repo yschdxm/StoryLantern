@@ -16,6 +16,7 @@ import {
   type SettingsStore,
 } from './repository.ts';
 import { pickOpening } from './greeting.ts';
+import { applyHistorySummary, createRevisionHistory } from './memory-revisions.ts';
 import { createLocalLoreStore } from './local-lore-store.ts';
 import { createLocalMemoryStore } from './local-memory-store.ts';
 import { createLocalSummaryStore } from './local-summary-store.ts';
@@ -130,7 +131,6 @@ export function createMemoryRepository(
       commit();
       return { ...created };
     },
-
     async remove(id) {
       const before = state.characters.length;
       state.characters = state.characters.filter((item) => item.id !== id);
@@ -144,7 +144,6 @@ export function createMemoryRepository(
       return removed;
     },
   };
-
   const buildSession = (session: Session): Session => {
     const character = findCharacter(session.characterId);
     const messages = state.messages.filter((message) => message.sessionId === session.id);
@@ -156,19 +155,16 @@ export function createMemoryRepository(
       lastMessage: last?.content ?? '',
     };
   };
-
   const touchSession = (sessionId: string): void => {
     const session = state.sessions.find((item) => item.id === sessionId);
     if (session !== undefined) session.updatedAt = now();
   };
-
   const sessions: SessionStore = {
     async list() {
       return [...state.sessions]
         .sort((a, b) => b.updatedAt - a.updatedAt || b.id.localeCompare(a.id))
         .map(buildSession);
     },
-
     async create(characterId, title, greetingIndex) {
       const character = findCharacter(characterId);
       if (character === undefined) throw new DataError('invalid-argument', `角色 ${characterId} 不存在`);
@@ -200,7 +196,6 @@ export function createMemoryRepository(
       commit();
       return buildSession(session);
     },
-
     async rename(id, title) {
       const clean = validateSessionTitle(title);
       const session = state.sessions.find((item) => item.id === id);
@@ -210,7 +205,6 @@ export function createMemoryRepository(
       commit();
       return true;
     },
-
     async remove(id) {
       const before = state.sessions.length;
       state.sessions = state.sessions.filter((item) => item.id !== id);
@@ -222,13 +216,13 @@ export function createMemoryRepository(
       return removed;
     },
   };
-
+  // B15/B16：正文版本历史（op 实现里由 Materializer 投影提供）
+  const history = createRevisionHistory();
   const messages: MessageStore = {
     async list(sessionId) {
       // 数组本身按写入顺序排列，不必再排序（id 是字符串，按字典序排会错）
       return state.messages.filter((message) => message.sessionId === sessionId);
     },
-
     async append(sessionId, role: MessageRole, content: string, status: MessageStatus = 'done', createdAt?: number, meta?: MessageMeta) {
       const safeRole = validateMessageRole(role);
       const message: Message = {
@@ -244,11 +238,11 @@ export function createMemoryRepository(
         ...(meta === undefined ? {} : { meta }),
       };
       state.messages.push(message);
+      applyHistorySummary(message, history.ensure(message.id, content), 1);
       touchSession(sessionId);
       commit();
       return { ...message };
     },
-
     async update(id, content, status: MessageStatus = 'done') {
       const message = state.messages.find((item) => item.id === id);
       if (message === undefined) return false;
@@ -257,7 +251,33 @@ export function createMemoryRepository(
       commit();
       return true;
     },
-
+    async edit(id, content) {
+      const message = state.messages.find((item) => item.id === id);
+      if (message === undefined) return false;
+      const result = history.edit(id, content, () => nextId('r'));
+      if (result === undefined) throw new DataError('invalid-argument', '消息正文不能为空');
+      message.content = content;
+      applyHistorySummary(message, result.activeId, result.count);
+      commit();
+      return true;
+    },
+    async selectRevision(id, revisionId) {
+      const message = state.messages.find((item) => item.id === id);
+      if (message === undefined) return false;
+      const content = history.select(id, revisionId);
+      if (content === undefined) return false;
+      message.content = content;
+      applyHistorySummary(message, revisionId, history.list(id).length);
+      commit();
+      return true;
+    },
+    async revisions(id) {
+      return history.list(id);
+    },
+    /** 内存实现的编辑是线性的（没有并发基线分叉）：如实返回空。 */
+    async forks() {
+      return [];
+    },
     /** 追加候选回复（导入 swipes 的落点）：重复与空串都跳过，因此可以安全重放。 */
     async appendMany(sessionId, entries) {
       // 内存实现（测试/预览）逐条走同一个 append，语义与 op 实现一致；真机走 op 实现的批量路径。
@@ -269,7 +289,6 @@ export function createMemoryRepository(
       }
       return added;
     },
-
     async appendCandidates(id, contents) {
       const message = state.messages.find((item) => item.id === id);
       if (message === undefined) return 0;
@@ -285,7 +304,6 @@ export function createMemoryRepository(
       if (added > 0) commit();
       return added;
     },
-
     /** 选中某个候选：选中的那条成为显示正文。 */
     async selectCandidate(id, candidateId) {
       const message = state.messages.find((item) => item.id === id);
@@ -297,18 +315,17 @@ export function createMemoryRepository(
       commit();
       return true;
     },
-
     async remove(id) {
       const before = state.messages.length;
       state.messages = state.messages.filter((item) => item.id !== id);
       if (state.messages.length !== before) {
+        history.remove(id);
         commit();
         return true;
       }
       return false;
     },
   };
-
   const settings: SettingsStore = {
     async get(key) {
       return state.settings[key];
@@ -321,9 +338,7 @@ export function createMemoryRepository(
       return { ...state.settings };
     },
   };
-
   const findBook = (id: string): Lorebook | undefined => state.lorebooks.find((book) => book.id === id);
-
   /** 与宿主实现同样的规则：书删掉，条目一起消失。 */
   const lorebooks: LorebookStore = createLocalLoreStore({
     state,
@@ -331,17 +346,14 @@ export function createMemoryRepository(
     now: () => now(),
     commit,
   });
-
   const memories: MemoryStore = createLocalMemoryStore({
     state,
     nextId,
     now: () => now(),
     commit,
   });
-
   const summaries: SummaryStore = createLocalSummaryStore({ state, now: () => now(), commit });
   const facts: FactStore = createLocalFactStore({ state, now: () => now(), commit });
-
   return {
     kind: 'local',
     characters,
@@ -377,7 +389,6 @@ export function createMemoryRepository(
     }),
   };
 }
-
 /** 世界书是两级结构：返回副本时条目也要复制，避免调用方改到内部状态。 */
 function copyBook(book: Lorebook): Lorebook {
   return {
@@ -386,4 +397,3 @@ function copyBook(book: Lorebook): Lorebook {
     entries: book.entries.map((entry) => ({ ...entry, keys: [...entry.keys], secondaryKeys: [...entry.secondaryKeys] })),
   };
 }
-

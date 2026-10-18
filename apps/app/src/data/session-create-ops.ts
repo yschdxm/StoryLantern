@@ -27,6 +27,8 @@ export interface CreateSessionWithSetupInput {
   characterIds: readonly string[];
   setup: SessionSetup;
   title?: string;
+  /** 分叉来源会话（B17）：写进 `session.create.forkedFrom`。 */
+  forkedFrom?: string;
 }
 
 /** 与迁移/兼容草稿共用：开场白草稿里第一条与备选之间的分隔符。 */
@@ -127,6 +129,7 @@ export function sessionCreateOpsFor(
       sessionId,
       title: title === '' ? characterNameOf(state, firstId) : title,
       characterId: firstId,
+      ...(input.forkedFrom === undefined ? {} : { forkedFrom: input.forkedFrom }),
     }),
     sessionSetup(base, { session_id: sessionId, setup }),
   ];

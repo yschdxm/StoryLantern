@@ -52,6 +52,7 @@ export {
   type MessageEditPayload,
   type MessageMeta,
   type MessagePayloadStatus,
+  type MessageRegexStat,
   type MessageTiming,
   type MessageTokens,
   type Op,
